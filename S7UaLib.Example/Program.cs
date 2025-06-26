@@ -6,10 +6,12 @@ using S7UaLib.Client;
 
 namespace S7UaLib.Example;
 
-internal class Program
+internal static class Program
 {
-    static async Task Main(string[] args)
+    static async Task Main()
     {
+        await Task.CompletedTask;
+        /*
         var loggerFactory = LoggerFactory.Create(builder =>
         {
             builder
@@ -36,7 +38,7 @@ internal class Program
 
         var config = await appInstance.LoadApplicationConfiguration(false).ConfigureAwait(false);
 
-        /*
+        
         using S7UaClient client = new S7UaClient(config, ClientBase.ValidateResponse, loggerFactory);
         client.AcceptUntrustedCertificates = true;
         await client.ConnectAsync(serverUrl);
