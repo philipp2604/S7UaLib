@@ -6,6 +6,13 @@ using Opc.Ua;
 using Opc.Ua.Client;
 using S7UaLib.Events;
 
+/// <summary>
+/// Represents a client for connecting to and interacting with an S7 UA server.
+/// </summary>
+/// <remarks>The <see cref="S7UaClient"/> class provides methods and properties for establishing and managing a
+/// session with an S7 UA server, including connection, disconnection, and reconnection handling. It supports
+/// configurable keep-alive intervals, session timeouts, and reconnection strategies.  This class is thread-safe and
+/// implements <see cref="IDisposable"/> to ensure proper resource cleanup.</remarks>
 internal class S7UaClient : IS7UaClient, IDisposable
 {
     #region Private Fields
@@ -27,6 +34,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Constructors
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="S7UaClient"/> class with the specified application configuration,
+    /// response validation action, and optional logger factory.
+    /// </summary>
+    /// <param name="appConfig">The OPC UA application configuration used to initialize the client. This parameter cannot be <see langword="null"/>.</param>
+    /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
+    /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
     public S7UaClient(ApplicationConfiguration appConfig, Action<IList, IList> validateResponse, ILoggerFactory? loggerFactory = null)
     {
         _appConfig = appConfig ?? throw new ArgumentNullException(nameof(appConfig));
@@ -101,6 +116,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #endregion
 
     #region Public Methods
+    #region Connection Methods
 
     /// <inheritdoc cref="IS7UaClient.ConnectAsync(string, bool, CancellationToken)"/>
     public async Task ConnectAsync(string serverUrl, bool useSecurity = true, CancellationToken cancellationToken = default)
@@ -180,6 +196,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
     }
 
+    #endregion
+
+    #region Discovery Methods
+
+
+    #endregion
     #endregion
 
     #region Event Callbacks
