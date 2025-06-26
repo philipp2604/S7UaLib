@@ -1,0 +1,17 @@
+# Testing for .NET 8 (LTS)
+name: .NET 8 (LTS) Build & Test
+
+on:
+  push:
+  pull_request:
+    branches: [ main ]
+    paths:
+    - '**.cs'
+    - '**.csproj'
+
+jobs:
+  call-reusable-workflow:
+    uses: ./.github/workflows/reusable-build-and-test.yml
+    with:
+      dotnet-version: '8.0.x'
+      target-framework: 'net8.0'

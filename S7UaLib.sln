@@ -7,6 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib", "S7UaLib\S7UaLib.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib.Example", "S7UaLib.Example\S7UaLib.Example.csproj", "{4219AE60-3C4C-4DDB-ADF1-008BC4690778}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib.UnitTests", "S7UaLib.UnitTests\S7UaLib.UnitTests.csproj", "{D09C401A-9D62-41AC-9668-3EAB7AF086BE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib.IntegrationTests", "S7UaLib.IntegrationTests\S7UaLib.IntegrationTests.csproj", "{02365EC5-8FF6-4850-AA6F-A850549DE13C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +25,14 @@ Global
 		{4219AE60-3C4C-4DDB-ADF1-008BC4690778}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4219AE60-3C4C-4DDB-ADF1-008BC4690778}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4219AE60-3C4C-4DDB-ADF1-008BC4690778}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D09C401A-9D62-41AC-9668-3EAB7AF086BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D09C401A-9D62-41AC-9668-3EAB7AF086BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D09C401A-9D62-41AC-9668-3EAB7AF086BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D09C401A-9D62-41AC-9668-3EAB7AF086BE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{02365EC5-8FF6-4850-AA6F-A850549DE13C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{02365EC5-8FF6-4850-AA6F-A850549DE13C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{02365EC5-8FF6-4850-AA6F-A850549DE13C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{02365EC5-8FF6-4850-AA6F-A850549DE13C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

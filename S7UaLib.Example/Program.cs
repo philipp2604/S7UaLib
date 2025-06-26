@@ -36,10 +36,13 @@ internal class Program
 
         var config = await appInstance.LoadApplicationConfiguration(false).ConfigureAwait(false);
 
+        /*
         using S7UaClient client = new S7UaClient(config, ClientBase.ValidateResponse, loggerFactory);
         client.AcceptUntrustedCertificates = true;
         await client.ConnectAsync(serverUrl);
         Thread.Sleep(2000);
         client.Disconnect();
+
+        */
     }
 }

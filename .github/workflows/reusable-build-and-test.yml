@@ -1,0 +1,39 @@
+name: Reusable Build and Test Logic
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: 'The .NET SDK version to install'
+        required: true
+        type: string
+      target-framework:
+        description: 'The target framework to build and test'
+        required: true
+        type: string
+
+jobs:
+  build-and-test:
+    name: build-and-test-${{matrix.os}}-dotnet-${{ inputs.target-framework }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET SDK ${{ inputs.dotnet-version }}
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Install dependencies for target framework
+      run: dotnet restore /p:TargetFramework=${{ inputs.target-framework }}
+      
+    - name: Build
+      run: dotnet build --configuration Release --no-restore --framework ${{ inputs.target-framework }}
+    
+    - name: Test
+      run: dotnet test --no-restore --verbosity normal --framework ${{ inputs.target-framework }}

@@ -4,7 +4,7 @@ using S7UaLib.Events;
 
 namespace S7UaLib.Client;
 
-public interface IS7UaClient
+internal interface IS7UaClient
 {
     #region Public Events
     #region Connection Events

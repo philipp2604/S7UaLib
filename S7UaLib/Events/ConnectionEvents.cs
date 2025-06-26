@@ -2,27 +2,18 @@ using Opc.Ua;
 
 namespace S7UaLib.Events;
 
-public class ConnectionEventArgs : EventArgs
+public class ConnectionEventArgs(StatusCode? statusCode = null, Exception? exception = null) : EventArgs
 {
-    #region Constructors
-    public ConnectionEventArgs(StatusCode? statusCode = null, Exception? exception = null)
-    {
-        StatusCode = statusCode;
-        Exception = exception;
-    }
-
-    #endregion
-
     #region Public Properties
 
-    public StatusCode? StatusCode { get; }
-    public Exception? Exception { get; }
+    public StatusCode? StatusCode { get; } = statusCode;
+    public Exception? Exception { get; } = exception;
 
     #endregion
 
     #region Public Methods
 
-    new public static ConnectionEventArgs Empty => new ConnectionEventArgs();
+    new public static ConnectionEventArgs Empty => new();
 
     #endregion
 }

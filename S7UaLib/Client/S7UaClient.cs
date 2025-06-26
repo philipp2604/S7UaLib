@@ -6,7 +6,7 @@ using Opc.Ua;
 using Opc.Ua.Client;
 using S7UaLib.Events;
 
-public class S7UaClient : IS7UaClient, IDisposable
+internal class S7UaClient : IS7UaClient, IDisposable
 {
     #region Private Fields
 
