@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.36203.30 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib", "S7UaLib\S7UaLib.csproj", "{AC9CA76D-E5B6-44E5-B3A2-560F65D77568}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib.Example", "S7UaLib.Example\S7UaLib.Example.csproj", "{4219AE60-3C4C-4DDB-ADF1-008BC4690778}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{AC9CA76D-E5B6-44E5-B3A2-560F65D77568}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AC9CA76D-E5B6-44E5-B3A2-560F65D77568}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AC9CA76D-E5B6-44E5-B3A2-560F65D77568}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4219AE60-3C4C-4DDB-ADF1-008BC4690778}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4219AE60-3C4C-4DDB-ADF1-008BC4690778}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4219AE60-3C4C-4DDB-ADF1-008BC4690778}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4219AE60-3C4C-4DDB-ADF1-008BC4690778}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
