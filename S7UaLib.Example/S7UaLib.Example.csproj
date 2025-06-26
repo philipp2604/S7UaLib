@@ -11,4 +11,10 @@
     <ProjectReference Include="..\S7UaLib\S7UaLib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="S7UaLib.Example.Config.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
