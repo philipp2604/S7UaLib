@@ -6,12 +6,10 @@ using System.Threading.Tasks;
 
 namespace S7UaLib.IntegrationTests.Client;
 
-// Trait-Attribut, um Integrations- von Unit-Tests zu trennen (optional, aber gute Praxis)
 [Trait("Category", "Integration")]
 public class S7UaClientIntegrationTests
 {
-    // Die URL Ihres Test-OPC-UA-Servers. Passen Sie diese bei Bedarf an.
-    private const string _serverUrl = "opc.tcp://milo.digitalpetri.com:62541/milo";
+    private const string _serverUrl = "opc.tcp://172.168.0.1:4840";
 
     private readonly ApplicationConfiguration _appConfig;
     private readonly Action<IList, IList> _validateResponse;
@@ -32,18 +30,17 @@ public class S7UaClientIntegrationTests
             TransportQuotas = new TransportQuotas { OperationTimeout = 15000 }
         };
 
-        // Standard-Validierungsaktion aus der OPC UA Foundation Bibliothek
         _validateResponse = ClientBase.ValidateResponse;
     }
 
-    [Fact]
-    // Dieser Test wird übersprungen, wenn kein Server läuft. Entfernen Sie 'Skip', um ihn auszuführen.
-    // [Fact(Skip = "Requires a running OPC UA Server at " + ServerUrl)] 
+    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
     public async Task ConnectAndDisconnect_Successfully()
     {
         // Arrange
-        var client = new S7UaClient(_appConfig, _validateResponse);
-        client.AcceptUntrustedCertificates = true; // Notwendig, wenn der Server ein selbst-signiertes Zertifikat hat
+        var client = new S7UaClient(_appConfig, _validateResponse)
+        {
+            AcceptUntrustedCertificates = true
+        };
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -65,7 +62,6 @@ public class S7UaClientIntegrationTests
         {
             await client.ConnectAsync(_serverUrl, useSecurity: false);
 
-            // Warten auf das Connected-Event (mit Timeout, um unendliches Warten zu verhindern)
             bool connectedInTime = connectedEvent.Wait(TimeSpan.FromSeconds(10));
 
             Assert.True(connectedInTime, "The 'Connected' event was not fired within the timeout.");
@@ -75,7 +71,6 @@ public class S7UaClientIntegrationTests
             // Act & Assert: Disconnect
             client.Disconnect();
 
-            // Warten auf das Disconnected-Event
             bool disconnectedInTime = disconnectedEvent.Wait(TimeSpan.FromSeconds(5));
 
             Assert.True(disconnectedInTime, "The 'Disconnected' event was not fired within the timeout.");
@@ -84,7 +79,6 @@ public class S7UaClientIntegrationTests
         }
         catch (ServiceResultException ex)
         {
-            // Fängt Fehler ab, wenn der Server nicht erreichbar ist, und gibt eine hilfreiche Meldung aus
             Assert.Fail($"Failed to connect to the server at '{_serverUrl}'. Ensure the server is running. Error: {ex.Message}");
         }
         finally
