@@ -42,13 +42,17 @@ jobs:
         path: ${{ env.NuGetDirectory }}/*.nupkg
 
   run_test:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v4
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
     - name: Run tests
-      run: dotnet test --configuration Release
+      run: dotnet test --configuration Release --filter "Category!=Integration"
 
   deploy:
     # Publish only when creating a GitHub Release

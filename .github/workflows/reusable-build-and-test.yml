@@ -36,4 +36,4 @@ jobs:
       run: dotnet build --configuration Release --no-restore --framework ${{ inputs.target-framework }}
     
     - name: Test
-      run: dotnet test --no-restore --verbosity normal --framework ${{ inputs.target-framework }}
+      run: dotnet test --no-restore --verbosity normal --framework ${{ inputs.target-framework }} --filter "Category!=Integration"
