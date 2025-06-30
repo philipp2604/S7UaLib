@@ -395,6 +395,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #endregion Structure Browsing and Discovery Methods
 
     #region Reading and Writing Methods
+    #region Reading Methods
 
     /// <inheritdoc cref="IS7UaClient.ReadValuesOfElement{T}(T, string?)"/>
     public T ReadValuesOfElement<T>(T elementWithStructure, string? rootContextName = null) where T : IUaElement
@@ -431,6 +432,62 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return (T)RebuildHierarchyWithValuesRecursively(elementWithStructure, readResultsMap, initialPathPrefix);
     }
 
+    #endregion Reading Methods
+    #region Writing Methods
+
+    /// <inheritdoc cref="IS7UaClient.WriteValuesOfElement{T}(T, string?)"/>
+    public async Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type)
+    {
+        ArgumentNullException.ThrowIfNull(nodeId);
+        ArgumentNullException.ThrowIfNull(value);
+
+        var converter = GetConverter(s7Type, value.GetType());
+        var opcValue = converter.ConvertToOpc(value) ?? throw new InvalidOperationException($"Conversion of value for S7Type {s7Type} resulted in null.");
+        return await WriteRawVariableAsync(nodeId, opcValue);
+    }
+
+    /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(S7Variable, object)"/>/>
+    public async Task<bool> WriteVariableAsync(S7Variable variable, object value)
+    {
+        ArgumentNullException.ThrowIfNull(variable);
+        ArgumentNullException.ThrowIfNull(value);
+        return variable.NodeId is null
+            ? throw new ArgumentException($"Variable '{variable.DisplayName}' has no NodeId and cannot be written to.", nameof(variable))
+            : await WriteVariableAsync(variable.NodeId, value, variable.S7Type);
+    }
+
+    /// <inheritdoc cref="IS7UaClient.WriteRawVariableAsync(NodeId, object)"/>
+    public async Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue)
+    {
+        ArgumentNullException.ThrowIfNull(nodeId);
+        ArgumentNullException.ThrowIfNull(rawValue);
+
+        if (!IsConnected || _session is null)
+        {
+            _logger?.LogError("Cannot write values for node id '{nodeId}'; session is not connected.", nodeId.ToString());
+            return false;
+        }
+
+        var writeValue = new WriteValue
+        {
+            NodeId = nodeId,
+            AttributeId = Attributes.Value,
+            Value = new DataValue(new Variant(rawValue))
+        };
+        var response = await _session.WriteAsync(null, [writeValue], CancellationToken.None).ConfigureAwait(false);
+        _validateResponse(response.Results, new[] { writeValue });
+
+        StatusCode writeResult = response.Results[0];
+        if (StatusCode.IsGood(writeResult))
+        {
+            return true;
+        }
+
+        _logger?.LogError("Failed to write raw value to node {NodeId}. StatusCode: {StatusCode}", nodeId, writeResult);
+        return false;
+    }
+
+    #endregion Writing Methods
     #endregion Reading and Writing Methods
 
     #endregion Connection Methods

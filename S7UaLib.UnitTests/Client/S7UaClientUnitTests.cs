@@ -329,6 +329,7 @@ public class S7UaClientUnitTests
     #endregion Structure Discovery and Browsing Tests
 
     #region Reading and Writing Tests
+    #region Reading Tests
 
     [Fact]
     public void ReadValuesOfElement_WhenNotConnected_ReturnsOriginalElementAndLogsError()
@@ -535,6 +536,179 @@ public class S7UaClientUnitTests
         ReadValueIdCollection nodesToRead,
         out DataValueCollection results,
         out DiagnosticInfoCollection diagnosticInfos);
+
+    #endregion Reading Tests
+
+    #region Write Tests
+
+    [Fact]
+    public async Task WriteRawVariableAsync_WhenNotConnected_ReturnsFalseAndLogsError()
+    {
+        // Arrange
+        var client = CreateSut();
+        _mockSession.SetupGet(s => s.Connected).Returns(false);
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+        var nodeId = new NodeId("ns=3;s=\"MyVar\"");
+
+        // Act
+        var result = await client.WriteRawVariableAsync(nodeId, 42);
+
+        // Assert
+        Assert.False(result);
+        _mockSession.Verify(s => s.WriteAsync(It.IsAny<RequestHeader>(), It.IsAny<WriteValueCollection>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("session is not connected")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task WriteRawVariableAsync_WhenWriteSucceeds_ReturnsTrue()
+    {
+        // Arrange
+        var client = CreateSut();
+        var nodeId = new NodeId("ns=3;s=\"MyVar\"");
+        var valueToWrite = 123;
+
+        var response = new ResponseHeader { ServiceResult = StatusCodes.Good };
+        var results = new StatusCodeCollection { StatusCodes.Good };
+        var diags = new DiagnosticInfoCollection();
+
+        _mockSession.Setup(s => s.WriteAsync(
+                It.IsAny<RequestHeader>(),
+                It.Is<WriteValueCollection>(wvc => wvc.Count == 1 && wvc[0].NodeId == nodeId && (int)wvc[0].Value.Value! == valueToWrite),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WriteResponse { ResponseHeader = response, Results = results, DiagnosticInfos = diags });
+
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = await client.WriteRawVariableAsync(nodeId, valueToWrite);
+
+        // Assert
+        Assert.True(result);
+        _mockSession.Verify(s => s.WriteAsync(It.IsAny<RequestHeader>(), It.IsAny<WriteValueCollection>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task WriteRawVariableAsync_WhenWriteFails_ReturnsFalseAndLogsError()
+    {
+        // Arrange
+        var client = CreateSut();
+        var nodeId = new NodeId("ns=3;s=\"MyVar\"");
+
+        var response = new ResponseHeader { ServiceResult = StatusCodes.Good };
+        var results = new StatusCodeCollection { StatusCodes.BadTypeMismatch };
+        var diags = new DiagnosticInfoCollection();
+
+        _mockSession.Setup(s => s.WriteAsync(It.IsAny<RequestHeader>(), It.IsAny<WriteValueCollection>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WriteResponse { ResponseHeader = response, Results = results, DiagnosticInfos = diags });
+
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = await client.WriteRawVariableAsync(nodeId, "some value");
+
+        // Assert
+        Assert.False(result);
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("Failed to write raw value") && v.ToString()!.Contains("BadTypeMismatch")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task WriteVariableAsync_WithS7Type_UsesConverterAndCallsSessionWrite()
+    {
+        // Arrange
+        var client = CreateSut();
+        var nodeId = new NodeId("ns=3;s=\"MyCharVar\"");
+        var userValue = 'A';
+        var expectedOpcValue = (byte)65;
+
+        var response = new ResponseHeader { ServiceResult = StatusCodes.Good };
+        var results = new StatusCodeCollection { StatusCodes.Good };
+        var diags = new DiagnosticInfoCollection();
+
+        _mockSession.Setup(s => s.WriteAsync(
+                It.IsAny<RequestHeader>(),
+                It.Is<WriteValueCollection>(wvc =>
+                    wvc.Count == 1 &&
+                    wvc[0].NodeId == nodeId &&
+                    (byte)wvc[0].Value.Value! == expectedOpcValue),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WriteResponse { ResponseHeader = response, Results = results, DiagnosticInfos = diags })
+            .Verifiable();
+
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = await client.WriteVariableAsync(nodeId, userValue, S7DataType.CHAR);
+
+        // Assert
+        Assert.True(result);
+        _mockSession.Verify();
+    }
+
+    [Fact]
+    public async Task WriteVariableAsync_WithS7VariableObject_UsesConverterAndCallsSessionWrite()
+    {
+        // Arrange
+        var client = CreateSut();
+        var variable = new S7Variable
+        {
+            NodeId = new NodeId("ns=3;s=\"MyTimeVar\""),
+            DisplayName = "MyTimeVar",
+            S7Type = S7DataType.TIME
+        };
+        var userValue = TimeSpan.FromSeconds(10);
+        var expectedOpcValue = 10000;
+
+        var response = new ResponseHeader { ServiceResult = StatusCodes.Good };
+        var results = new StatusCodeCollection { StatusCodes.Good };
+        var diags = new DiagnosticInfoCollection();
+
+        _mockSession.Setup(s => s.WriteAsync(
+                It.IsAny<RequestHeader>(),
+                It.Is<WriteValueCollection>(wvc =>
+                    wvc.Count == 1 &&
+                    wvc[0].NodeId == variable.NodeId &&
+                    (int)wvc[0].Value.Value! == expectedOpcValue),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WriteResponse { ResponseHeader = response, Results = results, DiagnosticInfos = diags })
+            .Verifiable();
+
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = await client.WriteVariableAsync(variable, userValue);
+
+        // Assert
+        Assert.True(result);
+        _mockSession.Verify();
+    }
+
+    [Fact]
+    public async Task WriteVariableAsync_WithS7VariableWithoutNodeId_ThrowsArgumentException()
+    {
+        // Arrange
+        var client = CreateSut();
+        var variableWithoutNodeId = new S7Variable { DisplayName = "InvalidVar", S7Type = S7DataType.BOOL };
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => client.WriteVariableAsync(variableWithoutNodeId, true));
+        Assert.Contains("has no NodeId", ex.Message);
+    }
+
+    #endregion Write Tests
 
     #endregion Reading and Writing Tests
 }

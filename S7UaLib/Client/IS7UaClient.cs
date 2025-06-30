@@ -1,6 +1,7 @@
 using Opc.Ua;
 using S7UaLib.Events;
 using S7UaLib.S7.Structure;
+using S7UaLib.S7.Types;
 using S7UaLib.UA;
 
 namespace S7UaLib.Client;
@@ -195,6 +196,7 @@ internal interface IS7UaClient
     #endregion Structure Browsing and Discovery Methods
 
     #region Reading and Writing Methods
+    #region Reading Methods
 
     /// <summary>
     /// Reads the values for any previously discovered S7 element.
@@ -205,7 +207,42 @@ internal interface IS7UaClient
     /// <returns>A new instance of the element, populated with values. Returns the original element on failure.</returns>
     public T ReadValuesOfElement<T>(T elementWithStructure, string? rootContextName = null) where T : IUaElement;
 
+    #endregion
+    #region Writing Methods
+
+    /// <summary>
+    /// Writes a value to a variable, performing S7-specific type conversion before sending.
+    /// </summary>
+    /// <param name="nodeId">The NodeId of the variable to write to.</param>
+    /// <param name="value">The user-friendly .NET value.</param>
+    /// <param name="s7Type">The target S7 data type for correct conversion.</param>
+    /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if nodeId or value is null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown if the value conversion fails or the session is not connected.</exception>
+    public Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type);
+
+    /// <summary>
+    /// Writes a value to a variable, performing S7-specific type conversion before sending.
+    /// </summary>
+    /// <param name="variable">The S7Variable object containing the NodeId and S7Type.</param>
+    /// <param name="value">The user-friendly .NET value.</param>
+    /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if variable or value is null.</exception>
+    /// <exception cref="ArgumentException">Thrown if the variable's NodeId is null.</exception>
+    public Task<bool> WriteVariableAsync(S7Variable variable, object value);
+
+    /// <summary>
+    /// Writes a raw, Variant-compatible value directly to an OPC UA variable.
+    /// </summary>
+    /// <param name="nodeId">The NodeId of the variable to write to.</param>
+    /// <param name="rawValue">The raw value to be written.</param>
+    /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if nodeId or rawValue is null.</exception>
+    public Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue);
+
+    #endregion
+
     #endregion Reading and Writing Methods
 
-        #endregion Public Methods
+    #endregion Public Methods
 }
