@@ -170,8 +170,8 @@ public class S7UaClientIntegrationTests
         var dbShell = instanceDbs.FirstOrDefault(db => db.DisplayName == "FunctionBlock_InstDB");
         Assert.NotNull(dbShell);
 
-        Assert.Null(dbShell.Output);
-        Assert.Null(dbShell.Input);
+        Assert.Null(dbShell.Outputs);
+        Assert.Null(dbShell.Inputs);
 
         // Act
         var discoveredElement = client.DiscoverElement(dbShell);
@@ -181,13 +181,13 @@ public class S7UaClientIntegrationTests
         Assert.IsType<S7DataBlockInstance>(discoveredElement);
         var populatedDb = (S7DataBlockInstance)discoveredElement;
 
-        Assert.NotNull(populatedDb.Output);
-        Assert.NotNull(populatedDb.Input);
+        Assert.NotNull(populatedDb.Outputs);
+        Assert.NotNull(populatedDb.Inputs);
 
-        Assert.NotEmpty(populatedDb.Output.Variables);
-        Assert.NotEmpty(populatedDb.Input.Variables);
+        Assert.NotEmpty(populatedDb.Outputs.Variables);
+        Assert.NotEmpty(populatedDb.Inputs.Variables);
 
-        Assert.Contains(populatedDb.Input.Variables, v => v.DisplayName == "Function_InputBool");
+        Assert.Contains(populatedDb.Inputs.Variables, v => v.DisplayName == "Function_InputBool");
     }
 
     #endregion Structure Discovery and Browsing Tests
