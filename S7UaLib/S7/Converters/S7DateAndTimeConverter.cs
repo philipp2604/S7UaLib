@@ -62,6 +62,7 @@ public class S7DateAndTimeConverter(ILogger? logger = null) : IS7TypeConverter
     /// </summary>
     /// <param name="userValue">The <see cref="DateTime"/> object from the user application.</param>
     /// <returns>An 8-byte array in S7 DATE_AND_TIME format, or <c>null</c> if the input is null.</returns>
+    /// <exception cref="ArgumentException">Thrown if the input is not a <see cref="DateTime"/>.</exception>
     public object? ConvertToOpc(object? userValue)
     {
         if (userValue is null)
