@@ -129,6 +129,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #endregion Public Properties
 
     #region Public Methods
+    #region Connection Methods
 
     #region Connection Methods
 
@@ -434,6 +435,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Structure Browsing and Discovery Helpers
+
+    #region Discovery Methods
+
+
+    #endregion
+    #endregion
 
     #region Event Callbacks
 

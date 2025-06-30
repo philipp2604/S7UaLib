@@ -1,7 +1,12 @@
 ﻿using Opc.Ua;
 using S7UaLib.S7.Types;
 using S7UaLib.UA;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 
 namespace S7UaLib.S7.Structure.Contracts;
 
