@@ -15,22 +15,22 @@ internal record S7DataBlockInstance : IUaElement
     public string? DisplayName { get; init; }
 
     /// <summary>
-    /// Gets the 'Input' section of the instance, containing input parameters.
+    /// Gets the 'Inputs' section of the instance, containing input parameters.
     /// This can be null if the section does not exist.
     /// </summary>
-    public S7InstanceDbSection? Input { get; init; }
+    public S7InstanceDbSection? Inputs { get; init; }
 
     /// <summary>
-    /// Gets the 'Output' section of the instance, containing output parameters.
+    /// Gets the 'Outputs' section of the instance, containing output parameters.
     /// This can be null if the section does not exist.
     /// </summary>
-    public S7InstanceDbSection? Output { get; init; }
+    public S7InstanceDbSection? Outputs { get; init; }
 
     /// <summary>
-    /// Gets the 'InOut' section of the instance, containing parameters used for both input and output.
+    /// Gets the 'InOuts' section of the instance, containing parameters used for both input and output.
     /// This can be null if the section does not exist.
     /// </summary>
-    public S7InstanceDbSection? InOut { get; init; }
+    public S7InstanceDbSection? InOuts { get; init; }
 
     /// <summary>
     /// Gets the 'Static' section of the instance, containing static or internal variables.

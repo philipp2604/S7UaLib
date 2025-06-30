@@ -4,10 +4,14 @@ using Microsoft.Extensions.Logging;
 using Opc.Ua;
 using Opc.Ua.Client;
 using S7UaLib.Events;
+using S7UaLib.S7.Converters;
+using S7UaLib.S7.Converters.Contracts;
 using S7UaLib.S7.Structure;
+using S7UaLib.S7.Types;
 using S7UaLib.UA;
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 
 /// <summary>
 /// Represents a client for connecting to and interacting with an S7 UA server.
@@ -40,6 +44,46 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private static readonly NodeId _outputsRootNode = new("Outputs", 3);
     private static readonly NodeId _timersRootNode = new("Timers", 3);
     private static readonly NodeId _countersRootNode = new("Counters", 3);
+
+    #region Static Type Converters
+
+    private static readonly S7CharConverter _charConverter = new();
+    private static readonly S7WCharConverter _wCharConverter = new();
+    private static readonly S7DateConverter _dateConverter = new();
+    private static readonly S7TimeConverter _timeConverter = new();
+    private static readonly S7LTimeConverter _lTimeConverter = new();
+    private static readonly S7DateAndTimeConverter _dateAndTimeConverter = new();
+    private static readonly S7TimeOfDayConverter _timeOfDayConverter = new();
+    private static readonly S7LTimeOfDayConverter _lTimeOfDayConverter = new();
+    private static readonly S7S5TimeConverter _s5TimeConverter = new();
+    private static readonly S7DTLConverter _dtlConverter = new();
+
+    private static readonly Dictionary<S7DataType, IS7TypeConverter> _typeConverters =
+        new()
+        {
+            [S7DataType.CHAR] = _charConverter,
+            [S7DataType.WCHAR] = _wCharConverter,
+            [S7DataType.DATE] = _dateConverter,
+            [S7DataType.TIME] = _timeConverter,
+            [S7DataType.LTIME] = _lTimeConverter,
+            [S7DataType.TIME_OF_DAY] = _timeOfDayConverter,
+            [S7DataType.LTIME_OF_DAY] = _lTimeOfDayConverter,
+            [S7DataType.S5TIME] = _s5TimeConverter,
+            [S7DataType.DATE_AND_TIME] = _dateAndTimeConverter,
+            [S7DataType.DTL] = _dtlConverter,
+            [S7DataType.ARRAY_OF_CHAR] = new S7ElementwiseArrayConverter(_charConverter, typeof(byte)),
+            [S7DataType.ARRAY_OF_WCHAR] = new S7ElementwiseArrayConverter(_wCharConverter, typeof(ushort)),
+            [S7DataType.ARRAY_OF_DATE] = new S7ElementwiseArrayConverter(_dateConverter, typeof(ushort)),
+            [S7DataType.ARRAY_OF_TIME] = new S7ElementwiseArrayConverter(_timeConverter, typeof(int)),
+            [S7DataType.ARRAY_OF_LTIME] = new S7ElementwiseArrayConverter(_lTimeConverter, typeof(long)),
+            [S7DataType.ARRAY_OF_TIME_OF_DAY] = new S7ElementwiseArrayConverter(_timeOfDayConverter, typeof(uint)),
+            [S7DataType.ARRAY_OF_LTIME_OF_DAY] = new S7ElementwiseArrayConverter(_lTimeOfDayConverter, typeof(ulong)),
+            [S7DataType.ARRAY_OF_S5TIME] = new S7ElementwiseArrayConverter(_s5TimeConverter, typeof(ushort)),
+            [S7DataType.ARRAY_OF_DATE_AND_TIME] = new S7ElementwiseArrayConverter(_dateAndTimeConverter, typeof(byte)),
+            [S7DataType.ARRAY_OF_DTL] = new S7ElementwiseArrayConverter(_dtlConverter, typeof(byte[])),
+        };
+
+    #endregion Static Type Converters
 
     #endregion Private Fields
 
@@ -344,14 +388,167 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 case "Static": stat = populatedSection; break;
             }
         }
-        return instanceDbShell with { Input = input, Output = output, InOut = inOut, Static = stat };
+        return instanceDbShell with { Inputs = input, Outputs = output, InOuts = inOut, Static = stat };
     }
 
     #endregion Structure Browsing and Discovery Methods
 
+    #region Reading and Writing Methods
+
+    /// <summary>
+    /// Reads the values for any previously discovered S7 element.
+    /// </summary>
+    /// <typeparam name="T">The type of the element to read, which must implement <see cref="IUaElement"/>.</typeparam>
+    /// <param name="elementWithStructure">An element whose structure has already been discovered.</param>
+    /// <param name="rootContextName">The name of the root collection (e.g., "DataBlocksGlobal", "Inputs") used for building the full path.</param>
+    /// <returns>A new instance of the element, populated with values. Returns the original element on failure.</returns>
+    public T ReadValuesOfElement<T>(T elementWithStructure, string? rootContextName = null) where T : IUaElement
+    {
+        if (elementWithStructure?.NodeId is null)
+        {
+            _logger?.LogWarning("ReadValuesOfElement called with a null element or element with a null NodeId.");
+            return elementWithStructure!;
+        }
+        if (!IsConnected || _session is null)
+        {
+            _logger?.LogError("Cannot read values for '{DisplayName}'; session is not connected.", elementWithStructure.DisplayName);
+            return elementWithStructure;
+        }
+
+        string initialPathPrefix = BuildInitialPath(elementWithStructure, rootContextName);
+
+        var nodesToReadCollector = new Dictionary<NodeId, S7Variable>();
+        CollectNodesToReadRecursively(elementWithStructure, nodesToReadCollector, initialPathPrefix);
+
+        var readResultsMap = new Dictionary<NodeId, DataValue>();
+        if (nodesToReadCollector.Count > 0)
+        {
+            var nodesToRead = new ReadValueIdCollection(nodesToReadCollector.Keys.Select(nodeId => new ReadValueId { NodeId = nodeId, AttributeId = Attributes.Value }));
+            _session.Read(null, 0, TimestampsToReturn.Neither, nodesToRead, out var results, out _);
+            _validateResponse(results, nodesToRead);
+
+            for (int i = 0; i < nodesToRead.Count; i++)
+            {
+                if (nodesToRead[i].NodeId != null) readResultsMap[nodesToRead[i].NodeId] = results[i];
+            }
+        }
+
+        return (T)RebuildHierarchyWithValuesRecursively(elementWithStructure, readResultsMap, initialPathPrefix);
+    }
+
+    #endregion
+
     #endregion Public Methods
 
     #region Private Methods
+
+    #region Reading and Writing Helpers
+
+    private static IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
+        _typeConverters.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType);
+
+    private IUaElement RebuildHierarchyWithValuesRecursively(
+        IUaElement templateElement,
+        IReadOnlyDictionary<NodeId, DataValue> readResultsMap,
+        string currentPath)
+    {
+        switch (templateElement)
+        {
+            case S7DataBlockInstance idb:
+                var newInput = idb.Inputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursively(idb.Inputs, readResultsMap, $"{currentPath}.{idb.Inputs.DisplayName}") : null;
+                var newOutput = idb.Outputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursively(idb.Outputs, readResultsMap, $"{currentPath}.{idb.Outputs.DisplayName}") : null;
+                var newInOut = idb.InOuts != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursively(idb.InOuts, readResultsMap, $"{currentPath}.{idb.InOuts.DisplayName}") : null;
+                var newStatic = idb.Static != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursively(idb.Static, readResultsMap, $"{currentPath}.{idb.Static.DisplayName}") : null;
+                return idb with { Inputs = newInput, Outputs = newOutput, InOuts = newInOut, Static = newStatic };
+
+            case S7InstanceDbSection section:
+                var newVars = section.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursively(v, readResultsMap, currentPath)).ToList();
+                var newNested = section.NestedInstances.Select(n => (S7DataBlockInstance)RebuildHierarchyWithValuesRecursively(n, readResultsMap, $"{currentPath}.{n.DisplayName}")).ToList();
+                return section with { Variables = newVars, NestedInstances = newNested };
+
+            case S7StructureElement simpleElement:
+                var newSimpleVars = simpleElement.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursively(v, readResultsMap, currentPath)).ToList();
+                return simpleElement with { Variables = newSimpleVars };
+
+            case S7Variable variable:
+                string fullPath = $"{currentPath}.{variable.DisplayName}";
+
+                if (variable.S7Type == S7DataType.STRUCT)
+                {
+                    var structMembers = DiscoverVariablesOfElement(new S7StructureElement { NodeId = variable.NodeId }).Variables;
+                    var processedMembers = structMembers.Select(m => (S7Variable)RebuildHierarchyWithValuesRecursively(m, readResultsMap, fullPath)).ToList();
+                    return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = StatusCodes.Good };
+                }
+
+                if (variable.NodeId != null && readResultsMap.TryGetValue(variable.NodeId, out var dataValue))
+                {
+                    var converter = GetConverter(variable.S7Type, dataValue.Value?.GetType() ?? typeof(object));
+                    var rawValue = dataValue.Value;
+                    var finalValue = converter.ConvertFromOpc(rawValue);
+
+                    return variable with
+                    {
+                        RawOpcValue = rawValue,
+                        Value = finalValue,
+                        SystemType = converter.TargetType,
+                        FullPath = fullPath,
+                        StatusCode = dataValue.StatusCode
+                    };
+                }
+
+                return variable with { FullPath = fullPath, StatusCode = StatusCodes.BadWaitingForInitialData };
+
+            default:
+                _logger?.LogWarning("RebuildHierarchy encountered an unhandled element type: {ElementType}", templateElement.GetType().Name);
+                return templateElement;
+        }
+    }
+
+    private void CollectNodesToReadRecursively(IUaElement currentElement, IDictionary<NodeId, S7Variable> collectedNodes, string currentPath)
+    {
+        switch (currentElement)
+        {
+            case S7DataBlockInstance idb:
+                if (idb.Inputs != null) CollectNodesToReadRecursively(idb.Inputs, collectedNodes, $"{currentPath}.{idb.Inputs.DisplayName}");
+                if (idb.Outputs != null) CollectNodesToReadRecursively(idb.Outputs, collectedNodes, $"{currentPath}.{idb.Outputs.DisplayName}");
+                if (idb.InOuts != null) CollectNodesToReadRecursively(idb.InOuts, collectedNodes, $"{currentPath}.{idb.InOuts.DisplayName}");
+                if (idb.Static != null) CollectNodesToReadRecursively(idb.Static, collectedNodes, $"{currentPath}.{idb.Static.DisplayName}");
+                break;
+
+            case S7InstanceDbSection section:
+                foreach (var variable in section.Variables) CollectNodesToReadRecursively(variable, collectedNodes, currentPath);
+                foreach (var nestedIdb in section.NestedInstances) CollectNodesToReadRecursively(nestedIdb, collectedNodes, $"{currentPath}.{nestedIdb.DisplayName}");
+                break;
+
+            case S7StructureElement simpleElement:
+                foreach (var variable in simpleElement.Variables) CollectNodesToReadRecursively(variable, collectedNodes, currentPath);
+                break;
+
+            case S7Variable variable:
+                string fullPath = $"{currentPath}.{variable.DisplayName}";
+                if (variable.S7Type == S7DataType.STRUCT)
+                {
+                    var structMembers = DiscoverVariablesOfElement(new S7StructureElement { NodeId = variable.NodeId }).Variables;
+                    foreach (var member in structMembers) CollectNodesToReadRecursively(member, collectedNodes, fullPath);
+                }
+                else if (variable.NodeId != null)
+                {
+                    collectedNodes[variable.NodeId] = variable;
+                }
+                break;
+        }
+    }
+
+    private static string BuildInitialPath(IUaElement element, string? rootContextName)
+    {
+        return string.IsNullOrEmpty(rootContextName)
+            ? element.DisplayName ?? string.Empty
+            : rootContextName.Equals(element.DisplayName, StringComparison.OrdinalIgnoreCase)
+            ? rootContextName
+            : $"{rootContextName}.{element.DisplayName}";
+    }
+
+    #endregion
 
     #region Structure Browsing and Discovery Helpers
 
