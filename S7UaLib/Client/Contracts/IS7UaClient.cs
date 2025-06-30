@@ -4,7 +4,7 @@ using S7UaLib.S7.Structure;
 using S7UaLib.S7.Types;
 using S7UaLib.UA;
 
-namespace S7UaLib.Client;
+namespace S7UaLib.Client.Contracts;
 
 /// <summary>
 /// Defines a common interface for S7 UA clients that manage connections to S7 devices using the OPC UA protocol.

@@ -3,6 +3,7 @@ namespace S7UaLib.Client;
 using Microsoft.Extensions.Logging;
 using Opc.Ua;
 using Opc.Ua.Client;
+using S7UaLib.Client.Contracts;
 using S7UaLib.Events;
 using S7UaLib.S7.Converters;
 using S7UaLib.S7.Converters.Contracts;
@@ -488,6 +489,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Writing Methods
+
+    #region Reading and Writing Helpers
+
+    public static IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
+        _typeConverters.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType);
+
+    #endregion
     #endregion Reading and Writing Methods
 
     #endregion Connection Methods
@@ -495,9 +503,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #region Private Methods
 
     #region Reading and Writing Helpers
-
-    private static IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
-        _typeConverters.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType);
 
     private IUaElement RebuildHierarchyWithValuesRecursively(
         IUaElement templateElement,

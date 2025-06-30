@@ -572,7 +572,7 @@ public class S7UaClientUnitTests
         // Arrange
         var client = CreateSut();
         var nodeId = new NodeId("ns=3;s=\"MyVar\"");
-        var valueToWrite = 123;
+        const int valueToWrite = 123;
 
         var response = new ResponseHeader { ServiceResult = StatusCodes.Good };
         var results = new StatusCodeCollection { StatusCodes.Good };
@@ -631,8 +631,8 @@ public class S7UaClientUnitTests
         // Arrange
         var client = CreateSut();
         var nodeId = new NodeId("ns=3;s=\"MyCharVar\"");
-        var userValue = 'A';
-        var expectedOpcValue = (byte)65;
+        const char userValue = 'A';
+        const byte expectedOpcValue = (byte)65;
 
         var response = new ResponseHeader { ServiceResult = StatusCodes.Good };
         var results = new StatusCodeCollection { StatusCodes.Good };
@@ -670,7 +670,7 @@ public class S7UaClientUnitTests
             S7Type = S7DataType.TIME
         };
         var userValue = TimeSpan.FromSeconds(10);
-        var expectedOpcValue = 10000;
+        const int expectedOpcValue = 10000;
 
         var response = new ResponseHeader { ServiceResult = StatusCodes.Good };
         var results = new StatusCodeCollection { StatusCodes.Good };

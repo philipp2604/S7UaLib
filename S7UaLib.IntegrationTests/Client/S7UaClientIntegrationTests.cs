@@ -303,7 +303,7 @@ public class S7UaClientIntegrationTests
                     "TestLTime" => S7DataType.LTIME,
                     "TestLTimeOfDay" => S7DataType.LTIME_OF_DAY,
                     "TestDTL" => S7DataType.DTL,
-                    "TestLDT" => S7DataType.DATE_AND_TIME,
+                    "TestLDT" => S7DataType.LDT,
                     "TestStruct" => S7DataType.STRUCT,
                     "TestCharArray" => S7DataType.ARRAY_OF_CHAR,
                     "TestDateAndTimeArray" => S7DataType.ARRAY_OF_DATE_AND_TIME,
@@ -382,7 +382,7 @@ public class S7UaClientIntegrationTests
             var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "Datablock");
             Assert.NotNull(dbShell);
             var dbWithVars = client.DiscoverVariablesOfElement(dbShell);
-            testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "TestInt") as S7Variable;
+            testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestInt") as S7Variable;
             Assert.NotNull(testVar);
             testVar = testVar with { S7Type = S7DataType.INT };
 
@@ -391,7 +391,7 @@ public class S7UaClientIntegrationTests
             originalValue = dbWithOriginalValues.Variables[0].Value;
             Assert.NotNull(originalValue);
 
-            short newValue = 999;
+            const short newValue = 999;
             bool writeSuccess = await client.WriteVariableAsync(testVar, newValue);
             Assert.True(writeSuccess, "Writing the new value failed.");
 
