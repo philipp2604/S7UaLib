@@ -34,7 +34,7 @@ public class S7UaClientIntegrationTests
 
     #region Connection Tests
 
-    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
+    [Fact]
     public async Task ConnectAndDisconnect_Successfully()
     {
         // Arrange
@@ -119,7 +119,7 @@ public class S7UaClientIntegrationTests
 
     #region Structure Discovery and Browsing Tests
 
-    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
+    [Fact]
     public async Task GetAllInstanceDataBlocks_ReturnsDataFromRealServer()
     {
         // Arrange
@@ -135,7 +135,7 @@ public class S7UaClientIntegrationTests
         Assert.Contains(instanceDbs, db => db.DisplayName == "FunctionBlock_InstDB");
     }
 
-    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
+    [Fact]
     public async Task GetInputs_And_DiscoverVariables_ReturnsPopulatedElement()
     {
         // Arrange
@@ -159,7 +159,7 @@ public class S7UaClientIntegrationTests
         Assert.Contains(populatedInputs.Variables, v => v.DisplayName == "TestInput");
     }
 
-    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
+    [Fact]
     public async Task DiscoverElement_WithRealInstanceDb_ReturnsFullyPopulatedDb()
     {
         // Arrange
