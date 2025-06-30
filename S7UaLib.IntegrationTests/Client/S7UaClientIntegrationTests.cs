@@ -1,6 +1,7 @@
 ﻿using Opc.Ua;
 using S7UaLib.Client;
 using S7UaLib.S7.Structure;
+using S7UaLib.S7.Types;
 using System.Collections;
 
 namespace S7UaLib.IntegrationTests.Client;
@@ -191,4 +192,213 @@ public class S7UaClientIntegrationTests
     }
 
     #endregion Structure Discovery and Browsing Tests
+
+    #region Reading and Writing Tests
+
+    [Fact]
+    public async Task ReadValues_For_IO_And_Memory_ReturnsCorrectValues()
+    {
+        // Arrange
+        using var client = await CreateAndConnectClientAsync();
+        var inputsShell = client.GetInputs();
+        var outputsShell = client.GetOutputs();
+        var memoryShell = client.GetMemory();
+
+        Assert.NotNull(inputsShell);
+        Assert.NotNull(outputsShell);
+        Assert.NotNull(memoryShell);
+
+        // Act: Discover the structures
+        var populatedInputs = client.DiscoverVariablesOfElement(inputsShell);
+        var populatedOutputs = client.DiscoverVariablesOfElement(outputsShell);
+        var populatedMemory = client.DiscoverVariablesOfElement(memoryShell);
+
+        // Arrange (continued): Create NEW variable instances with the correct S7Type.
+        var correctlyTypedInputs = populatedInputs.Variables
+            .Cast<S7Variable>()
+            .Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
+        var correctlyTypedOutputs = populatedOutputs.Variables
+            .Cast<S7Variable>()
+            .Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
+        var correctlyTypedMemory = populatedMemory.Variables
+            .Cast<S7Variable>()
+            .Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
+
+        // Create new parent elements containing the correctly-typed variable lists.
+        var inputsToRead = populatedInputs with { Variables = correctlyTypedInputs };
+        var outputsToRead = populatedOutputs with { Variables = correctlyTypedOutputs };
+        var memoryToRead = populatedMemory with { Variables = correctlyTypedMemory };
+
+        // Act: Read the values using the newly created, fully-typed elements
+        var inputsWithValues = client.ReadValuesOfElement(inputsToRead, "Inputs");
+        var outputsWithValues = client.ReadValuesOfElement(outputsToRead, "Outputs");
+        var memoryWithValues = client.ReadValuesOfElement(memoryToRead, "Memory");
+
+        // Assert
+        var inputVar = inputsWithValues.Variables.First(v => v.DisplayName == "TestInput");
+        Assert.Equal(StatusCodes.Good, inputVar.StatusCode);
+        Assert.False((bool)inputVar.Value!);
+
+        var outputVar = outputsWithValues.Variables.First(v => v.DisplayName == "TestOutput");
+        Assert.Equal(StatusCodes.Good, outputVar.StatusCode);
+        Assert.False((bool)outputVar.Value!);
+
+        var memoryVar = memoryWithValues.Variables.First(v => v.DisplayName == "TestVar");
+        Assert.Equal(StatusCodes.Good, memoryVar.StatusCode);
+        Assert.False((bool)memoryVar.Value!);
+    }
+
+    [Fact]
+    public async Task ReadValues_For_GlobalDataBlock_ReturnsCorrectlyConvertedValues()
+    {
+        // Arrange
+        using var client = await CreateAndConnectClientAsync();
+        var globalDbs = client.GetAllGlobalDataBlocks();
+        var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "Datablock");
+        Assert.NotNull(dbShell);
+
+        // Act
+        var dbWithVars = client.DiscoverVariablesOfElement(dbShell);
+        Assert.NotNull(dbWithVars?.Variables);
+
+        // Arrange
+        var correctlyTypedVars = dbWithVars.Variables.Cast<S7Variable>().Select(variable => variable with
+        {
+            S7Type = variable.DisplayName switch
+            {
+                "TestBool" => S7DataType.BOOL,
+                "TestByte" => S7DataType.BYTE,
+                "TestChar" => S7DataType.CHAR,
+                "TestWChar" => S7DataType.WCHAR,
+                "TestInt" => S7DataType.INT,
+                "TestSInt" => S7DataType.SINT,
+                "TestDInt" => S7DataType.DINT,
+                "TestLInt" => S7DataType.LINT,
+                "TestUInt" => S7DataType.UINT,
+                "TestUSInt" => S7DataType.USINT,
+                "TestUDInt" => S7DataType.UDINT,
+                "TestULInt" => S7DataType.ULINT,
+                "TestReal" => S7DataType.REAL,
+                "TestLReal" => S7DataType.LREAL,
+                "TestDWord" => S7DataType.DWORD,
+                "TestLWord" => S7DataType.LWORD,
+                "TestString" => S7DataType.STRING,
+                "TestDate" => S7DataType.DATE,
+                "TestTime" => S7DataType.TIME,
+                "TestTimeOfDay" => S7DataType.TIME_OF_DAY,
+                "TestS5Time" => S7DataType.S5TIME,
+                "TestDateAndTime" => S7DataType.DATE_AND_TIME,
+                "TestLTime" => S7DataType.LTIME,
+                "TestLTimeOfDay" => S7DataType.LTIME_OF_DAY,
+                "TestDTL" => S7DataType.DTL,
+                "TestLDT" => S7DataType.LDT,
+                "TestStruct" => S7DataType.STRUCT,
+                "TestCharArray" => S7DataType.ARRAY_OF_CHAR,
+                "TestDateAndTimeArray" => S7DataType.ARRAY_OF_DATE_AND_TIME,
+                _ => S7DataType.UNKNOWN
+            }
+        }).ToList();
+
+        // Find the "hollow" struct variable and fill its members' types for recursive conversion.
+        int structIndex = correctlyTypedVars.FindIndex(v => v.DisplayName == "TestStruct");
+        if (structIndex != -1)
+        {
+            var hollowStruct = correctlyTypedVars[structIndex];
+            var typedStructMembers = new List<S7Variable>
+            {
+                new() { DisplayName = "TestStructBool", S7Type = S7DataType.BOOL },
+                new() { DisplayName = "TestStructInt", S7Type = S7DataType.INT },
+                new() { DisplayName = "TestDateAndTime", S7Type = S7DataType.DATE_AND_TIME }
+            };
+            correctlyTypedVars[structIndex] = hollowStruct with { StructMembers = typedStructMembers };
+        }
+
+        // Create a new DB object that holds our new, fully-typed list of variables.
+        var dbToRead = dbWithVars with { Variables = correctlyTypedVars };
+
+        // Act: Read the values from the server using the fully typed structure
+        var dbWithValues = client.ReadValuesOfElement(dbToRead, "DataBlocksGlobal");
+
+        // Assert: Verify each variable was read and converted correctly
+        void AssertVar(string name, object? expected)
+        {
+            var variable = dbWithValues.Variables.FirstOrDefault(v => v.DisplayName == name);
+            Assert.NotNull(variable);
+            Assert.Equal(StatusCodes.Good, variable.StatusCode);
+            Assert.Equal(expected, variable.Value);
+        }
+
+        AssertVar("TestBool", true);
+        AssertVar("TestInt", (short)9);
+        Assert.Equal(8.2f, (float)dbWithValues.Variables.First(v => v.DisplayName == "TestReal").Value!, 5);
+        AssertVar("TestString", "Hallo");
+        AssertVar("TestByte", (byte)3);
+        AssertVar("TestChar", 'C');
+        AssertVar("TestDInt", 12);
+        AssertVar("TestDWord", (uint)0x31);
+        AssertVar("TestDate", new DateTime(2025, 3, 10));
+        AssertVar("TestDateAndTime", new DateTime(2025, 10, 12, 8, 9, 31, 212));
+        AssertVar("TestLDT", new DateTime(2008, 10, 25, 8, 12, 34, 567));
+        AssertVar("TestLInt", 1500000L);
+        Assert.Equal(12.13123, (double)dbWithValues.Variables.First(v => v.DisplayName == "TestLReal").Value!, 5);
+        AssertVar("TestLTime", TimeSpan.FromMilliseconds(200));
+        AssertVar("TestLTimeOfDay", new TimeSpan(12, 11, 31));
+        AssertVar("TestLWord", (ulong)0x22);
+        AssertVar("TestS5Time", TimeSpan.FromSeconds(60));
+        AssertVar("TestSInt", (sbyte)-103);
+        AssertVar("TestTime", TimeSpan.FromSeconds(40));
+        AssertVar("TestTimeOfDay", new TimeSpan(8, 12, 22));
+        AssertVar("TestUDInt", (uint)234134);
+        AssertVar("TestUInt", (ushort)32421);
+        AssertVar("TestULInt", (ulong)891841);
+        AssertVar("TestUSInt", (byte)222);
+        AssertVar("TestWChar", 'e');
+
+        // Special check for DTL (DateTime with nanosecond precision)
+        var dtlVar = dbWithValues.Variables.First(v => v.DisplayName == "TestDTL");
+        Assert.Equal(StatusCodes.Good, dtlVar.StatusCode);
+        var expectedDtl = new DateTime(2008, 12, 16, 20, 30, 20, 250)
+            .AddTicks(1110 + 3); // 111 us = 1110 ticks; 341 ns ~= 3 ticks (1 tick = 100ns)
+        Assert.Equal(expectedDtl, dtlVar.Value);
+
+        // Special check for the Struct
+        var structVar = dbWithValues.Variables.First(v => v.DisplayName == "TestStruct");
+        Assert.NotNull(structVar);
+        Assert.Equal(S7DataType.STRUCT, structVar.S7Type);
+        Assert.Equal(StatusCodes.Good, structVar.StatusCode);
+        Assert.NotNull(structVar.StructMembers);
+        Assert.Equal(3, structVar.StructMembers.Count);
+
+        var structBool = structVar.StructMembers.First(m => m.DisplayName == "TestStructBool");
+        Assert.Equal(true, structBool.Value);
+        var structInt = structVar.StructMembers.First(m => m.DisplayName == "TestStructInt");
+        Assert.Equal((short)12341, structInt.Value);
+        var structDT = structVar.StructMembers.First(m => m.DisplayName == "TestDateAndTime");
+        Assert.Equal(new DateTime(1990, 1, 1), structDT.Value);
+
+        // Special check for array of chars
+        var charArrayVar = dbWithValues.Variables.First(v => v.DisplayName == "TestCharArray");
+        Assert.Equal(StatusCodes.Good, charArrayVar.StatusCode);
+        Assert.NotNull(charArrayVar.Value);
+        Assert.IsType<List<char>>(charArrayVar.Value);
+        var charList = (List<char>)charArrayVar.Value;
+        Assert.Equal(['h', 'u', 'H', 'U'], charList);
+
+        // Secial check for array of DateAndTime
+        var dtArrayVar = dbWithValues.Variables.First(v => v.DisplayName == "TestDateAndTimeArray");
+        Assert.Equal(StatusCodes.Good, dtArrayVar.StatusCode);
+        Assert.NotNull(dtArrayVar.Value);
+        Assert.IsType<List<DateTime>>(dtArrayVar.Value);
+        var dtList = (List<DateTime>)dtArrayVar.Value;
+        var expectedDateTimes = new List<DateTime>
+        {
+            new(2025, 10, 12, 8, 9, 31, 212),
+            new(2024, 10, 12, 8, 9, 31, 212),
+            new(2023, 10, 12, 8, 9, 31, 212),
+            new(2022, 10, 12, 8, 9, 31, 212)
+        };
+        Assert.Equal(expectedDateTimes, dtList);
+    }
+
+    #endregion Reading and Writing Tests
 }

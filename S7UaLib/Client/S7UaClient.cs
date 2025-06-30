@@ -7,11 +7,11 @@ using S7UaLib.Events;
 using S7UaLib.S7.Converters;
 using S7UaLib.S7.Converters.Contracts;
 using S7UaLib.S7.Structure;
+using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
 using S7UaLib.UA;
 using System.Collections;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 
 /// <summary>
 /// Represents a client for connecting to and interacting with an S7 UA server.
@@ -173,6 +173,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #endregion Public Properties
 
     #region Public Methods
+
     #region Connection Methods
 
     #region Connection Methods
@@ -430,9 +431,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return (T)RebuildHierarchyWithValuesRecursively(elementWithStructure, readResultsMap, initialPathPrefix);
     }
 
-    #endregion
+    #endregion Reading and Writing Methods
 
-    #endregion Public Methods
+    #endregion Connection Methods
 
     #region Private Methods
 
@@ -469,8 +470,23 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
                 if (variable.S7Type == S7DataType.STRUCT)
                 {
-                    var structMembers = DiscoverVariablesOfElement(new S7StructureElement { NodeId = variable.NodeId }).Variables;
-                    var processedMembers = structMembers.Select(m => (S7Variable)RebuildHierarchyWithValuesRecursively(m, readResultsMap, fullPath)).ToList();
+                    var discoveredMembers = DiscoverVariablesOfElement(new S7StructureElement { NodeId = variable.NodeId }).Variables;
+
+                    var templateTypeLookup = variable.StructMembers
+                        .Where(m => m.DisplayName is not null)
+                        .ToDictionary(m => m.DisplayName!, m => m.S7Type);
+
+                    var membersToProcess = discoveredMembers.Cast<S7Variable>().Select(discoveredMember =>
+                    {
+                        templateTypeLookup.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var s7Type);
+
+                        return (IS7Variable)(discoveredMember with { S7Type = s7Type });
+                    });
+
+                    var processedMembers = membersToProcess
+                        .Select(m => (S7Variable)RebuildHierarchyWithValuesRecursively(m, readResultsMap, fullPath))
+                        .ToList();
+
                     return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = StatusCodes.Good };
                 }
 
@@ -523,7 +539,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 if (variable.S7Type == S7DataType.STRUCT)
                 {
                     var structMembers = DiscoverVariablesOfElement(new S7StructureElement { NodeId = variable.NodeId }).Variables;
-                    foreach (var member in structMembers) CollectNodesToReadRecursively(member, collectedNodes, fullPath);
+                    foreach (var member in structMembers)
+                    {
+                        CollectNodesToReadRecursively(member, collectedNodes, fullPath);
+                    }
                 }
                 else if (variable.NodeId != null)
                 {
@@ -542,7 +561,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             : $"{rootContextName}.{element.DisplayName}";
     }
 
-    #endregion
+    #endregion Reading and Writing Helpers
 
     #region Structure Browsing and Discovery Helpers
 
@@ -626,7 +645,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Structure Browsing and Discovery Helpers
-    #endregion
+
+    #endregion Private Methods
 
     #region Event Callbacks
 
@@ -742,5 +762,5 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Event Dispatchers
 
-    #endregion Private Methods
+    #endregion Public Methods
 }
