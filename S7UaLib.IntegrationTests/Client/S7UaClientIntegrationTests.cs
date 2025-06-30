@@ -159,7 +159,7 @@ public class S7UaClientIntegrationTests
         Assert.Contains(populatedInputs.Variables, v => v.DisplayName == "TestInput");
     }
 
-    [Fact(Skip = "Aktivieren, wenn ein OPC UA Server läuft.")]
+    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
     public async Task DiscoverElement_WithRealInstanceDb_ReturnsFullyPopulatedDb()
     {
         // Arrange
