@@ -1,6 +1,7 @@
 using Opc.Ua;
-using Opc.Ua.Client;
 using S7UaLib.Events;
+using S7UaLib.S7.Structure;
+using S7UaLib.UA;
 
 namespace S7UaLib.Client;
 
@@ -10,6 +11,7 @@ namespace S7UaLib.Client;
 internal interface IS7UaClient
 {
     #region Public Events
+
     #region Connection Events
 
     /// <summary>
@@ -56,8 +58,9 @@ internal interface IS7UaClient
     /// to perform actions such as resynchronizing state or notifying users of the reconnection.</remarks>
     public event EventHandler<ConnectionEventArgs>? Reconnected;
 
-    #endregion
-    #endregion
+    #endregion Connection Events
+
+    #endregion Public Events
 
     #region Public Properties
 
@@ -101,9 +104,11 @@ internal interface IS7UaClient
     /// </summary>
     public bool IsConnected { get; }
 
-    #endregion
+    #endregion Public Properties
 
     #region Public Methods
+
+    #region Connection Methods
 
     /// <summary>
     /// <param name="serverUrl">The server url to connect to.</param>
@@ -118,5 +123,76 @@ internal interface IS7UaClient
     /// <param name="leaveChannelOpen">Whether to leave the transport channel open.</param>
     public void Disconnect(bool leaveChannelOpen = false);
 
-    #endregion
+    #endregion Connection Methods
+
+    #region Structure Browsing and Discovery Methods
+
+    /// <summary>
+    /// Retrieves all global data blocks from the OPC UA server.
+    /// </summary>
+    /// <returns>A read-only list of discovered <see cref="S7DataBlockGlobal"/> shells.</returns>
+    public IReadOnlyList<S7DataBlockGlobal> GetAllGlobalDataBlocks();
+
+    /// <summary>
+    /// Retrieves all instance data blocks from the OPC UA server.
+    /// </summary>
+    /// <returns>A read-only list of discovered <see cref="S7DataBlockInstance"/> shells.</returns>
+    public IReadOnlyList<S7DataBlockInstance> GetAllInstanceDataBlocks();
+
+    /// <summary>
+    /// Retrieves the S7 Memory (M) area organizational element.
+    /// </summary>
+    /// <returns>A <see cref="S7Memory"/> shell, or null if not found or an error occurs.</returns>
+    public S7Memory? GetMemory();
+
+    /// <summary>
+    /// Retrieves the S7 Inputs (I) area organizational element.
+    /// </summary>
+    /// <returns>A <see cref="S7Inputs"/> shell, or null if not found or an error occurs.</returns>
+    public S7Inputs? GetInputs();
+
+    /// <summary>
+    /// Retrieves the S7 Outputs (Q) area organizational element.
+    /// </summary>
+    /// <returns>A <see cref="S7Outputs"/> shell, or null if not found or an error occurs.</returns>
+    public S7Outputs? GetOutputs();
+
+    /// <summary>
+    /// Retrieves the S7 Timers (T) area organizational element.
+    /// </summary>
+    /// <returns>A <see cref="S7Timers"/> shell, or null if not found or an error occurs.</returns>
+    public S7Timers? GetTimers();
+
+    /// <summary>
+    /// Retrieves the S7 Counters (C) area organizational element.
+    /// </summary>
+    /// <returns>A <see cref="S7Counters"/> shell, or null if not found or an error occurs.</returns>
+    public S7Counters? GetCounters();
+
+    /// <summary>
+    /// Discovers the full structure of a given UA element shell. This method acts as a dispatcher,
+    /// calling the appropriate specialized "Discover" method based on the element's type.
+    /// </summary>
+    /// <param name="elementShell">The "shell" element, typically containing only a NodeId and DisplayName.</param>
+    /// <returns>A fully discovered element as <see cref="IUaElement"/>, or null if the type is unsupported or an error occurs.</returns>
+    public IUaElement? DiscoverElement(IUaElement elementShell);
+
+    /// <summary>
+    /// Discovers the variables contained within a simple structure element (like a global DB or I/O area).
+    /// </summary>
+    /// <typeparam name="T">The type of the structure element, which must be a derivative of <see cref="S7StructureElement"/>.</typeparam>
+    /// <param name="element">The structure element shell whose variables are to be discovered.</param>
+    /// <returns>A new instance of the element with its <c>Variables</c> list populated. Returns the original element on failure.</returns>
+    public T DiscoverVariablesOfElement<T>(T element) where T : S7StructureElement;
+
+    /// <summary>
+    /// Discovers the full nested structure of an instance data block.
+    /// </summary>
+    /// <param name="instanceDbShell">The instance data block shell to discover.</param>
+    /// <returns>A new instance of the data block with its sections populated. Returns the original element on failure.</returns>
+    public S7DataBlockInstance DiscoverInstanceOfDataBlock(S7DataBlockInstance instanceDbShell);
+
+    #endregion Structure Browsing and Discovery Methods
+
+    #endregion Public Methods
 }

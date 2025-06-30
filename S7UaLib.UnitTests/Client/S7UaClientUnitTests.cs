@@ -1,14 +1,12 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using Moq.Protected;
 using Opc.Ua;
 using Opc.Ua.Client;
 using S7UaLib.Client;
-using S7UaLib.Events;
+using S7UaLib.S7.Structure;
+using S7UaLib.UA;
 using S7UaLib.UnitTests.Helpers;
 using System.Collections;
-using System.Reflection;
-using Xunit;
 
 namespace S7UaLib.UnitTests.Client;
 
@@ -19,6 +17,7 @@ public class S7UaClientUnitTests
     private readonly Mock<ILogger<S7UaClient>> _mockLogger;
     private readonly ApplicationConfiguration _appConfig;
     private readonly Action<IList, IList> _validateResponse;
+    private readonly Mock<ISession> _mockSession;
 
     public S7UaClientUnitTests()
     {
@@ -40,12 +39,17 @@ public class S7UaClientUnitTests
         };
 
         _validateResponse = (_, _) => { };
+
+        _mockSession = new Mock<ISession>();
+        _mockSession.SetupGet(s => s.Connected).Returns(true);
     }
 
     private S7UaClient CreateSut()
     {
         return new S7UaClient(_appConfig, _validateResponse, _mockLoggerFactory.Object);
     }
+
+    #region Constructor Tests
 
     [Fact]
     public void Constructor_WithNullAppConfig_ThrowsArgumentNullException()
@@ -60,6 +64,10 @@ public class S7UaClientUnitTests
         // Arrange, Act & Assert
         Assert.Throws<ArgumentNullException>(() => new S7UaClient(_appConfig, null!));
     }
+
+    #endregion Constructor Tests
+
+    #region Connection Tests
 
     [Fact]
     public async Task ConnectAsync_WhenDisposed_ThrowsObjectDisposedException()
@@ -166,4 +174,156 @@ public class S7UaClientUnitTests
         Assert.True(keepAliveEventArgs.CancelKeepAlive, "CancelKeepAlive should be true to stop further KeepAlives.");
         Assert.True(reconnectingFired, "Reconnecting event should have been fired.");
     }
+
+    #endregion Connection Tests
+
+    #region Structure Discovery and Browsing Tests
+
+    [Fact]
+    public void GetAllInstanceDataBlocks_WhenNotConnected_ReturnsEmptyListAndLogsError()
+    {
+        // Arrange
+        var client = CreateSut();
+        _mockSession.SetupGet(s => s.Connected).Returns(false);
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = client.GetAllInstanceDataBlocks();
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Empty(result);
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("Cannot get instance data blocks")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void GetAllInstanceDataBlocks_WhenConnected_ReturnsMappedDataBlocks()
+    {
+        // Arrange
+        var client = CreateSut();
+        var simulatedReferences = new ReferenceDescriptionCollection
+        {
+            new ReferenceDescription { NodeId = new NodeId("ns=3;s=\"MyDb\""), DisplayName = "MyDb" }
+        };
+
+        _mockSession.Setup(s => s.Browse(
+                It.IsAny<RequestHeader>(), It.IsAny<ViewDescription>(), It.IsAny<uint>(), It.IsAny<BrowseDescriptionCollection>(),
+                out It.Ref<BrowseResultCollection>.IsAny, out It.Ref<DiagnosticInfoCollection>.IsAny))
+            .Callback(new SessionBrowseCallback((RequestHeader _, ViewDescription _, uint _, BrowseDescriptionCollection bdc, out BrowseResultCollection brc, out DiagnosticInfoCollection dic) =>
+            {
+                brc = [];
+                dic = [];
+                foreach (var __ in bdc)
+                {
+                    brc.Add(new BrowseResult { References = simulatedReferences, StatusCode = StatusCodes.Good });
+                }
+            }))
+            .Returns(new ResponseHeader { ServiceResult = StatusCodes.Good });
+
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = client.GetAllInstanceDataBlocks();
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("MyDb", result[0].DisplayName);
+    }
+
+    [Fact]
+    public void DiscoverVariablesOfElement_WhenConnected_ReturnsElementWithVariables()
+    {
+        // Arrange
+        var client = CreateSut();
+        var elementToDiscover = new S7Inputs { NodeId = new NodeId("ns=3;s=\"Inputs\""), DisplayName = "Inputs" };
+        var simulatedReferences = new ReferenceDescriptionCollection
+        {
+            new ReferenceDescription { NodeId = new NodeId("ns=3;s=\"Inputs.MyInput\""), DisplayName = "MyInput" },
+            new ReferenceDescription { NodeId = new NodeId("ns=3;s=\"Inputs.Icon\""), DisplayName = "Icon" },
+        };
+
+        _mockSession.Setup(s => s.Browse(
+                It.IsAny<RequestHeader>(), It.IsAny<ViewDescription>(), It.IsAny<uint>(), It.IsAny<BrowseDescriptionCollection>(),
+                out It.Ref<BrowseResultCollection>.IsAny, out It.Ref<DiagnosticInfoCollection>.IsAny))
+            .Callback(new SessionBrowseCallback((RequestHeader _, ViewDescription _, uint _, BrowseDescriptionCollection bdc, out BrowseResultCollection brc, out DiagnosticInfoCollection dic) =>
+            {
+                brc = [];
+                dic = [];
+                foreach (var _ in bdc)
+                {
+                    brc.Add(new BrowseResult { References = simulatedReferences, StatusCode = StatusCodes.Good });
+                }
+            }))
+            .Returns(new ResponseHeader { ServiceResult = StatusCodes.Good });
+
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = client.DiscoverVariablesOfElement(elementToDiscover);
+
+        // Assert
+        Assert.NotNull(result.Variables);
+        Assert.Single(result.Variables);
+        Assert.Equal("MyInput", result.Variables[0].DisplayName);
+    }
+
+    [Fact]
+    public void DiscoverElement_WithNullElement_ReturnsNullAndLogsWarning()
+    {
+        // Arrange
+        var client = CreateSut();
+
+        // Act
+        var result = client.DiscoverElement(null!);
+
+        // Assert
+        Assert.Null(result);
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("called with a null element shell")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void DiscoverElement_WithUnsupportedType_ReturnsNullAndLogsWarning()
+    {
+        // Arrange
+        var client = CreateSut();
+        var unsupportedElement = new Mock<IUaElement>().Object;
+
+        // Act
+        var result = client.DiscoverElement(unsupportedElement);
+
+        // Assert
+        Assert.Null(result);
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("unsupported element type")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    private delegate void SessionBrowseCallback(
+    RequestHeader requestHeader,
+    ViewDescription view,
+    uint requestedMaxReferencesPerNode,
+    BrowseDescriptionCollection nodesToBrowse,
+    out BrowseResultCollection results,
+    out DiagnosticInfoCollection diagnosticInfos);
+
+    #endregion Structure Discovery and Browsing Tests
 }

@@ -1,8 +1,7 @@
-﻿using Xunit;
+﻿using Opc.Ua;
 using S7UaLib.Client;
-using Opc.Ua;
+using S7UaLib.S7.Structure;
 using System.Collections;
-using System.Threading.Tasks;
 
 namespace S7UaLib.IntegrationTests.Client;
 
@@ -33,6 +32,8 @@ public class S7UaClientIntegrationTests
         _validateResponse = ClientBase.ValidateResponse;
     }
 
+    #region Connection Tests
+
     [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
     public async Task ConnectAndDisconnect_Successfully()
     {
@@ -48,11 +49,13 @@ public class S7UaClientIntegrationTests
         var connectedEvent = new ManualResetEventSlim();
         var disconnectedEvent = new ManualResetEventSlim();
 
-        client.Connected += (s, e) => {
+        client.Connected += (s, e) =>
+        {
             connectedFired = true;
             connectedEvent.Set();
         };
-        client.Disconnected += (s, e) => {
+        client.Disconnected += (s, e) =>
+        {
             disconnectedFired = true;
             disconnectedEvent.Set();
         };
@@ -87,4 +90,105 @@ public class S7UaClientIntegrationTests
             client.Dispose();
         }
     }
+
+    #endregion Connection Tests
+
+    #region Helper Methods
+
+    private async Task<S7UaClient> CreateAndConnectClientAsync()
+    {
+        var client = new S7UaClient(_appConfig, _validateResponse)
+        {
+            AcceptUntrustedCertificates = true
+        };
+
+        try
+        {
+            await client.ConnectAsync(_serverUrl, useSecurity: false);
+        }
+        catch (ServiceResultException ex)
+        {
+            Assert.Fail($"Failed to connect to the server at '{_serverUrl}'. Ensure the server is running. Error: {ex.Message}");
+        }
+
+        Assert.True(client.IsConnected, "Client-Setup failed, could not connect to server..");
+        return client;
+    }
+
+    #endregion Helper Methods
+
+    #region Structure Discovery and Browsing Tests
+
+    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
+    public async Task GetAllInstanceDataBlocks_ReturnsDataFromRealServer()
+    {
+        // Arrange
+        using var client = await CreateAndConnectClientAsync();
+
+        // Act
+        var instanceDbs = client.GetAllInstanceDataBlocks();
+
+        // Assert
+        Assert.NotNull(instanceDbs);
+        Assert.True(instanceDbs.Count > 0, "It was expected to find at least one instance data block.");
+
+        Assert.Contains(instanceDbs, db => db.DisplayName == "FunctionBlock_InstDB");
+    }
+
+    [Fact(Skip = "Requires a running OPC UA Server at " + _serverUrl)]
+    public async Task GetInputs_And_DiscoverVariables_ReturnsPopulatedElement()
+    {
+        // Arrange
+        using var client = await CreateAndConnectClientAsync();
+
+        // Act
+        var inputsShell = client.GetInputs();
+
+        // Assert
+        Assert.NotNull(inputsShell);
+        Assert.False(inputsShell.Variables?.Any(), "Variables list should be empty before discovery.");
+
+        // Act
+        var populatedInputs = client.DiscoverVariablesOfElement(inputsShell);
+
+        // Assert
+        Assert.NotNull(populatedInputs);
+        Assert.NotNull(populatedInputs.Variables);
+        Assert.True(populatedInputs.Variables.Count > 0, "At least one variable was expected in global Inputs.");
+
+        Assert.Contains(populatedInputs.Variables, v => v.DisplayName == "TestInput");
+    }
+
+    [Fact(Skip = "Aktivieren, wenn ein OPC UA Server läuft.")]
+    public async Task DiscoverElement_WithRealInstanceDb_ReturnsFullyPopulatedDb()
+    {
+        // Arrange
+        using var client = await CreateAndConnectClientAsync();
+
+        var instanceDbs = client.GetAllInstanceDataBlocks();
+
+        var dbShell = instanceDbs.FirstOrDefault(db => db.DisplayName == "FunctionBlock_InstDB");
+        Assert.NotNull(dbShell);
+
+        Assert.Null(dbShell.Output);
+        Assert.Null(dbShell.Input);
+
+        // Act
+        var discoveredElement = client.DiscoverElement(dbShell);
+
+        // Assert
+        Assert.NotNull(discoveredElement);
+        Assert.IsType<S7DataBlockInstance>(discoveredElement);
+        var populatedDb = (S7DataBlockInstance)discoveredElement;
+
+        Assert.NotNull(populatedDb.Output);
+        Assert.NotNull(populatedDb.Input);
+
+        Assert.NotEmpty(populatedDb.Output.Variables);
+        Assert.NotEmpty(populatedDb.Input.Variables);
+
+        Assert.Contains(populatedDb.Input.Variables, v => v.DisplayName == "Function_InputBool");
+    }
+
+    #endregion Structure Discovery and Browsing Tests
 }
