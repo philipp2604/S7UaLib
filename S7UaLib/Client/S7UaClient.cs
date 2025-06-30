@@ -395,13 +395,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Reading and Writing Methods
 
-    /// <summary>
-    /// Reads the values for any previously discovered S7 element.
-    /// </summary>
-    /// <typeparam name="T">The type of the element to read, which must implement <see cref="IUaElement"/>.</typeparam>
-    /// <param name="elementWithStructure">An element whose structure has already been discovered.</param>
-    /// <param name="rootContextName">The name of the root collection (e.g., "DataBlocksGlobal", "Inputs") used for building the full path.</param>
-    /// <returns>A new instance of the element, populated with values. Returns the original element on failure.</returns>
+    /// <inheritdoc cref="IS7UaClient.ReadValuesOfElement{T}(T, string?)"/>
     public T ReadValuesOfElement<T>(T elementWithStructure, string? rootContextName = null) where T : IUaElement
     {
         if (elementWithStructure?.NodeId is null)

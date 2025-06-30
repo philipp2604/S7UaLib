@@ -4,6 +4,7 @@ using Opc.Ua;
 using Opc.Ua.Client;
 using S7UaLib.Client;
 using S7UaLib.S7.Structure;
+using S7UaLib.S7.Types;
 using S7UaLib.UA;
 using S7UaLib.UnitTests.Helpers;
 using System.Collections;
@@ -326,4 +327,214 @@ public class S7UaClientUnitTests
     out DiagnosticInfoCollection diagnosticInfos);
 
     #endregion Structure Discovery and Browsing Tests
+
+    #region Reading and Writing Tests
+
+    [Fact]
+    public void ReadValuesOfElement_WhenNotConnected_ReturnsOriginalElementAndLogsError()
+    {
+        // Arrange
+        var client = CreateSut();
+        _mockSession.SetupGet(s => s.Connected).Returns(false);
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        var element = new S7Inputs { DisplayName = "Inputs", NodeId = new NodeId(1) };
+
+        // Act
+        var result = client.ReadValuesOfElement(element);
+
+        // Assert
+        Assert.Same(element, result); // Should return the original instance
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("Cannot read values for 'Inputs'")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void ReadValuesOfElement_WithSimpleStructure_ReturnsPopulatedElement()
+    {
+        // Arrange
+        var client = CreateSut();
+        var var1NodeId = new NodeId("ns=3;s=\"Inputs.TestBool\"");
+        var var2NodeId = new NodeId("ns=3;s=\"Inputs.TestInt\"");
+
+        var elementWithStructure = new S7Inputs
+        {
+            NodeId = new NodeId("ns=3;s=\"Inputs\""),
+            DisplayName = "Inputs",
+            Variables =
+            [
+                new S7Variable() { NodeId = var1NodeId, DisplayName = "TestBool" },
+                new S7Variable() { NodeId = var2NodeId, DisplayName = "TestInt" }
+            ]
+        };
+
+        _mockSession.Setup(s => s.Read(
+                It.IsAny<RequestHeader>(), It.IsAny<double>(), It.IsAny<TimestampsToReturn>(),
+                It.IsAny<ReadValueIdCollection>(), out It.Ref<DataValueCollection>.IsAny, out It.Ref<DiagnosticInfoCollection>.IsAny))
+            .Callback(new SessionReadCallback((RequestHeader _, double _, TimestampsToReturn _, ReadValueIdCollection _, out DataValueCollection results, out DiagnosticInfoCollection diags) =>
+            {
+                results =
+                [
+                    new(new Variant(true)) { StatusCode = StatusCodes.Good }, // Corresponds to var1NodeId
+                    new(new Variant((short)123)) { StatusCode = StatusCodes.Good } // Corresponds to var2NodeId
+                ];
+                diags = [];
+            }))
+            .Returns(new ResponseHeader { ServiceResult = StatusCodes.Good });
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = client.ReadValuesOfElement(elementWithStructure, "S7");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotSame(elementWithStructure, result); // A new object should be returned
+        Assert.Equal(2, result.Variables.Count);
+
+        var resultVar1 = result.Variables.First(v => v.DisplayName == "TestBool");
+        Assert.True((bool)resultVar1.Value!);
+        Assert.Equal(StatusCodes.Good, resultVar1.StatusCode);
+        Assert.Equal("S7.Inputs.TestBool", resultVar1.FullPath);
+
+        var resultVar2 = result.Variables.First(v => v.DisplayName == "TestInt");
+        Assert.Equal((short)123, resultVar2.Value);
+        Assert.Equal(StatusCodes.Good, resultVar2.StatusCode);
+        Assert.Equal("S7.Inputs.TestInt", resultVar2.FullPath);
+    }
+
+    [Fact]
+    public void ReadValuesOfElement_WithStructVariable_RecursivelyReadsAndPopulatesMembers()
+    {
+        // Arrange
+        var client = CreateSut();
+        var structNodeId = new NodeId("ns=3;s=\"MyDb.MyStruct\"");
+        var structMember1NodeId = new NodeId("ns=3;s=\"MyDb.MyStruct.MemberBool\"");
+        var structMember2NodeId = new NodeId("ns=3;s=\"MyDb.MyStruct.MemberDInt\"");
+
+        var elementWithStructure = new S7DataBlockGlobal
+        {
+            NodeId = new NodeId("ns=3;s=\"MyDb\""),
+            DisplayName = "MyDb",
+            Variables =
+            [
+                new S7Variable() { NodeId = structNodeId, DisplayName = "MyStruct", S7Type = S7DataType.STRUCT }
+            ]
+        };
+
+        // Mock browsing for the struct members
+        var structMemberReferences = new ReferenceDescriptionCollection
+    {
+        new() { NodeId = structMember1NodeId, DisplayName = "MemberBool" },
+        new() { NodeId = structMember2NodeId, DisplayName = "MemberDInt" }
+    };
+        _mockSession.Setup(s => s.Browse(It.IsAny<RequestHeader>(), It.IsAny<ViewDescription>(), It.IsAny<uint>(),
+                It.Is<BrowseDescriptionCollection>(bdc => bdc[0].NodeId == structNodeId),
+                out It.Ref<BrowseResultCollection>.IsAny, out It.Ref<DiagnosticInfoCollection>.IsAny))
+            .Callback(new SessionBrowseCallback((RequestHeader _, ViewDescription _, uint _, BrowseDescriptionCollection _, out BrowseResultCollection brc, out DiagnosticInfoCollection dic) =>
+            {
+                brc = [new() { References = structMemberReferences, StatusCode = StatusCodes.Good }];
+                dic = [];
+            }));
+
+        // Mock reading the values of the struct members
+        _mockSession.Setup(s => s.Read(It.IsAny<RequestHeader>(), It.IsAny<double>(), It.IsAny<TimestampsToReturn>(),
+                It.Is<ReadValueIdCollection>(rvc => rvc.Count == 2 && rvc.Any(r => r.NodeId == structMember1NodeId)),
+                out It.Ref<DataValueCollection>.IsAny, out It.Ref<DiagnosticInfoCollection>.IsAny))
+            .Callback(new SessionReadCallback((RequestHeader _, double _, TimestampsToReturn _, ReadValueIdCollection _, out DataValueCollection results, out DiagnosticInfoCollection diags) =>
+            {
+                results =
+                [
+                    new(new Variant(false)) { StatusCode = StatusCodes.Good }, // MemberBool
+                new(new Variant(9999)) { StatusCode = StatusCodes.Good }  // MemberDInt
+                ];
+                diags = [];
+            }));
+
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = client.ReadValuesOfElement(elementWithStructure);
+
+        // Assert
+        Assert.NotNull(result);
+        var resultStruct = result.Variables.First(v => v.DisplayName == "MyStruct");
+        Assert.Equal(S7DataType.STRUCT, resultStruct.S7Type);
+        Assert.Equal("MyDb.MyStruct", resultStruct.FullPath);
+        Assert.NotNull(resultStruct.StructMembers);
+        Assert.Equal(2, resultStruct.StructMembers.Count);
+
+        var member1 = resultStruct.StructMembers.First(m => m.DisplayName == "MemberBool");
+        Assert.False((bool)member1.Value!);
+        Assert.Equal("MyDb.MyStruct.MemberBool", member1.FullPath);
+
+        var member2 = resultStruct.StructMembers.First(m => m.DisplayName == "MemberDInt");
+        Assert.Equal(9999, member2.Value);
+        Assert.Equal("MyDb.MyStruct.MemberDInt", member2.FullPath);
+    }
+
+    [Fact]
+    public void ReadValuesOfElement_WithS7Char_AppliesCorrectConverter()
+    {
+        // Arrange
+        var client = CreateSut();
+        var charNodeId = new NodeId("ns=3;s=\"MyDb.MyChar\"");
+
+        var elementWithStructure = new S7DataBlockGlobal
+        {
+            DisplayName = "MyDb",
+            NodeId = new NodeId("ns=3;s=\"MyDb\""),
+            Variables =
+            [
+                new S7Variable() { NodeId = charNodeId, DisplayName = "MyChar", S7Type = S7DataType.CHAR }
+            ]
+        };
+
+        // The OPC UA server represents S7 CHAR as a Byte.
+        // The converter should turn this byte (ASCII 65) into the char 'A'.
+        const byte opcRawValue = (byte)65;
+
+        _mockSession.Setup(s => s.Read(
+                It.IsAny<RequestHeader>(), It.IsAny<double>(), It.IsAny<TimestampsToReturn>(),
+                It.Is<ReadValueIdCollection>(nodes => nodes.Count == 1 && nodes[0].NodeId == charNodeId),
+                out It.Ref<DataValueCollection>.IsAny, out It.Ref<DiagnosticInfoCollection>.IsAny))
+            .Callback(new SessionReadCallback((RequestHeader _, double _, TimestampsToReturn _, ReadValueIdCollection _, out DataValueCollection results, out DiagnosticInfoCollection diags) =>
+            {
+                results = [new(new Variant(opcRawValue)) { StatusCode = StatusCodes.Good }];
+                diags = [];
+            }))
+            .Returns(new ResponseHeader { ServiceResult = StatusCodes.Good });
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = client.ReadValuesOfElement(elementWithStructure);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Variables);
+
+        var resultVar = result.Variables[0];
+        Assert.Equal("MyChar", resultVar.DisplayName);
+        Assert.Equal(StatusCodes.Good, resultVar.StatusCode);
+
+        // Verify the conversion
+        Assert.Equal('A', resultVar.Value);
+        Assert.Equal(typeof(char), resultVar.SystemType);
+        Assert.Equal(opcRawValue, resultVar.RawOpcValue);
+    }
+
+    private delegate void SessionReadCallback(
+        RequestHeader requestHeader,
+        double maxAge,
+        TimestampsToReturn timestampsToReturn,
+        ReadValueIdCollection nodesToRead,
+        out DataValueCollection results,
+        out DiagnosticInfoCollection diagnosticInfos);
+
+    #endregion Reading and Writing Tests
 }
