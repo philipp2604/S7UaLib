@@ -3,6 +3,7 @@ using Opc.Ua;
 using S7UaLib.Client;
 using S7UaLib.Client.Contracts;
 using S7UaLib.DataStore;
+using S7UaLib.DataStore.Contracts;
 using S7UaLib.Events;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
@@ -18,7 +19,7 @@ namespace S7UaLib.Services;
 public class S7Service : IS7Service
 {
     private readonly IS7UaClient _client;
-    private readonly S7DataStore _dataStore;
+    private readonly IS7DataStore _dataStore;
     private readonly ILogger? _logger;
 
     /// <inheritdoc cref="IS7Service.VariableValueChanged"/>
@@ -30,7 +31,7 @@ public class S7Service : IS7Service
     /// <param name="client">The S7UaClient instance to use for communication.</param>
     /// <param name="dataStore">The S7DataStore instance to use as data store.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    internal S7Service(IS7UaClient client, S7DataStore dataStore, ILoggerFactory? loggerFactory = null)
+    internal S7Service(IS7UaClient client, IS7DataStore dataStore, ILoggerFactory? loggerFactory = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _dataStore = dataStore ?? throw new ArgumentNullException(nameof(dataStore));
