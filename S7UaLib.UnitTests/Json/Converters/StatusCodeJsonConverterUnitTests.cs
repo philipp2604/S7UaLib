@@ -1,6 +1,7 @@
 ﻿using Opc.Ua;
 using S7UaLib.Json.Converters;
 using System.Text.Json;
+using Xunit;
 
 namespace S7UaLib.UnitTests.Json.Converters;
 
