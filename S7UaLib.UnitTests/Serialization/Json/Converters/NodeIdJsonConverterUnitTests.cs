@@ -4,7 +4,7 @@ using S7UaLib.Serialization.Json.Converters;
 using System.Text.Json;
 using Xunit;
 
-namespace S7UaLib.UnitTests.Json.Converters;
+namespace S7UaLib.UnitTests.Serialization.Json.Converters;
 
 [Trait("Category", "Unit")]
 public class StatusCodeJsonConverterTests
