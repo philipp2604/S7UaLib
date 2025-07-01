@@ -23,7 +23,7 @@ public class NodeIdJsonConverterTests
     {
         // Arrange
         var nodeId = new NodeId("MyNode", 3);
-        var expectedJson = "\"ns=3;s=MyNode\"";
+        const string expectedJson = "\"ns=3;s=MyNode\"";
 
         // Act
         var json = JsonSerializer.Serialize(nodeId, _options);
@@ -37,7 +37,7 @@ public class NodeIdJsonConverterTests
     {
         // Arrange
         var nodeId = new NodeId(1234, 2);
-        var expectedJson = "\"ns=2;i=1234\"";
+        const string expectedJson = "\"ns=2;i=1234\"";
 
         // Act
         var json = JsonSerializer.Serialize(nodeId, _options);
@@ -51,7 +51,7 @@ public class NodeIdJsonConverterTests
     {
         // Arrange
         NodeId? nodeId = null;
-        var expectedJson = "null";
+        const string expectedJson = "null";
 
         // Act
         var json = JsonSerializer.Serialize(nodeId, _options);
@@ -68,7 +68,7 @@ public class NodeIdJsonConverterTests
     public void Read_WithValidStringIdentifier_DeserializesCorrectly()
     {
         // Arrange
-        var json = "\"ns=3;s=MyNode\"";
+        const string json = "\"ns=3;s=MyNode\"";
         var expectedNodeId = new NodeId("MyNode", 3);
 
         // Act
@@ -82,7 +82,7 @@ public class NodeIdJsonConverterTests
     public void Read_WithValidNumericIdentifier_DeserializesCorrectly()
     {
         // Arrange
-        var json = "\"ns=2;i=1234\"";
+        const string json = "\"ns=2;i=1234\"";
         var expectedNodeId = new NodeId(1234, 2);
 
         // Act
@@ -96,7 +96,7 @@ public class NodeIdJsonConverterTests
     public void Read_WithNullJson_DeserializesToNull()
     {
         // Arrange
-        var json = "null";
+        const string json = "null";
 
         // Act
         var result = JsonSerializer.Deserialize<NodeId>(json, _options);
@@ -109,7 +109,7 @@ public class NodeIdJsonConverterTests
     public void Read_WithEmptyString_DeserializesToNull()
     {
         // Arrange
-        var json = "\"\"";
+        const string json = "\"\"";
 
         // Act
         var result = JsonSerializer.Deserialize<NodeId>(json, _options);
@@ -122,7 +122,7 @@ public class NodeIdJsonConverterTests
     public void Read_WithInvalidFormatMissingNamespace_ThrowsArgumentException()
     {
         // Arrange
-        var json = "\"this-is-not-a-nodeid\"";
+        const string json = "\"this-is-not-a-nodeid\"";
 
         // Act & Assert
         Assert.Throws<ArgumentException>(() => JsonSerializer.Deserialize<NodeId>(json, _options));
@@ -132,7 +132,7 @@ public class NodeIdJsonConverterTests
     public void Read_WithMalformedNamespace_ThrowsServiceResultException()
     {
         // Arrange
-        var json = "\"ns=abc;s=MyNode\"";
+        const string json = "\"ns=abc;s=MyNode\"";
 
         // Act & Assert
         var ex = Assert.Throws<ServiceResultException>(() => JsonSerializer.Deserialize<NodeId>(json, _options));

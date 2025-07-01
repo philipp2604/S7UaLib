@@ -49,7 +49,7 @@ public class TypeJsonConverterTests
     {
         // Arrange
         Type? type = null;
-        var expectedJson = "null";
+        const string expectedJson = "null";
 
         // Act
         var json = JsonSerializer.Serialize(type, _options);
@@ -80,7 +80,7 @@ public class TypeJsonConverterTests
     public void Read_WithNullJson_DeserializesToNull()
     {
         // Arrange
-        var json = "null";
+        const string json = "null";
 
         // Act
         var result = JsonSerializer.Deserialize<Type>(json, _options);
@@ -93,7 +93,7 @@ public class TypeJsonConverterTests
     public void Read_WithEmptyString_DeserializesToNull()
     {
         // Arrange
-        var json = "\"\"";
+        const string json = "\"\"";
 
         // Act
         var result = JsonSerializer.Deserialize<Type>(json, _options);
@@ -106,7 +106,7 @@ public class TypeJsonConverterTests
     public void Read_WithInvalidTypeName_DeserializesToNull()
     {
         // Arrange
-        var json = "\"Non.Existent.Type, Non.Existent.Assembly\"";
+        const string json = "\"Non.Existent.Type, Non.Existent.Assembly\"";
 
         // Act
         var result = JsonSerializer.Deserialize<Type>(json, _options);

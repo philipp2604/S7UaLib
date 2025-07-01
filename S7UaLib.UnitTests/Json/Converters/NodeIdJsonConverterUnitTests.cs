@@ -23,7 +23,7 @@ public class StatusCodeJsonConverterTests
     {
         // Arrange
         var statusCode = new StatusCode(StatusCodes.Good);
-        var expectedJson = """{"Code":0,"Symbol":"Good"}""";
+        const string expectedJson = """{"Code":0,"Symbol":"Good"}""";
 
         // Act
         var json = JsonSerializer.Serialize(statusCode, _options);
@@ -38,7 +38,7 @@ public class StatusCodeJsonConverterTests
         // Arrange
         var statusCode = new StatusCode(StatusCodes.BadWaitingForInitialData);
         // The uint value for BadWaitingForInitialData is 0x80320000 = 2150760448.
-        var expectedJson = """{"Code":2150760448,"Symbol":"BadWaitingForInitialData"}""";
+        const string expectedJson = """{"Code":2150760448,"Symbol":"BadWaitingForInitialData"}""";
 
         // Act
         var json = JsonSerializer.Serialize(statusCode, _options);
@@ -56,7 +56,7 @@ public class StatusCodeJsonConverterTests
     {
         // Arrange
         // The uint value for BadNodeIdUnknown is 0x80340000 = 2150891520.
-        var json = """{"Code":2150891520,"Symbol":"BadNodeIdUnknown"}""";
+        const string json = """{"Code":2150891520,"Symbol":"BadNodeIdUnknown"}""";
         var expectedStatusCode = new StatusCode(StatusCodes.BadNodeIdUnknown);
 
         // Act
@@ -70,7 +70,7 @@ public class StatusCodeJsonConverterTests
     public void Read_WithCaseInsensitiveCodeProperty_DeserializesCorrectly()
     {
         // Arrange
-        var json = """{"code":0,"symbol":"Good"}"""; // "code" is lowercase
+        const string json = """{"code":0,"symbol":"Good"}"""; // "code" is lowercase
         var expectedStatusCode = new StatusCode(StatusCodes.Good);
 
         // Act
@@ -84,7 +84,7 @@ public class StatusCodeJsonConverterTests
     public void Read_WithExtraProperties_IgnoresThemAndDeserializesCorrectly()
     {
         // Arrange
-        var json = """{"Code":0,"Symbol":"Good","ExtraInfo":"This should be ignored"}""";
+        const string json = """{"Code":0,"Symbol":"Good","ExtraInfo":"This should be ignored"}""";
         var expectedStatusCode = new StatusCode(StatusCodes.Good);
 
         // Act
@@ -98,7 +98,7 @@ public class StatusCodeJsonConverterTests
     public void Read_WithMissingCodeProperty_ReturnsDefaultStatusCode()
     {
         // Arrange
-        var json = """{"Symbol":"SomeStatus"}""";
+        const string json = """{"Symbol":"SomeStatus"}""";
         var expectedStatusCode = new StatusCode(0); // Default uint is 0, which is StatusCodes.Good
 
         // Act
@@ -112,7 +112,7 @@ public class StatusCodeJsonConverterTests
     public void Read_WithInvalidJsonFormat_ThrowsJsonException()
     {
         // Arrange
-        var json = """[0, "Good"]"""; // Not a JSON object
+        const string json = """[0, "Good"]"""; // Not a JSON object
 
         // Act & Assert
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<StatusCode>(json, _options));
