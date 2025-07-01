@@ -51,8 +51,16 @@ jobs:
     - uses: actions/checkout@v4
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
-    - name: Run tests
-      run: dotnet test --configuration Release --filter "Category!=Integration"
+      with:
+        dotnet-version: '8.0.x'
+    - name: Install dependencies for target framework
+      run: dotnet restore /p:TargetFramework='net8.0'
+      
+    - name: Build
+      run: dotnet build --configuration Release --no-restore --framework 'net8.0'
+    
+    - name: Test
+      run: dotnet test --no-restore --verbosity normal --framework 'net8.0' --filter "Category!=Integration"
 
   deploy:
     # Publish only when creating a GitHub Release
