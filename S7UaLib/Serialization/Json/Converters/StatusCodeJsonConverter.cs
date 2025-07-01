@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace S7UaLib.Json.Converters;
+namespace S7UaLib.Serialization.Json.Converters;
 
 /// <summary>
 /// Converts an Opc.Ua.StatusCode into a JSON object with code and symbol name, and vice versa.

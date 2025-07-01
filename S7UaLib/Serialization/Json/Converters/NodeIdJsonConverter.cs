@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace S7UaLib.Json.Converters;
+namespace S7UaLib.Serialization.Json.Converters;
 
 /// <summary>
 /// Converts an Opc.Ua.NodeId into a string of type "ns=3;s=MyNode" and vice versa.

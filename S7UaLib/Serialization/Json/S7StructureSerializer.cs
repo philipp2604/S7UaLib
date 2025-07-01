@@ -1,13 +1,14 @@
 ﻿using Opc.Ua;
-using S7UaLib.Json.Converters;
+using S7UaLib.Serialization.Json;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.UA;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using S7UaLib.Serialization.Json.Converters;
 
-namespace S7UaLib.S7.Serializer;
+namespace S7UaLib.Serialization.Json;
 
 /// <summary>
 /// Provides serialization options and configuration for handling S7 structure elements and related types.

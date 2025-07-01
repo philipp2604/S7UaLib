@@ -1,6 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using S7UaLib.S7.Structure;
+using System.Collections.Generic;
 
-namespace S7UaLib.S7.Structure;
+namespace S7UaLib.Serialization.Models;
 
 /// <summary>
 /// Represents a pure data model for storing the discovered S7 structure.
