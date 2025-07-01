@@ -36,7 +36,7 @@ A modern, high-level .NET library designed to simplify communication with Siemen
 S7UaLib is available on NuGet. You can install it using the .NET CLI:
 
 ```bash
-dotnet add package S7UaLib
+dotnet add package philipp2604.S7UaLib
 ```
 Or via the NuGet Package Manager in Visual Studio.
 
