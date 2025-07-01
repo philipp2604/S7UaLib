@@ -238,6 +238,29 @@ public class S7Service : IS7Service
         }
 
         var newVariable = oldS7Var with { S7Type = newType };
+        if (newType == S7DataType.STRUCT)
+        {
+            if (!_client.IsConnected || oldS7Var.NodeId is null)
+            {
+                _logger?.LogWarning("Cannot discover struct members for '{Path}' because client is disconnected or NodeId is null. The members will not be available until the next ReadAllVariables call.", fullPath);
+            }
+            else
+            {
+                try
+                {
+                    _logger?.LogDebug("Variable '{Path}' set to STRUCT. Discovering members immediately.", fullPath);
+                    var shellForDiscovery = new S7StructureElement { NodeId = oldS7Var.NodeId, DisplayName = oldS7Var.DisplayName };
+                    var discoveredMembers = _client.DiscoverVariablesOfElement(shellForDiscovery).Variables;
+
+                    newVariable = newVariable with { StructMembers = discoveredMembers.Cast<S7Variable>().ToList() };
+                    _logger?.LogDebug("Discovered {MemberCount} members for struct '{Path}'.", discoveredMembers.Count, fullPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Failed to discover members for struct '{Path}' during type update.", fullPath);
+                }
+            }
+        }
 
         if (newVariable.RawOpcValue is not null)
         {
