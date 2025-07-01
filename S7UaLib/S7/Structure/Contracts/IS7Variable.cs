@@ -63,5 +63,5 @@ public interface IS7Variable : IUaElement
     /// </summary>
     public uint SamplingInterval { get; init; }
 
-    #endregion
+    #endregion Public Properties
 }

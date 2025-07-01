@@ -196,6 +196,7 @@ internal interface IS7UaClient
     #endregion Structure Browsing and Discovery Methods
 
     #region Reading and Writing Methods
+
     #region Reading Methods
 
     /// <summary>
@@ -207,7 +208,8 @@ internal interface IS7UaClient
     /// <returns>A new instance of the element, populated with values. Returns the original element on failure.</returns>
     public T ReadValuesOfElement<T>(T elementWithStructure, string? rootContextName = null) where T : IUaElement;
 
-    #endregion
+    #endregion Reading Methods
+
     #region Writing Methods
 
     /// <summary>
@@ -240,7 +242,7 @@ internal interface IS7UaClient
     /// <exception cref="ArgumentNullException">Thrown if nodeId or rawValue is null.</exception>
     public Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue);
 
-    #endregion
+    #endregion Writing Methods
 
     #endregion Reading and Writing Methods
 

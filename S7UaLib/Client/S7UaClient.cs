@@ -396,6 +396,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #endregion Structure Browsing and Discovery Methods
 
     #region Reading and Writing Methods
+
     #region Reading Methods
 
     /// <inheritdoc cref="IS7UaClient.ReadValuesOfElement{T}(T, string?)"/>
@@ -434,6 +435,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Reading Methods
+
     #region Writing Methods
 
     /// <inheritdoc cref="IS7UaClient.WriteValuesOfElement{T}(T, string?)"/>
@@ -495,7 +497,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public static IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
         _typeConverters.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType);
 
-    #endregion
+    #endregion Reading and Writing Helpers
+
     #endregion Reading and Writing Methods
 
     #endregion Connection Methods

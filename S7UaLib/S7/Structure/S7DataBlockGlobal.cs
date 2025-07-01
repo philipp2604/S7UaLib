@@ -1,11 +1,4 @@
-﻿using S7UaLib.S7.Structure.Contracts;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace S7UaLib.S7.Structure;
+﻿namespace S7UaLib.S7.Structure;
 
 /// <summary>
 /// Represents a global data block in an S7 PLC structure.

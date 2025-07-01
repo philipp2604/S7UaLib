@@ -1,10 +1,4 @@
-﻿using Opc.Ua;
-using S7UaLib.UA;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using S7UaLib.UA;
 
 namespace S7UaLib.S7.Structure.Contracts;
 

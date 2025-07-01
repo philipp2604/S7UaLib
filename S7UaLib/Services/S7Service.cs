@@ -48,6 +48,8 @@ public class S7Service : IS7Service
         {
             _logger = loggerFactory.CreateLogger<S7Service>();
         }
+
+        RegisterClientEventHandlers();
     }
 
     /// <summary>
@@ -66,7 +68,68 @@ public class S7Service : IS7Service
         {
             _logger = loggerFactory.CreateLogger<S7Service>();
         }
+
+        RegisterClientEventHandlers();
     }
+
+    #region Connection Events
+
+    /// <inheritdoc cref="IS7Service.Connecting"/>
+    public event EventHandler<ConnectionEventArgs>? Connecting;
+
+    /// <inheritdoc cref="IS7Service.Connected"/>
+    public event EventHandler<ConnectionEventArgs>? Connected;
+
+    /// <inheritdoc cref="IS7Service.Disconnecting"/>
+    public event EventHandler<ConnectionEventArgs>? Disconnecting;
+
+    /// <inheritdoc cref="IS7Service.Disconnected"/>
+    public event EventHandler<ConnectionEventArgs>? Disconnected;
+
+    /// <inheritdoc cref="IS7Service.Reconnecting"/>
+    public event EventHandler<ConnectionEventArgs>? Reconnecting;
+
+    /// <inheritdoc cref="IS7Service.Reconnected"/>
+    public event EventHandler<ConnectionEventArgs>? Reconnected;
+
+    #endregion Connection Events
+
+    /// <inheritdoc cref="IS7Service.KeepAliveInterval"/>
+    public int KeepAliveInterval { get => _client.KeepAliveInterval; set => _client.KeepAliveInterval = value; }
+
+    /// <inheritdoc cref="IS7Service.ReconnectPeriod"/>
+    public int ReconnectPeriod { get => _client.ReconnectPeriod; set => _client.ReconnectPeriod = value; }
+
+    /// <inheritdoc cref="IS7Service.ReconnectPeriodExponentialBackoff"/>/>
+    public int ReconnectPeriodExponentialBackoff { get => _client.ReconnectPeriodExponentialBackoff; set => _client.ReconnectPeriodExponentialBackoff = value; }
+
+    /// <inheritdoc cref="IS7Service.SessionTimeout"/>
+    public uint SessionTimeout { get => _client.SessionTimeout; set => _client.SessionTimeout = value; }
+
+    /// <inheritdoc cref="IS7Service.AcceptUntrustedCertificates"/>
+    public bool AcceptUntrustedCertificates { get => _client.AcceptUntrustedCertificates; set => _client.AcceptUntrustedCertificates = value; }
+
+    /// <inheritdoc cref="IS7Service.UserIdentity"/>
+    public UserIdentity UserIdentity { get => _client.UserIdentity; set => _client.UserIdentity = value; }
+
+    /// <inheritdoc cref="IS7Service.IsConnected"/>
+    public bool IsConnected => _client.IsConnected;
+
+    #region Connection Methods
+
+    /// <inheritdoc cref="IS7Service.ConnectAsync(string, bool, CancellationToken)"/>
+    public async Task ConnectAsync(string serverUrl, bool useSecurity = true, CancellationToken cancellationToken = default)
+    {
+        await _client.ConnectAsync(serverUrl, useSecurity, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc cref="IS7Service.Disconnect(bool)"/>
+    public void Disconnect(bool leaveChannelOpen = false)
+    {
+        _client.Disconnect(leaveChannelOpen);
+    }
+
+    #endregion Connection Methods
 
     /// <inheritdoc cref="IS7Service.DiscoverStructure"/>
     public void DiscoverStructure()
@@ -130,7 +193,14 @@ public class S7Service : IS7Service
         {
             if (oldVariables.TryGetValue(newVarEntry.Key, out var oldVar))
             {
-                if (!object.Equals(oldVar.Value, newVarEntry.Value.Value))
+                if (oldVar.Value is Array oldGenericArray && newVarEntry.Value.Value is Array newGenericArray)
+                {
+                    if (!oldGenericArray.Cast<object>().SequenceEqual(newGenericArray.Cast<object>()))
+                    {
+                        OnVariableValueChanged(new VariableValueChangedEventArgs(oldVar, newVarEntry.Value));
+                    }
+                }
+                else if (!object.Equals(oldVar.Value, newVarEntry.Value.Value))
                 {
                     OnVariableValueChanged(new VariableValueChangedEventArgs(oldVar, newVarEntry.Value));
                 }
@@ -278,10 +348,20 @@ public class S7Service : IS7Service
         }
     }
 
-    #endregion
+    #endregion Persistence methods
 
     protected virtual void OnVariableValueChanged(VariableValueChangedEventArgs e)
     {
         VariableValueChanged?.Invoke(this, e);
+    }
+
+    private void RegisterClientEventHandlers()
+    {
+        _client.Connecting += (s, e) => Connecting?.Invoke(s, e);
+        _client.Connected += (s, e) => Connected?.Invoke(s, e);
+        _client.Disconnecting += (s, e) => Disconnecting?.Invoke(s, e);
+        _client.Disconnected += (s, e) => Disconnected?.Invoke(s, e);
+        _client.Reconnecting += (s, e) => Reconnecting?.Invoke(s, e);
+        _client.Reconnected += (s, e) => Reconnected?.Invoke(s, e);
     }
 }

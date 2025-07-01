@@ -1,12 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Serialization.Json.Converters;
+
 /// <summary>
 /// Converts a System.Type into its assembly qualified name and vice versa.
 /// </summary>

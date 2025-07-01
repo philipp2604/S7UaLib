@@ -4,15 +4,13 @@ using Opc.Ua;
 using S7UaLib.Client.Contracts;
 using S7UaLib.DataStore;
 using S7UaLib.Events;
-using S7UaLib.Services;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
-using System.Collections;
-using System.IO.Abstractions;
+using S7UaLib.Serialization.Json;
+using S7UaLib.Serialization.Models;
+using S7UaLib.Services;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
-using S7UaLib.Serialization.Models;
-using S7UaLib.Serialization.Json;
 
 namespace S7UaLib.UnitTests.Services;
 
@@ -195,7 +193,7 @@ public class S7ServiceUnitTests
         Assert.Null(result);
     }
 
-    #endregion
+    #endregion GetVariable Tests
 
     #region UpdateVariableType Tests
 
@@ -245,7 +243,7 @@ public class S7ServiceUnitTests
         Assert.False(success);
     }
 
-    #endregion
+    #endregion UpdateVariableType Tests
 
     #region WriteVariableAsync Tests
 
@@ -317,7 +315,7 @@ public class S7ServiceUnitTests
                 Times.Once);
     }
 
-    #endregion
+    #endregion WriteVariableAsync Tests
 
     #region File Operations Tests
 
@@ -380,7 +378,7 @@ public class S7ServiceUnitTests
 
         var testModel = new S7StructureModel
         {
-            Inputs = new S7Inputs { DisplayName = "Inputs", Variables = [new S7Variable() { DisplayName = "TestInput", FullPath = "Inputs.TestInput"}] }
+            Inputs = new S7Inputs { DisplayName = "Inputs", Variables = [new S7Variable() { DisplayName = "TestInput", FullPath = "Inputs.TestInput" }] }
         };
         var json = JsonSerializer.Serialize(testModel, S7StructureSerializer.Options);
 
@@ -409,5 +407,134 @@ public class S7ServiceUnitTests
         await Assert.ThrowsAsync<System.IO.FileNotFoundException>(() => sut.LoadStructureAsync(filePath));
     }
 
-    #endregion
+    #endregion File Operations Tests
+
+    #region Connection Tests
+
+    [Fact]
+    public void IsConnected_ReturnsClientIsConnected()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _mockClient.Setup(c => c.IsConnected).Returns(true);
+
+        // Act & Assert
+        Assert.True(sut.IsConnected);
+
+        // Arrange 2
+        _mockClient.Setup(c => c.IsConnected).Returns(false);
+
+        // Act & Assert 2
+        Assert.False(sut.IsConnected);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_CallsClientConnectAsync()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string serverUrl = "opc.tcp://localhost:4840";
+        const bool useSecurity = true;
+
+        _mockClient.Setup(c => c.ConnectAsync(serverUrl, useSecurity, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask)
+            .Verifiable();
+
+        // Act
+        await sut.ConnectAsync(serverUrl, useSecurity);
+
+        // Assert
+        _mockClient.Verify();
+    }
+
+    [Fact]
+    public void Disconnect_CallsClientDisconnect()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const bool leaveOpen = true;
+
+        _mockClient.Setup(c => c.Disconnect(leaveOpen)).Verifiable();
+
+        // Act
+        sut.Disconnect(leaveOpen);
+
+        // Assert
+        _mockClient.Verify();
+    }
+
+    [Theory]
+    [InlineData("Connecting")]
+    [InlineData("Connected")]
+    [InlineData("Disconnecting")]
+    [InlineData("Disconnected")]
+    [InlineData("Reconnecting")]
+    [InlineData("Reconnected")]
+    public void ClientEvents_AreForwardedByService(string eventName)
+    {
+        // Arrange
+        var eventArgs = new ConnectionEventArgs();
+        bool eventFired = false;
+        var sut = CreateSut();
+
+        switch (eventName)
+        {
+            case "Connecting":
+                sut.Connecting += (s, e) => { eventFired = true; Assert.Same(eventArgs, e); };
+                break;
+
+            case "Connected":
+                sut.Connected += (s, e) => { eventFired = true; Assert.Same(eventArgs, e); };
+                break;
+
+            case "Disconnecting":
+                sut.Disconnecting += (s, e) => { eventFired = true; Assert.Same(eventArgs, e); };
+                break;
+
+            case "Disconnected":
+                sut.Disconnected += (s, e) => { eventFired = true; Assert.Same(eventArgs, e); };
+                break;
+
+            case "Reconnecting":
+                sut.Reconnecting += (s, e) => { eventFired = true; Assert.Same(eventArgs, e); };
+                break;
+
+            case "Reconnected":
+                sut.Reconnected += (s, e) => { eventFired = true; Assert.Same(eventArgs, e); };
+                break;
+        }
+
+        // Act
+        switch (eventName)
+        {
+            case "Connecting":
+                _mockClient.Raise(m => m.Connecting += null, _mockClient.Object, eventArgs);
+                break;
+
+            case "Connected":
+                _mockClient.Raise(m => m.Connected += null, _mockClient.Object, eventArgs);
+                break;
+
+            case "Disconnecting":
+                _mockClient.Raise(m => m.Disconnecting += null, _mockClient.Object, eventArgs);
+                break;
+
+            case "Disconnected":
+                _mockClient.Raise(m => m.Disconnected += null, _mockClient.Object, eventArgs);
+                break;
+
+            case "Reconnecting":
+                _mockClient.Raise(m => m.Reconnecting += null, _mockClient.Object, eventArgs);
+                break;
+
+            case "Reconnected":
+                _mockClient.Raise(m => m.Reconnected += null, _mockClient.Object, eventArgs);
+                break;
+        }
+
+        // Assert
+        Assert.True(eventFired, $"The {eventName} event should have been fired.");
+    }
+
+    #endregion Connection Tests
 }

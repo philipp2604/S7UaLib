@@ -1,8 +1,6 @@
 ﻿using Opc.Ua;
-using S7UaLib.Serialization.Json;
 using S7UaLib.Serialization.Json.Converters;
 using System.Text.Json;
-using Xunit;
 
 namespace S7UaLib.UnitTests.Serialization.Json.Converters;
 

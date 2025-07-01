@@ -161,7 +161,7 @@ internal class S7DataStore : IS7DataStore
             {
                 string remainingPath = (path.Length == currentElement.DisplayName.Length)
                     ? ""
-                    : path.Substring(currentElement.DisplayName.Length).TrimStart('.');
+                    : path[currentElement.DisplayName.Length..].TrimStart('.');
 
                 var newElement = ReplaceVariableInElement(currentElement, remainingPath, newVariable);
 

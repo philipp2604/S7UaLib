@@ -1,4 +1,5 @@
-﻿using S7UaLib.Events;
+﻿using Opc.Ua;
+using S7UaLib.Events;
 using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
 
@@ -14,9 +15,95 @@ namespace S7UaLib.Services;
 internal interface IS7Service
 {
     /// <summary>
+    /// Gets or sets the interval, in milliseconds, at which keep-alive messages are sent to maintain a connection.
+    /// </summary>
+    public int KeepAliveInterval { get; set; }
+
+    /// <summary>
+    /// Gets or sets the time interval, in milliseconds, between automatic reconnection attempts.
+    /// <remarks></remarks>A value of -1 disables automatic reconnection.</remarks>
+    /// </summary>
+    public int ReconnectPeriod { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum reconnect period for exponential backoff, in milliseconds.
+    /// <remarks>A value of -1 disables exponential backoff.</remarks>
+    /// </summary>
+    public int ReconnectPeriodExponentialBackoff { get; set; }
+
+    /// <summary>
+    /// Gets or sets the session timeout in milliseconds after which the session is considered invalid after the last communication.
+    /// </summary>
+    public uint SessionTimeout { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether untrusted SSL/TLS certificates are accepted.
+    /// </summary>
+    /// <remarks>Use this property with caution, as accepting untrusted certificates can expose the
+    /// application to security risks. This setting is typically used for testing or development purposes and should not
+    /// be enabled in production environments.</remarks>
+    public bool AcceptUntrustedCertificates { get; set; }
+
+    /// <summary>
+    /// Gets or sets the identity information of the user.
+    /// </summary>
+    public UserIdentity UserIdentity { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the connection is currently active and valid.
+    /// </summary>
+    public bool IsConnected { get; }
+
+    /// <summary>
+    /// Asynchronously connects to the specified S7 UA server endpoint.
+    /// </summary>
+    /// <param name="serverUrl">The URL of the server endpoint to connect to.</param>
+    /// <param name="useSecurity">A flag indicating whether to use the secure endpoint.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous connect operation.</returns>
+    public Task ConnectAsync(string serverUrl, bool useSecurity = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Disconnects from the S7 UA server.
+    /// </summary>
+    /// <param name="leaveChannelOpen">If <c>true</c>, the underlying communication channel is left open;
+    /// otherwise, it is closed.</param>
+    public void Disconnect(bool leaveChannelOpen = false);
+
+    /// <summary>
     /// Occurs when a variable's value changes after a read operation.
     /// </summary>
     public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
+
+    /// <summary>
+    /// Occurs when a connection attempt to the server is initiated.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Connecting;
+
+    /// <summary>
+    /// Occurs when a connection to the server has been successfully established.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Connected;
+
+    /// <summary>
+    /// Occurs when a disconnection from the server is initiated.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Disconnecting;
+
+    /// <summary>
+    /// Occurs when the client has been disconnected from the server.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Disconnected;
+
+    /// <summary>
+    /// Occurs when the client is attempting to reconnect to the server after a connection loss.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Reconnecting;
+
+    /// <summary>
+    /// Occurs when the client has successfully reconnected to the server.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Reconnected;
 
     /// <summary>
     /// Discovers the entire structure of the OPC UA server and populates the internal data store.

@@ -1,5 +1,4 @@
 ﻿using S7UaLib.S7.Structure;
-using System.Collections.Generic;
 
 namespace S7UaLib.Serialization.Models;
 

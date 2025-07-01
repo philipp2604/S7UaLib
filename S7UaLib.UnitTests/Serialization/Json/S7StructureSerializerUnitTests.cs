@@ -1,9 +1,9 @@
-﻿using S7UaLib.Serialization.Json;
-using S7UaLib.S7.Structure;
+﻿using S7UaLib.S7.Structure;
+using S7UaLib.Serialization.Json;
+using S7UaLib.Serialization.Json.Converters;
 using S7UaLib.UA;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using S7UaLib.Serialization.Json.Converters;
 
 namespace S7UaLib.UnitTests.Serialization.Json;
 
@@ -134,5 +134,5 @@ public class S7StructureSerializerTests
         Assert.Contains($"\"SystemType\": \"{typeof(int).AssemblyQualifiedName}\"", json);
     }
 
-    #endregion
+    #endregion Serialization Behavior Tests
 }
