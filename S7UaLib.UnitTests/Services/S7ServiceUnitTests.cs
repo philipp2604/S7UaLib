@@ -8,6 +8,11 @@ using S7UaLib.Services;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
 using System.Collections;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
+using System.Text.Json;
+using S7UaLib.Serialization.Models;
+using S7UaLib.Serialization.Json;
 
 namespace S7UaLib.UnitTests.Services;
 
@@ -18,6 +23,7 @@ public class S7ServiceUnitTests
     private readonly S7DataStore _realDataStore;
     private readonly Mock<ILoggerFactory> _mockLoggerFactory;
     private readonly Mock<ILogger<S7Service>> _mockLogger;
+    private readonly MockFileSystem _mockFileSystem;
 
     public S7ServiceUnitTests()
     {
@@ -26,12 +32,13 @@ public class S7ServiceUnitTests
         _mockLogger = new Mock<ILogger<S7Service>>();
         _mockLoggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
         _realDataStore = new S7DataStore(_mockLoggerFactory.Object);
+        _mockFileSystem = new MockFileSystem();
     }
 
     private S7Service CreateSut()
     {
         // Use the internal constructor for testing with mocks
-        return new S7Service(_mockClient.Object, _realDataStore, _mockLoggerFactory.Object);
+        return new S7Service(_mockClient.Object, _realDataStore, _mockFileSystem, _mockLoggerFactory.Object);
     }
 
     #region DiscoverStructure Tests
@@ -308,6 +315,98 @@ public class S7ServiceUnitTests
                     It.IsAny<InvalidOperationException>(),
                     It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
                 Times.Once);
+    }
+
+    #endregion
+
+    #region File Operations Tests
+
+    [Fact]
+    public async Task SaveStructureAsync_WithValidPath_SerializesDataAndWritesToMockFileSystem()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string filePath = "C:\\data\\structure.json";
+
+        var globalDb = new S7DataBlockGlobal { DisplayName = "TestDB" };
+        _mockClient.Setup(c => c.IsConnected).Returns(true);
+        _mockClient.Setup(c => c.GetAllGlobalDataBlocks()).Returns([globalDb]);
+        _mockClient.Setup(c => c.DiscoverElement(It.IsAny<IS7StructureElement>())).Returns<IS7StructureElement>(e => e); // Gibt das Element selbst zurück
+
+        sut.DiscoverStructure();
+
+        _mockFileSystem.AddDirectory("C:\\data");
+
+        // Act
+        await sut.SaveStructureAsync(filePath);
+
+        // Assert
+        Assert.True(_mockFileSystem.FileExists(filePath));
+        var fileData = _mockFileSystem.GetFile(filePath);
+        Assert.NotNull(fileData);
+
+        var deserializedModel = JsonSerializer.Deserialize<S7StructureModel>(fileData.TextContents, S7StructureSerializer.Options);
+        Assert.NotNull(deserializedModel);
+        Assert.Single(deserializedModel.DataBlocksGlobal);
+        Assert.Equal("TestDB", deserializedModel.DataBlocksGlobal[0].DisplayName);
+    }
+
+    [Fact]
+    public async Task SaveStructureAsync_WithNullPath_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(() => sut.SaveStructureAsync(null!));
+    }
+
+    [Fact]
+    public async Task SaveStructureAsync_WithEmptyPath_ThrowsArgumentException()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => sut.SaveStructureAsync(string.Empty));
+    }
+
+    [Fact]
+    public async Task LoadStructureAsync_WithValidFile_LoadsDataAndRebuildsCache()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string filePath = "C:\\config\\structure.json";
+
+        var testModel = new S7StructureModel
+        {
+            Inputs = new S7Inputs { DisplayName = "Inputs", Variables = [new S7Variable() { DisplayName = "TestInput", FullPath = "Inputs.TestInput"}] }
+        };
+        var json = JsonSerializer.Serialize(testModel, S7StructureSerializer.Options);
+
+        _mockFileSystem.AddFile(filePath, new MockFileData(json));
+
+        // Act
+        await sut.LoadStructureAsync(filePath);
+
+        // Assert
+        Assert.NotNull(_realDataStore.Inputs);
+        Assert.Equal("Inputs", _realDataStore.Inputs.DisplayName);
+
+        var element = sut.GetVariable("Inputs.TestInput");
+        Assert.NotNull(element);
+        Assert.IsType<S7Variable>(element);
+    }
+
+    [Fact]
+    public async Task LoadStructureAsync_WhenFileNotFound_ThrowsFileNotFoundException()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string filePath = "C:\\i_do_not_exist.json";
+
+        // Act & Assert
+        await Assert.ThrowsAsync<System.IO.FileNotFoundException>(() => sut.LoadStructureAsync(filePath));
     }
 
     #endregion

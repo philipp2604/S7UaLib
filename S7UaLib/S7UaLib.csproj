@@ -11,6 +11,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.6" />
     <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.5.376.213" />
     <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Core" Version="1.5.376.213" />
+    <PackageReference Include="System.IO.Abstractions" Version="22.0.14" />
   </ItemGroup>
 
 </Project>

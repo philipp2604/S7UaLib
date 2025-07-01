@@ -5,6 +5,7 @@ using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
 using S7UaLib.Services;
 using System.Collections;
+using System.IO.Abstractions;
 
 namespace S7UaLib.IntegrationTests.Services;
 
@@ -43,7 +44,7 @@ public class S7ServiceIntegrationTests
         {
             AcceptUntrustedCertificates = true
         };
-        var service = new S7Service(client, new S7UaLib.DataStore.S7DataStore());
+        var service = new S7Service(client, new S7UaLib.DataStore.S7DataStore(), new FileSystem());
 
         try
         {

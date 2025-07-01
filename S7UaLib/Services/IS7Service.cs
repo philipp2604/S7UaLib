@@ -53,4 +53,20 @@ internal interface IS7Service
     /// <param name="fullPath">The full path of the variable (e.g., "DataBlocksGlobal.MyDb.MyVar").</param>
     /// <returns>The <see cref="IS7Variable"/> if found; otherwise, null.</returns>
     public IS7Variable? GetVariable(string fullPath);
+
+    /// <summary>
+    /// Saves the current entire PLC structure from the data store to a JSON file.
+    /// This includes all discovered elements and their assigned data types.
+    /// </summary>
+    /// <param name="filePath">The path to the file where the structure will be saved.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task SaveStructureAsync(string filePath);
+
+    /// <summary>
+    /// Loads the PLC structure from a JSON file into the data store, bypassing the need for discovery.
+    /// After loading, the internal cache is automatically rebuilt.
+    /// </summary>
+    /// <param name="filePath">The path to the file from which the structure will be loaded.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task LoadStructureAsync(string filePath);
 }

@@ -8,7 +8,11 @@ using S7UaLib.Events;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
+using S7UaLib.Serialization.Json;
+using S7UaLib.Serialization.Models;
 using System.Collections;
+using System.IO.Abstractions;
+using System.Text.Json;
 
 namespace S7UaLib.Services;
 
@@ -21,6 +25,7 @@ public class S7Service : IS7Service
     private readonly IS7UaClient _client;
     private readonly IS7DataStore _dataStore;
     private readonly ILogger? _logger;
+    private readonly IFileSystem _fileSystem;
 
     /// <inheritdoc cref="IS7Service.VariableValueChanged"/>
     public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
@@ -30,11 +35,14 @@ public class S7Service : IS7Service
     /// </summary>
     /// <param name="client">The S7UaClient instance to use for communication.</param>
     /// <param name="dataStore">The S7DataStore instance to use as data store.</param>
+    /// <param name="fileSystem">The FileSystem instance to use for file operations.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    internal S7Service(IS7UaClient client, IS7DataStore dataStore, ILoggerFactory? loggerFactory = null)
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="client"/>, <paramref name="dataStore"/> or <paramref name="fileSystem"/> is <see langword="null"/>.</exception>
+    internal S7Service(IS7UaClient client, IS7DataStore dataStore, IFileSystem fileSystem, ILoggerFactory? loggerFactory = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _dataStore = dataStore ?? throw new ArgumentNullException(nameof(dataStore));
+        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
 
         if (loggerFactory != null)
         {
@@ -48,11 +56,11 @@ public class S7Service : IS7Service
     /// <param name="appConfig">The OPC UA application configuration used to initialize the client. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
     public S7Service(ApplicationConfiguration appConfig, Action<IList, IList> validateResponse, ILoggerFactory? loggerFactory = null)
     {
         _client = new S7UaClient(appConfig, validateResponse, loggerFactory);
         _dataStore = new S7DataStore(loggerFactory);
+        _fileSystem = new FileSystem();
 
         if (loggerFactory != null)
         {
@@ -197,6 +205,80 @@ public class S7Service : IS7Service
         _dataStore.TryGetVariableByPath(fullPath, out var variable);
         return variable;
     }
+
+    #region Persistence methods
+
+    /// <inheritdoc cref="IS7Service.SaveStructureAsync(string)"/>
+    public async Task SaveStructureAsync(string filePath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(filePath);
+
+        var structureModel = new S7StructureModel
+        {
+            DataBlocksGlobal = _dataStore.DataBlocksGlobal,
+            DataBlocksInstance = _dataStore.DataBlocksInstance,
+            Inputs = _dataStore.Inputs,
+            Outputs = _dataStore.Outputs,
+            Memory = _dataStore.Memory,
+            Timers = _dataStore.Timers,
+            Counters = _dataStore.Counters
+        };
+
+        try
+        {
+            _logger?.LogInformation("Saving S7 structure to file: {FilePath}", filePath);
+            await using var fileStream = _fileSystem.File.Create(filePath);
+
+            await JsonSerializer.SerializeAsync(fileStream, structureModel, S7StructureSerializer.Options);
+            _logger?.LogInformation("S7 structure successfully saved.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to save S7 structure to file: {FilePath}", filePath);
+            throw;
+        }
+    }
+
+    /// <inheritdoc cref="IS7Service.SaveStructureAsync(string)"/>
+    public async Task LoadStructureAsync(string filePath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(filePath);
+
+        if (!_fileSystem.File.Exists(filePath))
+        {
+            _logger?.LogError("Cannot load S7 structure. File not found: {FilePath}", filePath);
+            throw new FileNotFoundException("The structure file was not found.", filePath);
+        }
+
+        try
+        {
+            _logger?.LogInformation("Loading S7 structure from file: {FilePath}", filePath);
+            await using var fileStream = _fileSystem.File.OpenRead(filePath);
+
+            var loadedModel = await JsonSerializer.DeserializeAsync<S7StructureModel>(fileStream, S7StructureSerializer.Options)
+                ?? throw new JsonException("Deserialization resulted in a null structure model.");
+
+            _dataStore.DataBlocksGlobal = loadedModel.DataBlocksGlobal;
+            _dataStore.DataBlocksInstance = loadedModel.DataBlocksInstance;
+            _dataStore.Inputs = loadedModel.Inputs;
+            _dataStore.Outputs = loadedModel.Outputs;
+            _dataStore.Memory = loadedModel.Memory;
+            _dataStore.Timers = loadedModel.Timers;
+            _dataStore.Counters = loadedModel.Counters;
+
+            _logger?.LogInformation("S7 structure successfully loaded. Rebuilding internal cache...");
+
+            _dataStore.BuildCache();
+            _logger?.LogInformation("Internal cache rebuilt.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to load S7 structure from file: {FilePath}", filePath);
+            throw;
+        }
+    }
+
+    #endregion
 
     protected virtual void OnVariableValueChanged(VariableValueChangedEventArgs e)
     {
