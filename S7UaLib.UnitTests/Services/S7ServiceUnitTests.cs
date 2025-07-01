@@ -68,7 +68,6 @@ public class S7ServiceUnitTests
         _mockClient.Setup(c => c.GetTimers()).Returns((S7Timers?)null);
         _mockClient.Setup(c => c.GetCounters()).Returns((S7Counters?)null);
 
-
         // Act
         sut.DiscoverStructure();
 
@@ -154,7 +153,6 @@ public class S7ServiceUnitTests
         Assert.False(eventFired, "VariableValueChanged event should not fire for same values.");
     }
 
-
     #endregion ReadAllVariables Tests
 
     #region GetVariable Tests
@@ -181,7 +179,7 @@ public class S7ServiceUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        _realDataStore.BuildCache(); // Empty cache
+        _realDataStore.BuildCache();
 
         // Act
         var result = sut.GetVariable("Some.Non.Existent.Path");
@@ -207,7 +205,7 @@ public class S7ServiceUnitTests
         VariableValueChangedEventArgs? eventArgs = null;
         sut.VariableValueChanged += (s, e) => eventArgs = e;
 
-        var path = "DataBlocksGlobal.DB1.TestVar";
+        const string path = "DataBlocksGlobal.DB1.TestVar";
 
         // Act
         var success = sut.UpdateVariableType(path, S7UaLib.S7.Types.S7DataType.CHAR);
@@ -218,7 +216,7 @@ public class S7ServiceUnitTests
         var updatedVar = sut.GetVariable(path);
         Assert.NotNull(updatedVar);
         Assert.Equal(S7UaLib.S7.Types.S7DataType.CHAR, updatedVar.S7Type);
-        Assert.Equal('A', updatedVar.Value); // Value should be reconverted
+        Assert.Equal('A', updatedVar.Value);
 
         // Assert that the event was fired because the value changed (from byte 65 to char 'A')
         Assert.NotNull(eventArgs);
@@ -258,7 +256,7 @@ public class S7ServiceUnitTests
             .ReturnsAsync(true)
             .Verifiable();
 
-        var path = "DataBlocksGlobal.DB1.TestVar";
+        const string path = "DataBlocksGlobal.DB1.TestVar";
         const short valueToWrite = 123;
 
         // Act

@@ -15,15 +15,13 @@ namespace S7UaLib.Services;
 /// A high-level service for interacting with a Siemens S7 PLC via OPC UA.
 /// This service encapsulates the S7UaClient and an internal data store to provide a simplified API.
 /// </summary>
-public class S7Service
+public class S7Service : IS7Service
 {
     private readonly IS7UaClient _client;
     private readonly S7DataStore _dataStore;
     private readonly ILogger? _logger;
 
-    /// <summary>
-    /// Occurs when a variable's value changes after a read operation.
-    /// </summary>
+    /// <inheritdoc cref="IS7Service.VariableValueChanged"/>
     public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
 
     /// <summary>
@@ -61,10 +59,7 @@ public class S7Service
         }
     }
 
-    /// <summary>
-    /// Discovers the entire structure of the OPC UA server and populates the internal data store.
-    /// This includes all data blocks, I/O areas, and their variables.
-    /// </summary>
+    /// <inheritdoc cref="IS7Service.DiscoverStructure"/>
     public void DiscoverStructure()
     {
         if (!_client.IsConnected)
@@ -72,7 +67,6 @@ public class S7Service
             throw new InvalidOperationException("Client is not connected. Please connect before discovering the structure.");
         }
 
-        // 1. Get all top-level "shell" elements
         var globalDbShells = _client.GetAllGlobalDataBlocks();
         var instanceDbShells = _client.GetAllInstanceDataBlocks();
         _dataStore.Inputs = _client.GetInputs();
@@ -81,13 +75,12 @@ public class S7Service
         _dataStore.Timers = _client.GetTimers();
         _dataStore.Counters = _client.GetCounters();
 
-        // 2. Discover the full structure of each shell element
-        _dataStore.DataBlocksGlobal = (globalDbShells ?? []) // <--- FIX
+        _dataStore.DataBlocksGlobal = (globalDbShells ?? [])
             .Select(shell => _client.DiscoverElement(shell) as S7DataBlockGlobal)
             .Where(db => db is not null)
             .ToList()!;
 
-        _dataStore.DataBlocksInstance = (instanceDbShells ?? []) // <--- FIX
+        _dataStore.DataBlocksInstance = (instanceDbShells ?? [])
             .Select(shell => _client.DiscoverElement(shell) as S7DataBlockInstance)
             .Where(db => db is not null)
             .ToList()!;
@@ -98,14 +91,10 @@ public class S7Service
         if (_dataStore.Timers is not null) _dataStore.Timers = _client.DiscoverVariablesOfElement(_dataStore.Timers);
         if (_dataStore.Counters is not null) _dataStore.Counters = _client.DiscoverVariablesOfElement(_dataStore.Counters);
 
-        // 3. Build the cache for fast path-based access
         _dataStore.BuildCache();
     }
 
-    /// <summary>
-    /// Reads the values of all discovered variables from the PLC.
-    /// Raises the VariableValueChanged event for any variable whose value has changed.
-    /// </summary>
+    /// <inheritdoc cref="IS7Service.ReadAllVariables"/>
     public void ReadAllVariables()
     {
         if (!_client.IsConnected)
@@ -115,7 +104,6 @@ public class S7Service
 
         var oldVariables = _dataStore.GetAllVariables();
 
-        // Read and update each top-level element in the store
         _dataStore.DataBlocksGlobal = [.. _dataStore.DataBlocksGlobal.Select(db => _client.ReadValuesOfElement(db, "DataBlocksGlobal"))];
 
         _dataStore.DataBlocksInstance = [.. _dataStore.DataBlocksInstance.Select(db => _client.ReadValuesOfElement(db, "DataBlocksInstance"))];
@@ -126,16 +114,13 @@ public class S7Service
         if (_dataStore.Timers is not null) _dataStore.Timers = _client.ReadValuesOfElement(_dataStore.Timers);
         if (_dataStore.Counters is not null) _dataStore.Counters = _client.ReadValuesOfElement(_dataStore.Counters);
 
-        // Rebuild the cache with the new values
         _dataStore.BuildCache();
         var newVariables = _dataStore.GetAllVariables();
 
-        // Compare old and new values and raise events
         foreach (var newVarEntry in newVariables)
         {
             if (oldVariables.TryGetValue(newVarEntry.Key, out var oldVar))
             {
-                // Compare values. Note: object.Equals handles nulls correctly.
                 if (!object.Equals(oldVar.Value, newVarEntry.Value.Value))
                 {
                     OnVariableValueChanged(new VariableValueChangedEventArgs(oldVar, newVarEntry.Value));
@@ -144,12 +129,7 @@ public class S7Service
         }
     }
 
-    /// <summary>
-    /// Writes a value to a variable specified by its full symbolic path.
-    /// </summary>
-    /// <param name="fullPath">The full symbolic path of the variable to write to.</param>
-    /// <param name="value">The user-friendly .NET value to write.</param>
-    /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
+    /// <inheritdoc cref="IS7Service.WriteVariableAsync(string, object)"/>
     public async Task<bool> WriteVariableAsync(string fullPath, object value)
     {
         if (!_dataStore.TryGetVariableByPath(fullPath, out var variable) || variable?.NodeId is null)
@@ -169,13 +149,7 @@ public class S7Service
         }
     }
 
-    /// <summary>
-    /// Updates the S7 data type of a variable in the data store and attempts to reconvert its current raw value.
-    /// If the conversion is successful, it raises the <see cref="VariableValueChanged"/> event.
-    /// </summary>
-    /// <param name="fullPath">The full path of the variable to update.</param>
-    /// <param name="newType">The new <see cref="S7DataType"/> to apply.</param>
-    /// <returns>True if the variable was found and the type was updated; otherwise, false.</returns>
+    /// <inheritdoc cref="IS7Service.UpdateVariableType(string, S7DataType)"/>
     public bool UpdateVariableType(string fullPath, S7DataType newType)
     {
         if (!_dataStore.TryGetVariableByPath(fullPath, out var oldVariable) || oldVariable is not S7Variable oldS7Var)
@@ -184,15 +158,12 @@ public class S7Service
             return false;
         }
 
-        // Create the new variable with the new type but preserving all other properties
         var newVariable = oldS7Var with { S7Type = newType };
 
-        // Attempt to reconvert the existing raw value with the new type's converter
         if (newVariable.RawOpcValue is not null)
         {
             try
             {
-                // Make S7UaClient.GetConverter public or internal
                 var converter = S7UaClient.GetConverter(newType, newVariable.RawOpcValue.GetType());
                 var convertedValue = converter.ConvertFromOpc(newVariable.RawOpcValue);
                 newVariable = newVariable with { Value = convertedValue, SystemType = converter.TargetType };
@@ -208,10 +179,8 @@ public class S7Service
 
         if (updateSuccess)
         {
-            // Get the truly new variable state from the store after update and cache rebuild
             _dataStore.TryGetVariableByPath(fullPath, out var finalNewVariable);
 
-            // If the value changed due to reconversion, fire the event
             if (!object.Equals(oldVariable.Value, finalNewVariable?.Value))
             {
                 OnVariableValueChanged(new VariableValueChangedEventArgs(oldVariable, finalNewVariable ?? newVariable));
@@ -221,11 +190,7 @@ public class S7Service
         return updateSuccess;
     }
 
-    /// <summary>
-    /// Retrieves a variable from the data store by its full symbolic path.
-    /// </summary>
-    /// <param name="fullPath">The full path of the variable (e.g., "DataBlocksGlobal.MyDb.MyVar").</param>
-    /// <returns>The <see cref="IS7Variable"/> if found; otherwise, null.</returns>
+    /// <inheritdoc cref="IS7Service.GetVariable(string)"/>
     public IS7Variable? GetVariable(string fullPath)
     {
         _dataStore.TryGetVariableByPath(fullPath, out var variable);

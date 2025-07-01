@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace S7UaLib.IntegrationTests.Helpers;
+﻿namespace S7UaLib.IntegrationTests.Helpers;
 internal static class AssertHelpers
 {
     /// <summary>

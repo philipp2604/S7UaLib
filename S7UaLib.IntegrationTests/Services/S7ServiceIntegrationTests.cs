@@ -1,10 +1,10 @@
 ﻿using Opc.Ua;
-using S7UaLib.Services;
-using System.Collections;
+using S7UaLib.Client;
+using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
-using S7UaLib.S7.Structure;
-using S7UaLib.Client;
+using S7UaLib.Services;
+using System.Collections;
 
 namespace S7UaLib.IntegrationTests.Services;
 
@@ -39,7 +39,6 @@ public class S7ServiceIntegrationTests
 
     private async Task<(S7Service, S7UaClient)> CreateAndConnectServiceAsync()
     {
-        // For integration tests, we need access to the underlying client to perform the connection
         var client = new S7UaClient(_appConfig, _validateResponse)
         {
             AcceptUntrustedCertificates = true
@@ -59,14 +58,15 @@ public class S7ServiceIntegrationTests
         return (service, client);
     }
 
-    #endregion
+    #endregion Helper Methods
 
     #region Full Workflow Tests
 
     [Fact]
     public async Task DiscoverStructure_And_ReadAllVariables_PopulatesStoreCorrectly()
     {
-        (S7Service? service, S7UaClient? client) = (null, null);
+        (S7Service? _, S7UaClient? client) = (null, null);
+        S7Service? service;
         try
         {
             // Arrange
@@ -77,7 +77,7 @@ public class S7ServiceIntegrationTests
 
             // Manually set S7DataTypes for accurate value conversion, as this info is not on the server.
             // This simulates loading a configuration or setting types programmatically.
-            UpdateAllVariableTypes(service);
+            S7ServiceIntegrationTests.UpdateAllVariableTypes(service);
 
             // Act: Read all variables
             service.ReadAllVariables();
@@ -137,7 +137,7 @@ public class S7ServiceIntegrationTests
             // Arrange
             (service, client) = await CreateAndConnectServiceAsync();
             service.DiscoverStructure();
-            UpdateAllVariableTypes(service);
+            S7ServiceIntegrationTests.UpdateAllVariableTypes(service);
             service.ReadAllVariables();
 
             testVar = service.GetVariable("DataBlocksGlobal.Datablock.TestInt");
@@ -181,7 +181,6 @@ public class S7ServiceIntegrationTests
         }
     }
 
-
     [Fact]
     public async Task WriteVariableAsync_And_ReadBack_Succeeds()
     {
@@ -194,7 +193,7 @@ public class S7ServiceIntegrationTests
             // Arrange
             (service, client) = await CreateAndConnectServiceAsync();
             service.DiscoverStructure();
-            UpdateAllVariableTypes(service);
+            S7ServiceIntegrationTests.UpdateAllVariableTypes(service);
             service.ReadAllVariables();
 
             var testVar = service.GetVariable(varPath);
@@ -217,7 +216,7 @@ public class S7ServiceIntegrationTests
         finally
         {
             // Restore
-            if (service is not null && client is not null && client.IsConnected && originalValue is not null)
+            if (service is not null && client?.IsConnected == true && originalValue is not null)
             {
                 await service.WriteVariableAsync(varPath, originalValue);
             }
@@ -228,15 +227,16 @@ public class S7ServiceIntegrationTests
     [Fact]
     public async Task WriteVariableAsync_WithWrongType_ReturnsFalse()
     {
-        (S7Service? service, S7UaClient? client) = (null, null);
+        (S7Service? _, S7UaClient? client) = (null, null);
         const string varPath = "DataBlocksGlobal.Datablock.AnotherTestBool"; // Expects short
 
         try
         {
+            S7Service? service;
             // Arrange
             (service, client) = await CreateAndConnectServiceAsync();
             service.DiscoverStructure();
-            UpdateAllVariableTypes(service);
+            S7ServiceIntegrationTests.UpdateAllVariableTypes(service);
 
             // Act: Try to write a string to an INT variable
             bool success = await service.WriteVariableAsync(varPath, "this-is-not-an-int");
@@ -250,73 +250,69 @@ public class S7ServiceIntegrationTests
         }
     }
 
-
-    #endregion
+    #endregion Full Workflow Tests
 
     #region Helper - Type Update
 
     // This helper simulates loading a configuration where S7 data types are known.
-    // In a real application, this information would come from a file or a configuration database.
-    private void UpdateAllVariableTypes(S7Service service)
+    private static void UpdateAllVariableTypes(S7Service service)
     {
         // Global Datablock
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestBool", S7DataType.BOOL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestByte", S7DataType.BYTE);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestChar", S7DataType.CHAR);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestWChar", S7DataType.WCHAR);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestSInt", S7DataType.SINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDInt", S7DataType.DINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLInt", S7DataType.LINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestUInt", S7DataType.UINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestUSInt", S7DataType.USINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestUDInt", S7DataType.UDINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestULInt", S7DataType.ULINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestReal", S7DataType.REAL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLReal", S7DataType.LREAL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDWord", S7DataType.DWORD);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLWord", S7DataType.LWORD);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDate", S7DataType.DATE);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestTime", S7DataType.TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestTimeOfDay", S7DataType.TIME_OF_DAY);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestS5Time", S7DataType.S5TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDateAndTime", S7DataType.DATE_AND_TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLTime", S7DataType.LTIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLTimeOfDay", S7DataType.LTIME_OF_DAY);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDTL", S7DataType.DTL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLDT", S7DataType.LDT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct", S7DataType.STRUCT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructBool", S7DataType.BOOL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructInt", S7DataType.INT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestDateAndTime", S7DataType.DATE_AND_TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestCharArray", S7DataType.ARRAY_OF_CHAR);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDateAndTimeArray", S7DataType.ARRAY_OF_DATE_AND_TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.AnotherTestInt", S7DataType.INT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.AnothertTestUInt", S7DataType.UINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestBool", S7DataType.BOOL);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestByte", S7DataType.BYTE);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestChar", S7DataType.CHAR);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestWChar", S7DataType.WCHAR);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestSInt", S7DataType.SINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestDInt", S7DataType.DINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestLInt", S7DataType.LINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestUInt", S7DataType.UINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestUSInt", S7DataType.USINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestUDInt", S7DataType.UDINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestULInt", S7DataType.ULINT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestReal", S7DataType.REAL);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestLReal", S7DataType.LREAL);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestDWord", S7DataType.DWORD);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestLWord", S7DataType.LWORD);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestDate", S7DataType.DATE);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestTime", S7DataType.TIME);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestTimeOfDay", S7DataType.TIME_OF_DAY);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestS5Time", S7DataType.S5TIME);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestDateAndTime", S7DataType.DATE_AND_TIME);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestLTime", S7DataType.LTIME);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestLTimeOfDay", S7DataType.LTIME_OF_DAY);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestDTL", S7DataType.DTL);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestLDT", S7DataType.LDT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct", S7DataType.STRUCT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructBool", S7DataType.BOOL);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructInt", S7DataType.INT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestDateAndTime", S7DataType.DATE_AND_TIME);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestCharArray", S7DataType.ARRAY_OF_CHAR);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.TestDateAndTimeArray", S7DataType.ARRAY_OF_DATE_AND_TIME);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.AnotherTestInt", S7DataType.INT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksGlobal.Datablock.AnothertTestUInt", S7DataType.UINT);
 
         // I/O/M
-        UpdateType(service, "Inputs.TestInput", S7DataType.BOOL);
-        UpdateType(service, "Outputs.TestOutput", S7DataType.BOOL);
-        UpdateType(service, "Memory.TestVar", S7DataType.BOOL);
+        S7ServiceIntegrationTests.UpdateType(service, "Inputs.TestInput", S7DataType.BOOL);
+        S7ServiceIntegrationTests.UpdateType(service, "Outputs.TestOutput", S7DataType.BOOL);
+        S7ServiceIntegrationTests.UpdateType(service, "Memory.TestVar", S7DataType.BOOL);
 
         // Instance DB
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Inputs.Function_InputBool", S7DataType.BOOL);
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Outputs.Function_OutputInt", S7DataType.INT);
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct", S7DataType.STRUCT);
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool", S7DataType.BOOL);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Inputs.Function_InputBool", S7DataType.BOOL);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Outputs.Function_OutputInt", S7DataType.INT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct", S7DataType.STRUCT);
+        S7ServiceIntegrationTests.UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool", S7DataType.BOOL);
     }
 
-    private void UpdateType(S7Service service, string path, S7DataType type)
+    private static void UpdateType(S7Service service, string path, S7DataType type)
     {
-        // This is a placeholder for the future "UpdateVariableType" method.
-        // For now, we manually manipulate the store for the test's purpose.
-        if (service.GetVariable(path) is S7Variable variable)
+        if (service.GetVariable(path) is S7Variable)
         {
             var success = service.UpdateVariableType(path, type);
             Assert.True(success, $"Failed to update type for {path}");
         }
     }
 
-    #endregion
+    #endregion Helper - Type Update
 }

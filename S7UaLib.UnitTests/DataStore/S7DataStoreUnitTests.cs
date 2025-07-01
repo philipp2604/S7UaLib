@@ -62,9 +62,6 @@ public class S7DataStoreUnitTests
         Assert.True(sut.TryGetVariableByPath("Inputs.MyStruct", out var foundStruct));
         Assert.Same(structVar, foundStruct);
 
-        // This test relies on the FullPath being correctly set during a read operation.
-        // For cache building, it constructs the path recursively.
-        // Let's assume the read operation would have set the FullPath on the struct member.
         structMember = structMember with { FullPath = "Inputs.MyStruct.Member1" };
         structVar = structVar with { StructMembers = [structMember] };
         sut.Inputs = sut.Inputs with { Variables = [structVar] };
@@ -84,7 +81,7 @@ public class S7DataStoreUnitTests
         sut.Memory = new S7Memory
         {
             DisplayName = "Memory",
-            FullPath = "Some.Explicit.Path", // Path of the parent
+            FullPath = "Some.Explicit.Path",
             Variables = [varWithFullPath]
         };
 
@@ -94,9 +91,8 @@ public class S7DataStoreUnitTests
         // Assert
         Assert.True(sut.TryGetVariableByPath("Some.Explicit.Path.Var", out var foundVar));
         Assert.Same(varWithFullPath, foundVar);
-        Assert.False(sut.TryGetVariableByPath("Memory.Var", out _)); // Should not use the constructed path
+        Assert.False(sut.TryGetVariableByPath("Memory.Var", out _));
     }
-
 
     [Fact]
     public void BuildCache_WhenCalledTwice_ClearsOldCacheBeforeRebuilding()
@@ -114,7 +110,6 @@ public class S7DataStoreUnitTests
         sut.BuildCache();
         Assert.True(sut.TryGetVariableByPath("DataBlocksGlobal.DB_TO_REMOVE.OldVar", out _));
 
-        // Now, update the store to have different data
         sut.DataBlocksGlobal =
         [
             new S7DataBlockGlobal
@@ -123,7 +118,6 @@ public class S7DataStoreUnitTests
                 Variables = [ new S7Variable { DisplayName = "NewVar" } ]
             }
         ];
-
 
         // Act
         sut.BuildCache();
@@ -142,7 +136,7 @@ public class S7DataStoreUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        sut.BuildCache(); // Build empty cache
+        sut.BuildCache();
 
         // Act
         var result = sut.TryGetVariableByPath("Non.Existent.Path", out var variable);
@@ -175,7 +169,7 @@ public class S7DataStoreUnitTests
         Assert.True(allVars.ContainsKey("DataBlocksGlobal.DB1.Var1"));
     }
 
-    #endregion
+    #endregion Getter Tests
 
     #region UpdateVariable Tests
 
@@ -196,7 +190,7 @@ public class S7DataStoreUnitTests
         sut.BuildCache();
 
         var newVar = new S7Variable { DisplayName = "VarToReplace", Value = 99 };
-        var path = "DataBlocksGlobal.DB1.VarToReplace";
+        const string path = "DataBlocksGlobal.DB1.VarToReplace";
 
         // Act
         var success = sut.UpdateVariable(path, newVar);
@@ -222,7 +216,7 @@ public class S7DataStoreUnitTests
         sut.BuildCache();
 
         var newVar = new S7Variable { DisplayName = "TestInput", Value = true };
-        var path = "Inputs.TestInput";
+        const string path = "Inputs.TestInput";
 
         // Act
         var success = sut.UpdateVariable(path, newVar);
@@ -253,7 +247,7 @@ public class S7DataStoreUnitTests
         sut.BuildCache();
 
         var newMember = new S7Variable { DisplayName = "Member", Value = 456 };
-        var path = "DataBlocksGlobal.DB1.MyStruct.Member";
+        const string path = "DataBlocksGlobal.DB1.MyStruct.Member";
 
         // Act
         var success = sut.UpdateVariable(path, newMember);
@@ -281,5 +275,5 @@ public class S7DataStoreUnitTests
         Assert.False(success);
     }
 
-    #endregion
+    #endregion UpdateVariable Tests
 }

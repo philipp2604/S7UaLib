@@ -329,6 +329,7 @@ public class S7UaClientUnitTests
     #endregion Structure Discovery and Browsing Tests
 
     #region Reading and Writing Tests
+
     #region Reading Tests
 
     [Fact]
@@ -382,8 +383,8 @@ public class S7UaClientUnitTests
             {
                 results =
                 [
-                    new(new Variant(true)) { StatusCode = StatusCodes.Good }, // Corresponds to var1NodeId
-                    new(new Variant((short)123)) { StatusCode = StatusCodes.Good } // Corresponds to var2NodeId
+                    new(new Variant(true)) { StatusCode = StatusCodes.Good },
+                    new(new Variant((short)123)) { StatusCode = StatusCodes.Good }
                 ];
                 diags = [];
             }))
@@ -395,7 +396,7 @@ public class S7UaClientUnitTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.NotSame(elementWithStructure, result); // A new object should be returned
+        Assert.NotSame(elementWithStructure, result);
         Assert.Equal(2, result.Variables.Count);
 
         var resultVar1 = result.Variables.First(v => v.DisplayName == "TestBool");
@@ -451,8 +452,8 @@ public class S7UaClientUnitTests
             {
                 results =
                 [
-                    new(new Variant(false)) { StatusCode = StatusCodes.Good }, // MemberBool
-                new(new Variant(9999)) { StatusCode = StatusCodes.Good }  // MemberDInt
+                    new(new Variant(false)) { StatusCode = StatusCodes.Good },
+                new(new Variant(9999)) { StatusCode = StatusCodes.Good }
                 ];
                 diags = [];
             }));

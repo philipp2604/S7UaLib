@@ -410,7 +410,7 @@ public class S7UaClientIntegrationTests
         }
     }
 
-    #endregion
+    #endregion Write Tests
 
     #endregion Reading and Writing Tests
 }

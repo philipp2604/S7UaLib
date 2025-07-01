@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using S7UaLib.DataStore.Contracts;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
@@ -11,7 +12,7 @@ namespace S7UaLib.DataStore;
 /// Represents an in-memory storage for the entire S7 PLC structure.
 /// It holds the discovered elements and provides a fast, path-based lookup cache for variables.
 /// </summary>
-internal class S7DataStore
+internal class S7DataStore : IS7DataStore
 {
     public S7DataStore(ILoggerFactory? loggerFactory = null)
     {
@@ -24,63 +25,38 @@ internal class S7DataStore
     private readonly Dictionary<string, IS7Variable> _variableCacheByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger? _logger;
 
-    /// <summary>
-    /// Gets the collection of global data blocks.
-    /// </summary>
-    public IReadOnlyList<S7DataBlockGlobal> DataBlocksGlobal { get; internal set; } = [];
+    /// <inheritdoc cref="IS7DataStore.DataBlocksGlobal"/>
+    public IReadOnlyList<S7DataBlockGlobal> DataBlocksGlobal { get; set; } = [];
 
-    /// <summary>
-    /// Gets the collection of instance data blocks.
-    /// </summary>
-    public IReadOnlyList<S7DataBlockInstance> DataBlocksInstance { get; internal set; } = [];
+    /// <inheritdoc cref="IS7DataStore.DataBlocksInstance"/>
+    public IReadOnlyList<S7DataBlockInstance> DataBlocksInstance { get; set; } = [];
 
-    /// <summary>
-    /// Gets the S7 Input memory area.
-    /// </summary>
-    public S7Inputs? Inputs { get; internal set; }
+    /// <inheritdoc cref="IS7DataStore.Inputs"/>
+    public S7Inputs? Inputs { get; set; }
 
-    /// <summary>
-    /// Gets the S7 Output memory area.
-    /// </summary>
-    public S7Outputs? Outputs { get; internal set; }
+    /// ´<inheritdoc cref="IS7DataStore.Outputs"/>
+    public S7Outputs? Outputs { get; set; }
 
-    /// <summary>
-    /// Gets the S7 Memory/Flag area.
-    /// </summary>
-    public S7Memory? Memory { get; internal set; }
+    /// <inheritdoc cref="IS7DataStore.Memory"/>
+    public S7Memory? Memory { get; set; }
 
-    /// <summary>
-    /// Gets the S7 Timers memory area.
-    /// </summary>
-    public S7Timers? Timers { get; internal set; }
+    /// <inheritdoc cref="IS7DataStore.Timers"/>
+    public S7Timers? Timers { get; set; }
 
-    /// <summary>
-    /// Gets the S7 Counters memory area.
-    /// </summary>
-    public S7Counters? Counters { get; internal set; }
+    /// <inheritdoc cref="IS7DataStore.Counters"/>
+    public S7Counters? Counters { get; set; }
 
-    /// <summary>
-    /// Tries to retrieve a variable by its full symbolic path.
-    /// </summary>
-    /// <param name="fullPath">The full path of the variable (e.g., "DataBlocksGlobal.MyDb.MyVar").</param>
-    /// <param name="variable">The found variable, or null if not found.</param>
-    /// <returns>True if the variable was found; otherwise, false.</returns>
+    /// <inheritdoc cref="IS7DataStore.TryGetVariableByPath(string, out IS7Variable)"/>
     public bool TryGetVariableByPath(string fullPath, [MaybeNullWhen(false)] out IS7Variable variable)
     {
         return _variableCacheByPath.TryGetValue(fullPath, out variable);
     }
 
-    /// <summary>
-    /// Gets a dictionary of all variables keyed by their full path.
-    /// </summary>
-    /// <returns>A new dictionary containing all cached variables.</returns>
+    /// <inheritdoc cref="IS7DataStore.GetAllVariables"/>
     public IReadOnlyDictionary<string, IS7Variable> GetAllVariables() =>
         new Dictionary<string, IS7Variable>(_variableCacheByPath, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Clears and rebuilds the internal variable cache from the stored structure elements.
-    /// This should be called after the structure is discovered or modified.
-    /// </summary>
+    /// <inheritdoc cref="IS7DataStore.BuildCache"/>
     public void BuildCache()
     {
         _variableCacheByPath.Clear();
@@ -101,14 +77,8 @@ internal class S7DataStore
         if (Counters is not null) AddVariablesToCacheRecursively(Counters, null);
     }
 
-    /// <summary>
-    /// Updates a variable in the store by its full path. This replaces the variable in the
-    /// immutable hierarchy and rebuilds the cache to ensure data consistency.
-    /// </summary>
-    /// <param name="fullPath">The full path of the variable to replace.</param>
-    /// <param name="newVariable">The new variable instance.</param>
-    /// <returns>True if the variable was found and replaced; otherwise, false.</returns>
-    internal bool UpdateVariable(string fullPath, IS7Variable newVariable)
+    /// <inheritdoc cref="IS7DataStore.UpdateVariable(string, IS7Variable)"/>
+    public bool UpdateVariable(string fullPath, IS7Variable newVariable)
     {
         var pathSegments = fullPath.Split('.');
         if (pathSegments.Length < 2) return false;
@@ -117,7 +87,6 @@ internal class S7DataStore
         var remainingPath = string.Join(".", pathSegments.Skip(1));
         bool replaced = false;
 
-        // Handle list-based roots (DBs)
         if (rootName.Equals("DataBlocksGlobal", StringComparison.OrdinalIgnoreCase))
         {
             (var newList, replaced) = ReplaceVariableInList(DataBlocksGlobal, remainingPath, newVariable);
@@ -128,7 +97,6 @@ internal class S7DataStore
             (var newList, replaced) = ReplaceVariableInList(DataBlocksInstance, remainingPath, newVariable);
             if (replaced) DataBlocksInstance = newList;
         }
-        // Handle single object roots (I/O, Memory etc.)
         else if (Inputs is not null && rootName.Equals(Inputs.DisplayName, StringComparison.OrdinalIgnoreCase))
         {
             var newElement = ReplaceVariableInElement(Inputs, remainingPath, newVariable);
@@ -191,7 +159,6 @@ internal class S7DataStore
             var currentElement = mutableList[i];
             if (currentElement.DisplayName is not null && path.StartsWith(currentElement.DisplayName, StringComparison.OrdinalIgnoreCase))
             {
-                // Determine the remaining path after stripping the current element's name
                 string remainingPath = (path.Length == currentElement.DisplayName.Length)
                     ? ""
                     : path.Substring(currentElement.DisplayName.Length).TrimStart('.');
@@ -210,10 +177,8 @@ internal class S7DataStore
 
     private IUaElement ReplaceVariableInElement(IUaElement element, string path, IS7Variable newVariable)
     {
-        // Base Case: If path is empty, we are at the target. Replace it.
         if (string.IsNullOrEmpty(path))
         {
-            // This should only happen when the target itself is passed (e.g., a variable)
             return element is IS7Variable ? newVariable : element;
         }
 
@@ -223,8 +188,6 @@ internal class S7DataStore
 
         switch (element)
         {
-            // When we are at a variable, we must be trying to replace one of its members.
-            // The path should contain the member's name, not this variable's name.
             case S7Variable variable when variable.S7Type == S7DataType.STRUCT:
             {
                 (var newMembers, bool replaced) = ReplaceVariableInList(variable.StructMembers, path, newVariable);
@@ -232,7 +195,6 @@ internal class S7DataStore
                 break;
             }
 
-            // When we are at a simple container (like a Global DB or I/O area), check its variable list.
             case S7StructureElement s7Element:
             {
                 (var newVars, bool replaced) = ReplaceVariableInList(s7Element.Variables, path, newVariable);
@@ -240,7 +202,6 @@ internal class S7DataStore
                 break;
             }
 
-            // When we are at an instance DB, descend into the correct section.
             case S7DataBlockInstance idb:
                 if (idb.Inputs?.DisplayName == nextSegment)
                 {
@@ -259,7 +220,6 @@ internal class S7DataStore
                 }
                 break;
 
-            // When we are at a section, check its variables and nested instances.
             case S7InstanceDbSection section:
             {
                 (var newVars, bool varsReplaced) = ReplaceVariableInList(section.Variables, path, newVariable);
@@ -270,12 +230,11 @@ internal class S7DataStore
                 break;
             }
         }
-        return element; // Path not found, return original element
+        return element;
     }
 
     private void AddVariablesToCacheRecursively(IUaElement element, string? currentPath)
     {
-        // Use the element's FullPath if available, otherwise build it.
         string? elementPath = element switch
         {
             IS7Variable v => v.FullPath,
