@@ -30,8 +30,7 @@ internal static class S7StructureSerializer
             Converters =
             {
                 new NodeIdJsonConverter(),
-                new TypeJsonConverter(),
-                new StatusCodeJsonConverter()
+                new TypeJsonConverter()
             },
             TypeInfoResolver = new DefaultJsonTypeInfoResolver
             {

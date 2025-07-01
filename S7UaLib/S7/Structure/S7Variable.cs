@@ -36,6 +36,7 @@ public record S7Variable : IS7Variable
     public Type? SystemType { get; init; }
 
     /// <inheritdoc cref="IS7Variable.StatusCode" />
+    [JsonIgnore]
     public StatusCode StatusCode { get; init; }
 
     /// <inheritdoc cref="IS7Variable.StructMembers" />

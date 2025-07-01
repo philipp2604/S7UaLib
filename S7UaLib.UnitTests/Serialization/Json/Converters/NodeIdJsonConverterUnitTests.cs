@@ -7,42 +7,55 @@ using Xunit;
 namespace S7UaLib.UnitTests.Serialization.Json.Converters;
 
 [Trait("Category", "Unit")]
-public class StatusCodeJsonConverterTests
+public class NodeIdJsonConverterTests
 {
     private readonly JsonSerializerOptions _options;
 
-    public StatusCodeJsonConverterTests()
+    public NodeIdJsonConverterTests()
     {
         _options = new JsonSerializerOptions();
-        _options.Converters.Add(new StatusCodeJsonConverter());
+        _options.Converters.Add(new NodeIdJsonConverter());
     }
 
     #region Write Tests
 
     [Fact]
-    public void Write_WithGoodStatusCode_SerializesCorrectly()
+    public void Write_WithStringIdentifier_SerializesCorrectly()
     {
         // Arrange
-        var statusCode = new StatusCode(StatusCodes.Good);
-        const string expectedJson = """{"Code":0,"Symbol":"Good"}""";
+        var nodeId = new NodeId("MyNode", 3);
+        const string expectedJson = "\"ns=3;s=MyNode\"";
 
         // Act
-        var json = JsonSerializer.Serialize(statusCode, _options);
+        var json = JsonSerializer.Serialize(nodeId, _options);
 
         // Assert
         Assert.Equal(expectedJson, json);
     }
 
     [Fact]
-    public void Write_WithBadStatusCode_SerializesCorrectly()
+    public void Write_WithNumericIdentifier_SerializesCorrectly()
     {
         // Arrange
-        var statusCode = new StatusCode(StatusCodes.BadWaitingForInitialData);
-        // The uint value for BadWaitingForInitialData is 0x80320000 = 2150760448.
-        const string expectedJson = """{"Code":2150760448,"Symbol":"BadWaitingForInitialData"}""";
+        var nodeId = new NodeId(1234, 2);
+        const string expectedJson = "\"ns=2;i=1234\"";
 
         // Act
-        var json = JsonSerializer.Serialize(statusCode, _options);
+        var json = JsonSerializer.Serialize(nodeId, _options);
+
+        // Assert
+        Assert.Equal(expectedJson, json);
+    }
+
+    [Fact]
+    public void Write_WithNullNodeId_SerializesToNull()
+    {
+        // Arrange
+        NodeId? nodeId = null;
+        const string expectedJson = "null";
+
+        // Act
+        var json = JsonSerializer.Serialize(nodeId, _options);
 
         // Assert
         Assert.Equal(expectedJson, json);
@@ -53,70 +66,78 @@ public class StatusCodeJsonConverterTests
     #region Read Tests
 
     [Fact]
-    public void Read_WithValidJson_DeserializesCorrectly()
+    public void Read_WithValidStringIdentifier_DeserializesCorrectly()
     {
         // Arrange
-        // The uint value for BadNodeIdUnknown is 0x80340000 = 2150891520.
-        const string json = """{"Code":2150891520,"Symbol":"BadNodeIdUnknown"}""";
-        var expectedStatusCode = new StatusCode(StatusCodes.BadNodeIdUnknown);
+        const string json = "\"ns=3;s=MyNode\"";
+        var expectedNodeId = new NodeId("MyNode", 3);
 
         // Act
-        var result = JsonSerializer.Deserialize<StatusCode>(json, _options);
+        var result = JsonSerializer.Deserialize<NodeId>(json, _options);
 
         // Assert
-        Assert.Equal(expectedStatusCode, result);
+        Assert.Equal(expectedNodeId, result);
     }
 
     [Fact]
-    public void Read_WithCaseInsensitiveCodeProperty_DeserializesCorrectly()
+    public void Read_WithValidNumericIdentifier_DeserializesCorrectly()
     {
         // Arrange
-        const string json = """{"code":0,"symbol":"Good"}"""; // "code" is lowercase
-        var expectedStatusCode = new StatusCode(StatusCodes.Good);
+        const string json = "\"ns=2;i=1234\"";
+        var expectedNodeId = new NodeId(1234, 2);
 
         // Act
-        var result = JsonSerializer.Deserialize<StatusCode>(json, _options);
+        var result = JsonSerializer.Deserialize<NodeId>(json, _options);
 
         // Assert
-        Assert.Equal(expectedStatusCode, result);
+        Assert.Equal(expectedNodeId, result);
     }
 
     [Fact]
-    public void Read_WithExtraProperties_IgnoresThemAndDeserializesCorrectly()
+    public void Read_WithNullJson_DeserializesToNull()
     {
         // Arrange
-        const string json = """{"Code":0,"Symbol":"Good","ExtraInfo":"This should be ignored"}""";
-        var expectedStatusCode = new StatusCode(StatusCodes.Good);
+        const string json = "null";
 
         // Act
-        var result = JsonSerializer.Deserialize<StatusCode>(json, _options);
+        var result = JsonSerializer.Deserialize<NodeId>(json, _options);
 
         // Assert
-        Assert.Equal(expectedStatusCode, result);
+        Assert.Null(result);
     }
 
     [Fact]
-    public void Read_WithMissingCodeProperty_ReturnsDefaultStatusCode()
+    public void Read_WithEmptyString_DeserializesToNull()
     {
         // Arrange
-        const string json = """{"Symbol":"SomeStatus"}""";
-        var expectedStatusCode = new StatusCode(0); // Default uint is 0, which is StatusCodes.Good
+        const string json = "\"\"";
 
         // Act
-        var result = JsonSerializer.Deserialize<StatusCode>(json, _options);
+        var result = JsonSerializer.Deserialize<NodeId>(json, _options);
 
         // Assert
-        Assert.Equal(expectedStatusCode, result);
+        Assert.Null(result);
     }
 
     [Fact]
-    public void Read_WithInvalidJsonFormat_ThrowsJsonException()
+    public void Read_WithInvalidFormatMissingNamespace_ThrowsArgumentException()
     {
         // Arrange
-        const string json = """[0, "Good"]"""; // Not a JSON object
+        const string json = "\"this-is-not-a-nodeid\"";
 
         // Act & Assert
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<StatusCode>(json, _options));
+        Assert.Throws<ArgumentException>(() => JsonSerializer.Deserialize<NodeId>(json, _options));
+    }
+
+    [Fact]
+    public void Read_WithMalformedNamespace_ThrowsServiceResultException()
+    {
+        // Arrange
+        const string json = "\"ns=abc;s=MyNode\"";
+
+        // Act & Assert
+        var ex = Assert.Throws<ServiceResultException>(() => JsonSerializer.Deserialize<NodeId>(json, _options));
+        Assert.IsType<FormatException>(ex.InnerException);
     }
 
     #endregion Read Tests
