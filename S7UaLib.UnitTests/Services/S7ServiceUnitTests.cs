@@ -343,7 +343,7 @@ public class S7ServiceUnitTests
         var fileData = _mockFileSystem.GetFile(filePath);
         Assert.NotNull(fileData);
 
-        var deserializedModel = JsonSerializer.Deserialize<S7StructureModel>(fileData.TextContents, S7StructureSerializer.Options);
+        var deserializedModel = JsonSerializer.Deserialize<S7StructureStorageModel>(fileData.TextContents, S7StructureSerializer.Options);
         Assert.NotNull(deserializedModel);
         Assert.Single(deserializedModel.DataBlocksGlobal);
         Assert.Equal("TestDB", deserializedModel.DataBlocksGlobal[0].DisplayName);
@@ -376,7 +376,7 @@ public class S7ServiceUnitTests
         var sut = CreateSut();
         const string filePath = "C:\\config\\structure.json";
 
-        var testModel = new S7StructureModel
+        var testModel = new S7StructureStorageModel
         {
             Inputs = new S7Inputs { DisplayName = "Inputs", Variables = [new S7Variable() { DisplayName = "TestInput", FullPath = "Inputs.TestInput" }] }
         };

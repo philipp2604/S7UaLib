@@ -6,7 +6,7 @@ namespace S7UaLib.Serialization.Models;
 /// Represents a pure data model for storing the discovered S7 structure.
 /// This class is used for serialization and deserialization purposes.
 /// </summary>
-internal record S7StructureModel
+internal record S7StructureStorageModel
 {
     public IReadOnlyList<S7DataBlockGlobal> DataBlocksGlobal { get; init; } = [];
     public IReadOnlyList<S7DataBlockInstance> DataBlocksInstance { get; init; } = [];

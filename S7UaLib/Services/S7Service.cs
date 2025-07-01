@@ -283,7 +283,7 @@ public class S7Service : IS7Service
     {
         ArgumentException.ThrowIfNullOrEmpty(filePath);
 
-        var structureModel = new S7StructureModel
+        var structureModel = new S7StructureStorageModel
         {
             DataBlocksGlobal = _dataStore.DataBlocksGlobal,
             DataBlocksInstance = _dataStore.DataBlocksInstance,
@@ -325,7 +325,7 @@ public class S7Service : IS7Service
             _logger?.LogInformation("Loading S7 structure from file: {FilePath}", filePath);
             await using var fileStream = _fileSystem.File.OpenRead(filePath);
 
-            var loadedModel = await JsonSerializer.DeserializeAsync<S7StructureModel>(fileStream, S7StructureSerializer.Options)
+            var loadedModel = await JsonSerializer.DeserializeAsync<S7StructureStorageModel>(fileStream, S7StructureSerializer.Options)
                 ?? throw new JsonException("Deserialization resulted in a null structure model.");
 
             _dataStore.DataBlocksGlobal = loadedModel.DataBlocksGlobal;
