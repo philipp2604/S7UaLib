@@ -10,8 +10,10 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
   DOTNET_NOLOGO: true
   NuGetDirectory: ${{ github.workspace}}/nuget
+  
   SOLUTION_FILE_PATH: S7UaLib.sln
-  PROJECT_FILE_PATH: S7UaLib/S7UaLib.csproj
+  PROJECT_TO_PACK_PATH: S7UaLib/S7UaLib.csproj
+
   TARGET_FRAMEWORK: 'net8.0'
   CONFIGURATION: 'Release'
 
@@ -34,41 +36,42 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '8.0.x' 
+          
 
-      - name: Restore dependencies for the entire solution
+      - name: Restore Solution Dependencies
         run: dotnet restore ${{ env.SOLUTION_FILE_PATH }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
 
-      - name: Build the entire solution
+      - name: Build Solution
         run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore
 
-      - name: Run tests
+      - name: Run Tests
         run: dotnet test ${{ env.SOLUTION_FILE_PATH }} --no-build --configuration ${{ env.CONFIGURATION }} --filter "Category!=Integration"
 
   create_nuget:
     name: Create NuGet Package
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Create NuGet package
-        run: dotnet pack ${{ env.PROJECT_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
 
-      - name: Publish NuGet artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nuget-package
-          if-no-files-found: error
-          retention-days: 7
-          path: ${{ env.NuGetDirectory }}/*.nupkg
+    - name: Create NuGet package
+      run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
+
+    - name: Publish NuGet artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-package
+        if-no-files-found: error
+        retention-days: 7
+        path: ${{ env.NuGetDirectory }}/*.nupkg
 
   deploy_nuget:
     name: Deploy to NuGet.org
@@ -84,9 +87,6 @@ jobs:
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
-
-      - name: Display structure of downloaded files
-        run: Get-ChildItem -Path ${{ env.NuGetDirectory }} -Recurse
 
       - name: Publish NuGet package
         run: |
