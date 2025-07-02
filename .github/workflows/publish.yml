@@ -58,7 +58,7 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-        
+
     - name: Create NuGet package
       run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
 
