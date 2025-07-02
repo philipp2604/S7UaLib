@@ -20,76 +20,37 @@ defaults:
     shell: pwsh
 
 jobs:
-  build_and_test:
-    name: Build & Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+  build_test_pack_and_deploy:
+    name: Build, Test, Pack and Deploy
+    runs-on: windows-latest
+    
+    if: github.event_name == 'release' && github.event.action == 'published'
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup .NET SDK
+      - name: Setup .NET SDK 8.0.x
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x' 
+          dotnet-version: '8.0.x'
           
-      - name: Restore Solution Dependencies
+      - name: Restore Solution for net8.0
         run: dotnet restore ${{ env.SOLUTION_FILE_PATH }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-      
-      - name: Build Solution
-        run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-    
-      - name: Run Tests
-        run: dotnet test ${{ env.SOLUTION_FILE_PATH }} --no-build --configuration ${{ env.CONFIGURATION }} --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
-
-  create_nuget:
-    name: Create NuGet Package
-    runs-on: windows-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
         
-    - name: Build Project for Packing
-      run: dotnet build ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-
-    - name: Create NuGet package (without building)
-      run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --no-build -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-
-    - name: Publish NuGet artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: nuget-package
-        if-no-files-found: error
-        retention-days: 7
-        path: ${{ env.NuGetDirectory }}/*.nupkg
-
-  deploy_nuget:
-    name: Deploy to NuGet.org
-    runs-on: windows-latest
-    needs: [build_and_test, create_nuget]
-    if: github.event_name == 'release' && github.event.action == 'published'
-    steps:
-      - name: Download NuGet package artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: nuget-package
-          path: ${{ env.NuGetDirectory }}
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-
-      - name: Publish NuGet package
+      - name: Build Solution for net8.0
+        run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
+        
+      - name: Run Tests for net8.0
+        run: dotnet test ${{ env.SOLUTION_FILE_PATH }} --no-build --configuration ${{ env.CONFIGURATION }} --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
+      
+      - name: Create NuGet Package for net8.0
+        run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --no-build -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
+        
+      - name: Publish NuGet package to NuGet.org
         run: |
           foreach($file in (Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg)) {
-              dotnet nuget push $file --skip-duplicate --api-key "${{ secrets.NUGET_APIKEY }}" --source https://api.nuget.org/v3/index.json
+              dotnet nuget push $file --skip-duplicate --api-key "${{ secrets.NUGET_APIKEY }}" --source https://api.nuget.org/v3/index.json 
           }
