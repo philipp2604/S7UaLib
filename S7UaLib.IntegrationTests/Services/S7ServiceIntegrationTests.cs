@@ -140,9 +140,8 @@ public class S7ServiceIntegrationTests
             AssertVariable("DataBlocksInstance.FunctionBlock_InstDB.Inputs.Function_InputBool", false);
             AssertVariable("DataBlocksInstance.FunctionBlock_InstDB.Outputs.Function_OutputInt", (short)0);
 
-            var nestedStructMember = service.GetVariable("DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool");
-            Assert.NotNull(nestedStructMember);
-            Assert.Equal(true, nestedStructMember.Value);
+            AssertVariable("DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool", true);
+            AssertVariable("DataBlocksInstance.FunctionBlock_InstDB.Static.AnotherNestedStruct.ANestedStructInsideANestedStruct.AVeryNestedBool", true);
         }
         finally
         {
@@ -383,6 +382,9 @@ public class S7ServiceIntegrationTests
         await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Outputs.Function_OutputInt", S7DataType.INT);
         await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct", S7DataType.STRUCT);
         await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.AnotherNestedStruct", S7DataType.STRUCT);
+        await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.AnotherNestedStruct.ANestedStructInsideANestedStruct", S7DataType.STRUCT);
+        await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.AnotherNestedStruct.ANestedStructInsideANestedStruct.AVeryNestedBool", S7DataType.BOOL);
     }
 
     private static async Task UpdateTypeAsync(S7Service service, string path, S7DataType type)
