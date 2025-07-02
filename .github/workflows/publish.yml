@@ -34,33 +34,33 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore dependencies for the entire solution
-        run: dotnet restore ${{ env.SOLUTION_FILE_PATH }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-
-      - name: Build the entire solution
-        run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore
-
-      - name: Run tests
-        run: dotnet test ${{ env.SOLUTION_FILE_PATH }} --no-build --configuration ${{ env.CONFIGURATION }} --filter "Category!=Integration"
+          dotnet-version: '8.0.x' 
+          
+      - name: Restore dependencies
+        run: dotnet restore S7UaLib/S7UaLib.csproj -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
+      
+      - name: Build
+        run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release --no-restore --framework ${{ env.TARGET_FRAMEWORK }}
+    
+      - name: Test
+        run: dotnet test --no-build --verbosity normal --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
 
   create_nuget:
     name: Create NuGet Package
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Create NuGet package
-        run: dotnet pack ${{ env.PROJECT_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Create NuGet package
+      run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
 
       - name: Publish NuGet artifact
         uses: actions/upload-artifact@v4
