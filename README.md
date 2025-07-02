@@ -77,7 +77,7 @@ try
     // 3. Connect to the PLC
     Console.WriteLine($"Connecting to {serverUrl}...");
     await service.ConnectAsync(serverUrl, useSecurity: false);
-    Console.WriteLine("✅ Connected!");
+    Console.WriteLine("Connected!");
 
     // 4. Load structure from file or discover it
     if (File.Exists(configFile))
@@ -88,7 +88,7 @@ try
     else
     {
         Console.WriteLine("Discovering PLC structure...");
-        service.DiscoverStructure();
+        await service.DiscoverStructureAsync();
         Console.WriteLine("Saving structure for next time...");
         await service.SaveStructureAsync(configFile);
     }
@@ -96,12 +96,12 @@ try
     // After discovery/loading, it's often necessary to set the specific S7 data types
     // for variables, as this info isn't always exposed by the server.
     // This is typically done once and saved in the config file.
-    service.UpdateVariableType("DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
-    service.UpdateVariableType("DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
+    await service.UpdateVariableTypeAsync("DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
+    await service.UpdateVariableTypeAsync("DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
 
     // 5. Read all variables from the PLC
     Console.WriteLine("\nReading all variable values...");
-    service.ReadAllVariables();
+    await service.ReadAllVariablesAsync();
 
     // 6. Access a variable by its path
     var myIntVar = service.GetVariable("DataBlocksGlobal.Datablock.TestInt");
@@ -118,20 +118,20 @@ try
     
     if (success)
     {
-        Console.WriteLine("✅ Write successful!");
-        service.ReadAllVariables(); // Refresh to see the change
+        Console.WriteLine("Write successful!");
+        await service.ReadAllVariablesAsync(); // Refresh to see the change
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"🚨 An error occurred: {ex.Message}");
+    Console.WriteLine($"An error occurred: {ex.Message}");
 }
 finally
 {
     if (service.IsConnected)
     {
         Console.WriteLine("Disconnecting...");
-        service.Disconnect();
+        await service.DisconnectAsync();
     }
     service.VariableValueChanged -= OnVariableValueChanged;
 }
