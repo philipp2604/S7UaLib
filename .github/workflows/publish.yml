@@ -33,17 +33,13 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x' 
-
-      # KORREKTUR: 'dotnet restore' benötigt keinen --framework Schalter.
-      # Es stellt Abhängigkeiten für alle TargetFrameworks in der .csproj wieder her.
+          
       - name: Restore dependencies
-        run: dotnet restore S7UaLib/S7UaLib.csproj
+        run: dotnet restore S7UaLib/S7UaLib.csproj -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
       
-      # KORREKT: 'build' benötigt den Schalter, um das Ziel auszuwählen.
       - name: Build
         run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release --no-restore --framework ${{ env.TARGET_FRAMEWORK }}
     
-      # KORREKT: 'test' benötigt den Schalter, um das Ziel auszuwählen.
       - name: Test
         run: dotnet test --no-build --verbosity normal --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
 
@@ -54,14 +50,13 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # Nötig für Versionierungstools
+        fetch-depth: 0
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-
-    # KORREKT: 'pack' benötigt den Schalter, um das Ziel auszuwählen.
+        
     - name: Create NuGet package
       run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
 
