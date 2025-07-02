@@ -10,10 +10,8 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
   DOTNET_NOLOGO: true
   NuGetDirectory: ${{ github.workspace}}/nuget
-  
   SOLUTION_FILE_PATH: S7UaLib.sln
   PROJECT_TO_PACK_PATH: S7UaLib/S7UaLib.csproj
-
   TARGET_FRAMEWORK: 'net8.0'
   CONFIGURATION: 'Release'
 
@@ -38,15 +36,14 @@ jobs:
         with:
           dotnet-version: '8.0.x' 
           
-
       - name: Restore Solution Dependencies
         run: dotnet restore ${{ env.SOLUTION_FILE_PATH }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-
+      
       - name: Build Solution
-        run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore
-
+        run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
+    
       - name: Run Tests
-        run: dotnet test ${{ env.SOLUTION_FILE_PATH }} --no-build --configuration ${{ env.CONFIGURATION }} --filter "Category!=Integration"
+        run: dotnet test ${{ env.SOLUTION_FILE_PATH }} --no-build --configuration ${{ env.CONFIGURATION }} --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
 
   create_nuget:
     name: Create NuGet Package
@@ -61,7 +58,7 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-
+        
     - name: Create NuGet package
       run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
 
