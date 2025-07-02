@@ -58,6 +58,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private static readonly S7LTimeOfDayConverter _lTimeOfDayConverter = new();
     private static readonly S7S5TimeConverter _s5TimeConverter = new();
     private static readonly S7DTLConverter _dtlConverter = new();
+    private static readonly S7CounterConverter _counterConverter = new();
 
     private static readonly Dictionary<S7DataType, IS7TypeConverter> _typeConverters =
         new()
@@ -72,6 +73,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             [S7DataType.S5TIME] = _s5TimeConverter,
             [S7DataType.DATE_AND_TIME] = _dateAndTimeConverter,
             [S7DataType.DTL] = _dtlConverter,
+            [S7DataType.COUNTER] = _counterConverter,
             [S7DataType.ARRAY_OF_CHAR] = new S7ElementwiseArrayConverter(_charConverter, typeof(byte)),
             [S7DataType.ARRAY_OF_WCHAR] = new S7ElementwiseArrayConverter(_wCharConverter, typeof(ushort)),
             [S7DataType.ARRAY_OF_DATE] = new S7ElementwiseArrayConverter(_dateConverter, typeof(ushort)),
@@ -82,6 +84,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             [S7DataType.ARRAY_OF_S5TIME] = new S7ElementwiseArrayConverter(_s5TimeConverter, typeof(ushort)),
             [S7DataType.ARRAY_OF_DATE_AND_TIME] = new S7ElementwiseArrayConverter(_dateAndTimeConverter, typeof(byte)),
             [S7DataType.ARRAY_OF_DTL] = new S7ElementwiseArrayConverter(_dtlConverter, typeof(byte[])),
+            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverter, typeof(ushort))
         };
 
     #endregion Static Type Converters
@@ -351,6 +354,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var discoveredVariables = variableDescriptions
             .Where(desc => desc.DisplayName.Text != "Icon")
             .Select(desc => new S7Variable { NodeId = (NodeId)desc.NodeId, DisplayName = desc.DisplayName.Text }).ToList();
+
+        if (element.DisplayName == "Counters")
+        {
+            discoveredVariables = discoveredVariables
+                .ConvertAll(variable => variable with { S7Type = S7DataType.COUNTER })
+;
+        }
 
         return element with { Variables = discoveredVariables };
     }
