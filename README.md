@@ -27,6 +27,7 @@ A modern, high-level .NET library designed to simplify communication with Siemen
 - **💾 Structure Persistence**: Save your discovered PLC structure to a JSON file and load it on startup to bypass the time-consuming discovery process.
 - **⚡️ Type-Safe & Path-Based Access**: Read and write variables using their full symbolic path (e.g., `"DataBlocksGlobal.MyDb.MySetting"`).
 - **🔔 Event-Driven Value Changes**: Subscribe to the `VariableValueChanged` event to react to data changes in your application.
+- **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations ensures your application remains responsive. Built from the ground up to be thread-safe, allowing you to reliably use a single `S7Service` instance across multiple concurrent tasks.
 - **🏗️ Modern & Immutable**: Built with modern C# features, using immutable records for data structures to ensure thread safety and predictability.
 
 ## 🚀 Getting Started
