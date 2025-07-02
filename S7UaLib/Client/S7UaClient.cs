@@ -361,6 +361,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 .ConvertAll(variable => variable with { S7Type = S7DataType.COUNTER })
 ;
         }
+        else if (element.DisplayName == "Timers")
+        {
+            discoveredVariables = discoveredVariables
+                .ConvertAll(variable => variable with { S7Type = S7DataType.S5TIME })
+;
+        }
 
         return element with { Variables = discoveredVariables };
     }
