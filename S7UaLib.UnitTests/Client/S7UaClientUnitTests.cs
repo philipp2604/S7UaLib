@@ -82,7 +82,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void Disconnect_WhenConnected_ClosesSessionAndCleansUpHandlers()
+    public async Task Disconnect_WhenConnected_ClosesSessionAndCleansUpHandlers()
     {
         // Arrange
         var client = CreateSut();
@@ -93,7 +93,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_reconnectHandler", reconnectHandler);
 
         // Act
-        client.Disconnect();
+        await client.DisconnectAsync();
 
         // Assert
         mockSession.Verify(s => s.Close(It.IsAny<bool>()), Times.Once);
@@ -106,7 +106,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void Disconnect_FiresDisconnectingAndDisconnectedEvents()
+    public async Task Disconnect_FiresDisconnectingAndDisconnectedEvents()
     {
         // Arrange
         var client = CreateSut();
@@ -120,7 +120,7 @@ public class S7UaClientUnitTests
         client.Disconnected += (s, e) => disconnectedFired = true;
 
         // Act
-        client.Disconnect();
+        await client.DisconnectAsync();
 
         // Assert
         Assert.True(disconnectingFired, "Disconnecting event should have been fired.");
@@ -181,7 +181,7 @@ public class S7UaClientUnitTests
     #region Structure Discovery and Browsing Tests
 
     [Fact]
-    public void GetAllInstanceDataBlocks_WhenNotConnected_ReturnsEmptyListAndLogsError()
+    public async Task GetAllInstanceDataBlocks_WhenNotConnected_ReturnsEmptyListAndLogsError()
     {
         // Arrange
         var client = CreateSut();
@@ -189,7 +189,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = client.GetAllInstanceDataBlocks();
+        var result = await client.GetAllInstanceDataBlocksAsync();
 
         // Assert
         Assert.NotNull(result);
@@ -205,7 +205,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void GetAllInstanceDataBlocks_WhenConnected_ReturnsMappedDataBlocks()
+    public async Task GetAllInstanceDataBlocks_WhenConnected_ReturnsMappedDataBlocks()
     {
         // Arrange
         var client = CreateSut();
@@ -231,7 +231,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = client.GetAllInstanceDataBlocks();
+        var result = await client.GetAllInstanceDataBlocksAsync();
 
         // Assert
         Assert.Single(result);
@@ -239,7 +239,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void DiscoverVariablesOfElement_WhenConnected_ReturnsElementWithVariables()
+    public async Task DiscoverVariablesOfElement_WhenConnected_ReturnsElementWithVariables()
     {
         // Arrange
         var client = CreateSut();
@@ -267,7 +267,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = client.DiscoverVariablesOfElement(elementToDiscover);
+        var result = await client.DiscoverVariablesOfElementAsync(elementToDiscover);
 
         // Assert
         Assert.NotNull(result.Variables);
@@ -276,13 +276,13 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void DiscoverElement_WithNullElement_ReturnsNullAndLogsWarning()
+    public async Task DiscoverElement_WithNullElement_ReturnsNullAndLogsWarning()
     {
         // Arrange
         var client = CreateSut();
 
         // Act
-        var result = client.DiscoverElement(null!);
+        var result = await client.DiscoverElementAsync(null!);
 
         // Assert
         Assert.Null(result);
@@ -297,14 +297,14 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void DiscoverElement_WithUnsupportedType_ReturnsNullAndLogsWarning()
+    public async Task DiscoverElement_WithUnsupportedType_ReturnsNullAndLogsWarning()
     {
         // Arrange
         var client = CreateSut();
         var unsupportedElement = new Mock<IUaElement>().Object;
 
         // Act
-        var result = client.DiscoverElement(unsupportedElement);
+        var result = await client.DiscoverElementAsync(unsupportedElement);
 
         // Assert
         Assert.Null(result);
@@ -333,7 +333,7 @@ public class S7UaClientUnitTests
     #region Reading Tests
 
     [Fact]
-    public void ReadValuesOfElement_WhenNotConnected_ReturnsOriginalElementAndLogsError()
+    public async Task ReadValuesOfElement_WhenNotConnected_ReturnsOriginalElementAndLogsError()
     {
         // Arrange
         var client = CreateSut();
@@ -343,7 +343,7 @@ public class S7UaClientUnitTests
         var element = new S7Inputs { DisplayName = "Inputs", NodeId = new NodeId(1) };
 
         // Act
-        var result = client.ReadValuesOfElement(element);
+        var result = await client.ReadValuesOfElementAsync(element);
 
         // Assert
         Assert.Same(element, result); // Should return the original instance
@@ -358,7 +358,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void ReadValuesOfElement_WithSimpleStructure_ReturnsPopulatedElement()
+    public async Task ReadValuesOfElement_WithSimpleStructure_ReturnsPopulatedElement()
     {
         // Arrange
         var client = CreateSut();
@@ -392,7 +392,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = client.ReadValuesOfElement(elementWithStructure, "S7");
+        var result = await client.ReadValuesOfElementAsync(elementWithStructure, "S7");
 
         // Assert
         Assert.NotNull(result);
@@ -411,7 +411,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void ReadValuesOfElement_WithStructVariable_RecursivelyReadsAndPopulatesMembers()
+    public async Task ReadValuesOfElement_WithStructVariable_RecursivelyReadsAndPopulatesMembers()
     {
         // Arrange
         var client = CreateSut();
@@ -461,7 +461,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = client.ReadValuesOfElement(elementWithStructure);
+        var result = await client.ReadValuesOfElementAsync(elementWithStructure);
 
         // Assert
         Assert.NotNull(result);
@@ -481,7 +481,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public void ReadValuesOfElement_WithS7Char_AppliesCorrectConverter()
+    public async Task ReadValuesOfElement_WithS7Char_AppliesCorrectConverter()
     {
         // Arrange
         var client = CreateSut();
@@ -514,7 +514,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = client.ReadValuesOfElement(elementWithStructure);
+        var result = await client.ReadValuesOfElementAsync(elementWithStructure);
 
         // Assert
         Assert.NotNull(result);

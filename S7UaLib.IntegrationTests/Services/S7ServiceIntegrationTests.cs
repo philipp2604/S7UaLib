@@ -15,7 +15,7 @@ public class S7ServiceIntegrationTests
 
     private readonly ApplicationConfiguration _appConfig;
     private readonly Action<IList, IList> _validateResponse;
-    private readonly IFileSystem _fileSystem = new FileSystem();
+    private readonly FileSystem _fileSystem = new();
     private readonly ILoggerFactory? _loggerFactory = null;
 
     public S7ServiceIntegrationTests()
@@ -92,7 +92,7 @@ public class S7ServiceIntegrationTests
             Assert.True(connectedFired, "Connected event flag should be true.");
 
             // Act & Assert: Disconnect
-            service.Disconnect();
+            await service.DisconnectAsync();
             bool disconnectedInTime = disconnectedEvent.Wait(TimeSpan.FromSeconds(5));
 
             Assert.True(disconnectedInTime, "The 'Disconnected' event was not fired within the timeout.");
@@ -103,7 +103,7 @@ public class S7ServiceIntegrationTests
         {
             if (service.IsConnected)
             {
-                service.Disconnect();
+                await service.DisconnectAsync();
             }
         }
     }
@@ -122,9 +122,9 @@ public class S7ServiceIntegrationTests
             service = await CreateAndConnectServiceAsync();
 
             // Act
-            service.DiscoverStructure();
-            UpdateAllVariableTypes(service); // Simulate loading configuration
-            service.ReadAllVariables();
+            await service.DiscoverStructureAsync();
+            await UpdateAllVariableTypesAsync(service); // Simulate loading configuration
+            await service.ReadAllVariablesAsync();
 
             // Assert
             AssertVariable("DataBlocksGlobal.Datablock.TestBool", true);
@@ -146,7 +146,7 @@ public class S7ServiceIntegrationTests
         }
         finally
         {
-            service?.Disconnect();
+            await service!.DisconnectAsync();
         }
 
         void AssertVariable(string path, object? expected)
@@ -169,9 +169,9 @@ public class S7ServiceIntegrationTests
         {
             // Arrange
             service = await CreateAndConnectServiceAsync();
-            service.DiscoverStructure();
-            UpdateAllVariableTypes(service);
-            service.ReadAllVariables();
+            await service.DiscoverStructureAsync();
+            await UpdateAllVariableTypesAsync(service);
+            await service.ReadAllVariablesAsync();
 
             var testVar = service.GetVariable(varPath);
             Assert.NotNull(testVar);
@@ -192,7 +192,7 @@ public class S7ServiceIntegrationTests
             };
 
             // Act
-            service.ReadAllVariables();
+            await service.ReadAllVariablesAsync();
 
             // Assert
             Assert.Equal(1, eventCount);
@@ -206,7 +206,7 @@ public class S7ServiceIntegrationTests
             {
                 await service.WriteVariableAsync(varPath, originalValue);
             }
-            service?.Disconnect();
+            await service!.DisconnectAsync();
         }
     }
 
@@ -221,9 +221,9 @@ public class S7ServiceIntegrationTests
         {
             // Arrange
             service = await CreateAndConnectServiceAsync();
-            service.DiscoverStructure();
-            UpdateAllVariableTypes(service);
-            service.ReadAllVariables();
+            await service.DiscoverStructureAsync();
+            await UpdateAllVariableTypesAsync(service);
+            await service.ReadAllVariablesAsync();
 
             var testVar = service.GetVariable(varPath);
             Assert.NotNull(testVar);
@@ -234,7 +234,7 @@ public class S7ServiceIntegrationTests
             bool success = await service.WriteVariableAsync(varPath, newValue);
             Assert.True(success, "WriteVariableAsync should return true on success.");
 
-            service.ReadAllVariables();
+            await service.ReadAllVariablesAsync();
             var updatedVar = service.GetVariable(varPath);
 
             // Assert
@@ -247,7 +247,7 @@ public class S7ServiceIntegrationTests
             {
                 await service.WriteVariableAsync(varPath, originalValue);
             }
-            service?.Disconnect();
+            await service!.DisconnectAsync();
         }
     }
 
@@ -261,8 +261,8 @@ public class S7ServiceIntegrationTests
         {
             // Arrange
             service = await CreateAndConnectServiceAsync();
-            service.DiscoverStructure();
-            UpdateAllVariableTypes(service);
+            await service.DiscoverStructureAsync();
+            await UpdateAllVariableTypesAsync(service);
 
             // Act
             bool success = await service.WriteVariableAsync(varPath, "this-is-not-an-int");
@@ -272,7 +272,7 @@ public class S7ServiceIntegrationTests
         }
         finally
         {
-            service?.Disconnect();
+            await service!.DisconnectAsync();
         }
     }
 
@@ -288,12 +288,12 @@ public class S7ServiceIntegrationTests
         {
             // Arrange: Connect, discover, and save
             service1 = await CreateAndConnectServiceAsync();
-            service1.DiscoverStructure();
-            UpdateAllVariableTypes(service1);
+            await service1.DiscoverStructureAsync();
+            await UpdateAllVariableTypesAsync(service1);
             var test = service1.GetVariable("DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool");
             var test2 = service1.GetVariable("DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct");
             await service1.SaveStructureAsync(tempFile);
-            service1.Disconnect();
+            await service1.DisconnectAsync();
 
             // Act: Create new service and load
             service2 = new S7Service(_appConfig, _validateResponse, _loggerFactory);
@@ -312,7 +312,7 @@ public class S7ServiceIntegrationTests
 
             // Act: Connect and read values
             await service2.ConnectAsync(_serverUrl, useSecurity: false);
-            service2.ReadAllVariables();
+            await service2.ReadAllVariablesAsync();
 
             // Assert: Values are now populated
             var postConnectVar = service2.GetVariable("DataBlocksGlobal.Datablock.TestString");
@@ -325,8 +325,8 @@ public class S7ServiceIntegrationTests
         }
         finally
         {
-            service1?.Disconnect();
-            service2?.Disconnect();
+            await service1!.DisconnectAsync();
+            await service2!.DisconnectAsync();
             if (_fileSystem.File.Exists(tempFile))
             {
                 _fileSystem.File.Delete(tempFile);
@@ -340,56 +340,56 @@ public class S7ServiceIntegrationTests
 
     // This helper simulates loading a configuration where S7 data types are known,
     // as this information is not available on the OPC UA server itself.
-    private static void UpdateAllVariableTypes(S7Service service)
+    private static async Task UpdateAllVariableTypesAsync(S7Service service)
     {
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestBool", S7DataType.BOOL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestByte", S7DataType.BYTE);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestChar", S7DataType.CHAR);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestWChar", S7DataType.WCHAR);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestSInt", S7DataType.SINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDInt", S7DataType.DINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLInt", S7DataType.LINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestUInt", S7DataType.UINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestUSInt", S7DataType.USINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestUDInt", S7DataType.UDINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestULInt", S7DataType.ULINT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestReal", S7DataType.REAL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLReal", S7DataType.LREAL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDWord", S7DataType.DWORD);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLWord", S7DataType.LWORD);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDate", S7DataType.DATE);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestTime", S7DataType.TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestTimeOfDay", S7DataType.TIME_OF_DAY);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestS5Time", S7DataType.S5TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDateAndTime", S7DataType.DATE_AND_TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLTime", S7DataType.LTIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLTimeOfDay", S7DataType.LTIME_OF_DAY);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDTL", S7DataType.DTL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestLDT", S7DataType.LDT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct", S7DataType.STRUCT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructBool", S7DataType.BOOL);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructInt", S7DataType.INT);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestStruct.TestDateAndTime", S7DataType.DATE_AND_TIME);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestCharArray", S7DataType.ARRAY_OF_CHAR);
-        UpdateType(service, "DataBlocksGlobal.Datablock.TestDateAndTimeArray", S7DataType.ARRAY_OF_DATE_AND_TIME);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestBool", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestByte", S7DataType.BYTE);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestChar", S7DataType.CHAR);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestWChar", S7DataType.WCHAR);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestSInt", S7DataType.SINT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestDInt", S7DataType.DINT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestLInt", S7DataType.LINT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestUInt", S7DataType.UINT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestUSInt", S7DataType.USINT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestUDInt", S7DataType.UDINT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestULInt", S7DataType.ULINT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestReal", S7DataType.REAL);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestLReal", S7DataType.LREAL);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestDWord", S7DataType.DWORD);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestLWord", S7DataType.LWORD);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestDate", S7DataType.DATE);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestTime", S7DataType.TIME);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestTimeOfDay", S7DataType.TIME_OF_DAY);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestS5Time", S7DataType.S5TIME);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestDateAndTime", S7DataType.DATE_AND_TIME);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestLTime", S7DataType.LTIME);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestLTimeOfDay", S7DataType.LTIME_OF_DAY);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestDTL", S7DataType.DTL);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestLDT", S7DataType.LDT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestStruct", S7DataType.STRUCT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructBool", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestStruct.TestStructInt", S7DataType.INT);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestStruct.TestDateAndTime", S7DataType.DATE_AND_TIME);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestCharArray", S7DataType.ARRAY_OF_CHAR);
+        await UpdateTypeAsync(service, "DataBlocksGlobal.Datablock.TestDateAndTimeArray", S7DataType.ARRAY_OF_DATE_AND_TIME);
 
-        UpdateType(service, "Inputs.TestInput", S7DataType.BOOL);
-        UpdateType(service, "Outputs.TestOutput", S7DataType.BOOL);
-        UpdateType(service, "Memory.TestVar", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "Inputs.TestInput", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "Outputs.TestOutput", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "Memory.TestVar", S7DataType.BOOL);
 
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Inputs.Function_InputBool", S7DataType.BOOL);
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Outputs.Function_OutputInt", S7DataType.INT);
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct", S7DataType.STRUCT);
-        UpdateType(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Inputs.Function_InputBool", S7DataType.BOOL);
+        await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Outputs.Function_OutputInt", S7DataType.INT);
+        await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct", S7DataType.STRUCT);
+        await UpdateTypeAsync(service, "DataBlocksInstance.FunctionBlock_InstDB.Static.NestedStruct.NestedBool", S7DataType.BOOL);
     }
 
-    private static void UpdateType(S7Service service, string path, S7DataType type)
+    private static async Task UpdateTypeAsync(S7Service service, string path, S7DataType type)
     {
         if (service.GetVariable(path) is not null)
         {
-            var success = service.UpdateVariableType(path, type);
+            var success = await service.UpdateVariableTypeAsync(path, type);
             Assert.True(success, $"Failed to update type for {path}");
         }
     }

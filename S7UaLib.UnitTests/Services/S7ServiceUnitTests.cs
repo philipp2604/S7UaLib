@@ -42,19 +42,19 @@ public class S7ServiceUnitTests
     #region DiscoverStructure Tests
 
     [Fact]
-    public void DiscoverStructure_WhenNotConnected_ThrowsInvalidOperationException()
+    public async Task DiscoverStructure_WhenNotConnected_ThrowsInvalidOperationException()
     {
         // Arrange
         _mockClient.Setup(c => c.IsConnected).Returns(false);
         var sut = CreateSut();
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() => sut.DiscoverStructure());
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await sut.DiscoverStructureAsync());
         Assert.Contains("Client is not connected", ex.Message);
     }
 
     [Fact]
-    public void DiscoverStructure_WhenConnected_CallsClientAndPopulatesStore()
+    public async Task DiscoverStructure_WhenConnected_CallsClientAndPopulatesStore()
     {
         // Arrange
         _mockClient.Setup(c => c.IsConnected).Returns(true);
@@ -63,24 +63,24 @@ public class S7ServiceUnitTests
         var globalDbShell = new S7DataBlockGlobal { DisplayName = "MyGlobalDb" };
         var globalDbFull = globalDbShell with { Variables = [new S7Variable { DisplayName = "Var1" }] };
 
-        _mockClient.Setup(c => c.GetAllGlobalDataBlocks()).Returns([globalDbShell]);
-        _mockClient.Setup(c => c.DiscoverElement(globalDbShell)).Returns(globalDbFull);
+        _mockClient.Setup(c => c.GetAllGlobalDataBlocksAsync(It.IsAny<CancellationToken>())).ReturnsAsync([globalDbShell]);
+        _mockClient.Setup(c => c.DiscoverElementAsync(globalDbShell, It.IsAny<CancellationToken>())).ReturnsAsync(globalDbFull);
 
-        _mockClient.Setup(c => c.GetAllInstanceDataBlocks()).Returns([]);
-        _mockClient.Setup(c => c.GetInputs()).Returns((S7Inputs?)null);
-        _mockClient.Setup(c => c.GetOutputs()).Returns((S7Outputs?)null);
-        _mockClient.Setup(c => c.GetMemory()).Returns((S7Memory?)null);
-        _mockClient.Setup(c => c.GetTimers()).Returns((S7Timers?)null);
-        _mockClient.Setup(c => c.GetCounters()).Returns((S7Counters?)null);
+        _mockClient.Setup(c => c.GetAllInstanceDataBlocksAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _mockClient.Setup(c => c.GetInputsAsync(It.IsAny<CancellationToken>())).ReturnsAsync((S7Inputs?)null);
+        _mockClient.Setup(c => c.GetOutputsAsync(It.IsAny<CancellationToken>())).ReturnsAsync((S7Outputs?)null);
+        _mockClient.Setup(c => c.GetMemoryAsync(It.IsAny<CancellationToken>())).ReturnsAsync((S7Memory?)null);
+        _mockClient.Setup(c => c.GetTimersAsync(It.IsAny<CancellationToken>())).ReturnsAsync((S7Timers?)null);
+        _mockClient.Setup(c => c.GetCountersAsync(It.IsAny<CancellationToken>())).ReturnsAsync((S7Counters?)null);
 
         // Act
-        sut.DiscoverStructure();
+        await sut.DiscoverStructureAsync();
 
         // Assert
-        _mockClient.Verify(c => c.GetAllGlobalDataBlocks(), Times.Once);
-        _mockClient.Verify(c => c.GetAllInstanceDataBlocks(), Times.Once);
-        _mockClient.Verify(c => c.GetInputs(), Times.Once);
-        _mockClient.Verify(c => c.DiscoverElement(globalDbShell), Times.Once);
+        _mockClient.Verify(c => c.GetAllGlobalDataBlocksAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _mockClient.Verify(c => c.GetAllInstanceDataBlocksAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _mockClient.Verify(c => c.GetInputsAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _mockClient.Verify(c => c.DiscoverElementAsync(globalDbShell, It.IsAny<CancellationToken>()), Times.Exactly(2));
 
         var variable = sut.GetVariable("DataBlocksGlobal.MyGlobalDb.Var1");
         Assert.NotNull(variable);
@@ -92,19 +92,19 @@ public class S7ServiceUnitTests
     #region ReadAllVariables Tests
 
     [Fact]
-    public void ReadAllVariables_WhenNotConnected_ThrowsInvalidOperationException()
+    public async Task ReadAllVariables_WhenNotConnected_ThrowsInvalidOperationException()
     {
         // Arrange
         _mockClient.Setup(c => c.IsConnected).Returns(false);
         var sut = CreateSut();
 
         // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() => sut.ReadAllVariables());
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await sut.ReadAllVariablesAsync());
         Assert.Contains("Client is not connected", ex.Message);
     }
 
     [Fact]
-    public void ReadAllVariables_WhenValueChanges_FiresVariableValueChangedEvent()
+    public async Task ReadAllVariables_WhenValueChanges_FiresVariableValueChangedEvent()
     {
         // Arrange
         _mockClient.Setup(c => c.IsConnected).Returns(true);
@@ -112,18 +112,18 @@ public class S7ServiceUnitTests
 
         var oldVar = new S7Variable { DisplayName = "TestVar", Value = 100 };
         var initialDb = new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVar] };
-        _realDataStore.DataBlocksGlobal = [initialDb];
+        _realDataStore.SetStructure([initialDb], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
         var newVar = new S7Variable { DisplayName = "TestVar", Value = 200, FullPath = "DataBlocksGlobal.DB1.TestVar" };
         var updatedDb = new S7DataBlockGlobal { DisplayName = "DB1", Variables = [newVar] };
-        _mockClient.Setup(c => c.ReadValuesOfElement(It.IsAny<S7DataBlockGlobal>(), "DataBlocksGlobal")).Returns(updatedDb);
+        _mockClient.Setup(c => c.ReadValuesOfElementAsync(It.IsAny<S7DataBlockGlobal>(), "DataBlocksGlobal", It.IsAny<CancellationToken>())).ReturnsAsync(updatedDb);
 
         VariableValueChangedEventArgs? eventArgs = null;
         sut.VariableValueChanged += (sender, e) => eventArgs = e;
 
         // Act
-        sut.ReadAllVariables();
+        await sut.ReadAllVariablesAsync();
 
         // Assert
         Assert.NotNull(eventArgs);
@@ -133,7 +133,7 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void ReadAllVariables_WhenValueIsSame_DoesNotFireEvent()
+    public async Task ReadAllVariables_WhenValueIsSame_DoesNotFireEvent()
     {
         // Arrange
         _mockClient.Setup(c => c.IsConnected).Returns(true);
@@ -141,18 +141,18 @@ public class S7ServiceUnitTests
 
         var oldVar = new S7Variable { DisplayName = "TestVar", Value = 100 };
         var initialDb = new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVar] };
-        _realDataStore.DataBlocksGlobal = [initialDb];
+        _realDataStore.SetStructure([initialDb], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
         var sameVar = new S7Variable { DisplayName = "TestVar", Value = 100, FullPath = "DataBlocksGlobal.DB1.TestVar" };
         var sameDb = new S7DataBlockGlobal { DisplayName = "DB1", Variables = [sameVar] };
-        _mockClient.Setup(c => c.ReadValuesOfElement(It.IsAny<S7DataBlockGlobal>(), "DataBlocksGlobal")).Returns(sameDb);
+        _mockClient.Setup(c => c.ReadValuesOfElementAsync(It.IsAny<S7DataBlockGlobal>(), "DataBlocksGlobal", It.IsAny<CancellationToken>())).ReturnsAsync(sameDb);
 
         bool eventFired = false;
         sut.VariableValueChanged += (sender, e) => eventFired = true;
 
         // Act
-        sut.ReadAllVariables();
+        await sut.ReadAllVariablesAsync();
 
         // Assert
         Assert.False(eventFired, "VariableValueChanged event should not fire for same values.");
@@ -168,7 +168,7 @@ public class S7ServiceUnitTests
         // Arrange
         var sut = CreateSut();
         var variable = new S7Variable { DisplayName = "MyVar" };
-        _realDataStore.DataBlocksGlobal = [new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }];
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
         // Act
@@ -198,13 +198,13 @@ public class S7ServiceUnitTests
     #region UpdateVariableType Tests
 
     [Fact]
-    public void UpdateVariableType_WhenPathIsValid_UpdatesTypeAndReconvertsValue()
+    public async Task UpdateVariableType_WhenPathIsValid_UpdatesTypeAndReconvertsValue()
     {
         // Arrange
         var sut = CreateSut();
         // RawOpcValue for a Char 'A' is byte 65.
         var oldVar = new S7Variable { DisplayName = "TestVar", S7Type = S7UaLib.S7.Types.S7DataType.UNKNOWN, RawOpcValue = (byte)65, Value = (byte)65 };
-        _realDataStore.DataBlocksGlobal = [new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVar] }];
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVar] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
         VariableValueChangedEventArgs? eventArgs = null;
@@ -213,7 +213,7 @@ public class S7ServiceUnitTests
         const string path = "DataBlocksGlobal.DB1.TestVar";
 
         // Act
-        var success = sut.UpdateVariableType(path, S7UaLib.S7.Types.S7DataType.CHAR);
+        var success = await sut.UpdateVariableTypeAsync(path, S7UaLib.S7.Types.S7DataType.CHAR);
 
         // Assert
         Assert.True(success);
@@ -230,14 +230,14 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void UpdateVariableType_WhenPathIsInvalid_ReturnsFalse()
+    public async Task UpdateVariableType_WhenPathIsInvalid_ReturnsFalse()
     {
         // Arrange
         var sut = CreateSut();
         _realDataStore.BuildCache();
 
         // Act
-        var success = sut.UpdateVariableType("Some.Invalid.Path", S7UaLib.S7.Types.S7DataType.BOOL);
+        var success = await sut.UpdateVariableTypeAsync("Some.Invalid.Path", S7UaLib.S7.Types.S7DataType.BOOL);
 
         // Assert
         Assert.False(success);
@@ -254,10 +254,10 @@ public class S7ServiceUnitTests
         var sut = CreateSut();
         var nodeId = new NodeId("ns=3;s=Test");
         var variable = new S7Variable { DisplayName = "TestVar", NodeId = nodeId, S7Type = S7UaLib.S7.Types.S7DataType.INT };
-        _realDataStore.DataBlocksGlobal = [new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }];
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(nodeId, It.IsAny<object>(), It.IsAny<S7UaLib.S7.Types.S7DataType>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(nodeId, It.IsAny<object>(), It.IsAny<S7UaLib.S7.Types.S7DataType>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true)
             .Verifiable();
 
@@ -269,7 +269,7 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.True(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(nodeId, valueToWrite, S7UaLib.S7.Types.S7DataType.INT), Times.Once);
+        _mockClient.Verify(c => c.WriteVariableAsync(nodeId, valueToWrite, S7UaLib.S7.Types.S7DataType.INT, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.False(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<NodeId>(), It.IsAny<object>(), It.IsAny<S7UaLib.S7.Types.S7DataType>()), Times.Never);
+        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<NodeId>(), It.IsAny<object>(), It.IsAny<S7UaLib.S7.Types.S7DataType>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -294,10 +294,10 @@ public class S7ServiceUnitTests
         var sut = CreateSut();
         var nodeId = new NodeId("ns=3;s=Test");
         var variable = new S7Variable { DisplayName = "TestVar", NodeId = nodeId, S7Type = S7UaLib.S7.Types.S7DataType.INT };
-        _realDataStore.DataBlocksGlobal = [new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }];
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<NodeId>(), It.IsAny<object>(), It.IsAny<S7UaLib.S7.Types.S7DataType>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<NodeId>(), It.IsAny<object>(), It.IsAny<S7UaLib.S7.Types.S7DataType>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Write failed"));
 
         // Act
@@ -328,10 +328,17 @@ public class S7ServiceUnitTests
 
         var globalDb = new S7DataBlockGlobal { DisplayName = "TestDB" };
         _mockClient.Setup(c => c.IsConnected).Returns(true);
-        _mockClient.Setup(c => c.GetAllGlobalDataBlocks()).Returns([globalDb]);
-        _mockClient.Setup(c => c.DiscoverElement(It.IsAny<IS7StructureElement>())).Returns<IS7StructureElement>(e => e); // Gibt das Element selbst zurück
+        _mockClient.Setup(c => c.GetAllGlobalDataBlocksAsync(It.IsAny<CancellationToken>())).ReturnsAsync([globalDb]);
+        _mockClient.Setup(c => c.DiscoverElementAsync(
+               It.IsAny<IS7StructureElement>(),
+               It.IsAny<CancellationToken>()))
+           .Returns<IS7StructureElement, CancellationToken>(async (element, _) =>
+           {
+               await Task.CompletedTask;
+               return element;
+           });
 
-        sut.DiscoverStructure();
+        await sut.DiscoverStructureAsync();
 
         _mockFileSystem.AddDirectory("C:\\data");
 
@@ -448,16 +455,16 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void Disconnect_CallsClientDisconnect()
+    public async Task Disconnect_CallsClientDisconnect()
     {
         // Arrange
         var sut = CreateSut();
         const bool leaveOpen = true;
 
-        _mockClient.Setup(c => c.Disconnect(leaveOpen)).Verifiable();
+        _mockClient.Setup(c => c.DisconnectAsync(leaveOpen, It.IsAny<CancellationToken>())).Verifiable();
 
         // Act
-        sut.Disconnect(leaveOpen);
+        await sut.DisconnectAsync(leaveOpen);
 
         // Assert
         _mockClient.Verify();

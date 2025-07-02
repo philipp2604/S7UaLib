@@ -27,6 +27,7 @@ A modern, high-level .NET library designed to simplify communication with Siemen
 - **💾 Structure Persistence**: Save your discovered PLC structure to a JSON file and load it on startup to bypass the time-consuming discovery process.
 - **⚡️ Type-Safe & Path-Based Access**: Read and write variables using their full symbolic path (e.g., `"DataBlocksGlobal.MyDb.MySetting"`).
 - **🔔 Event-Driven Value Changes**: Subscribe to the `VariableValueChanged` event to react to data changes in your application.
+- **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations ensures your application remains responsive. Built from the ground up to be thread-safe, allowing you to reliably use a single `S7Service` instance across multiple concurrent tasks.
 - **🏗️ Modern & Immutable**: Built with modern C# features, using immutable records for data structures to ensure thread safety and predictability.
 
 ## 🚀 Getting Started
@@ -77,7 +78,7 @@ try
     // 3. Connect to the PLC
     Console.WriteLine($"Connecting to {serverUrl}...");
     await service.ConnectAsync(serverUrl, useSecurity: false);
-    Console.WriteLine("✅ Connected!");
+    Console.WriteLine("Connected!");
 
     // 4. Load structure from file or discover it
     if (File.Exists(configFile))
@@ -88,7 +89,7 @@ try
     else
     {
         Console.WriteLine("Discovering PLC structure...");
-        service.DiscoverStructure();
+        await service.DiscoverStructureAsync();
         Console.WriteLine("Saving structure for next time...");
         await service.SaveStructureAsync(configFile);
     }
@@ -96,12 +97,12 @@ try
     // After discovery/loading, it's often necessary to set the specific S7 data types
     // for variables, as this info isn't always exposed by the server.
     // This is typically done once and saved in the config file.
-    service.UpdateVariableType("DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
-    service.UpdateVariableType("DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
+    await service.UpdateVariableTypeAsync("DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
+    await service.UpdateVariableTypeAsync("DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
 
     // 5. Read all variables from the PLC
     Console.WriteLine("\nReading all variable values...");
-    service.ReadAllVariables();
+    await service.ReadAllVariablesAsync();
 
     // 6. Access a variable by its path
     var myIntVar = service.GetVariable("DataBlocksGlobal.Datablock.TestInt");
@@ -118,20 +119,20 @@ try
     
     if (success)
     {
-        Console.WriteLine("✅ Write successful!");
-        service.ReadAllVariables(); // Refresh to see the change
+        Console.WriteLine("Write successful!");
+        await service.ReadAllVariablesAsync(); // Refresh to see the change
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"🚨 An error occurred: {ex.Message}");
+    Console.WriteLine($"An error occurred: {ex.Message}");
 }
 finally
 {
     if (service.IsConnected)
     {
         Console.WriteLine("Disconnecting...");
-        service.Disconnect();
+        await service.DisconnectAsync();
     }
     service.VariableValueChanged -= OnVariableValueChanged;
 }
