@@ -22,13 +22,17 @@ namespace S7UaLib.Services;
 /// </summary>
 public class S7Service : IS7Service
 {
+    #region Private Fields
+
     private readonly IS7UaClient _client;
     private readonly IS7DataStore _dataStore;
     private readonly ILogger? _logger;
     private readonly IFileSystem _fileSystem;
+    private bool _disposed;
 
-    /// <inheritdoc cref="IS7Service.VariableValueChanged"/>
-    public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
+    #endregion Private Fields
+
+    #region Constructors
 
     /// <summary>
     /// Initializes a new instance of the <see cref="S7Service"/> class.
@@ -72,6 +76,56 @@ public class S7Service : IS7Service
         RegisterClientEventHandlers();
     }
 
+    #endregion Constructors
+
+    #region Deconstructors
+
+    ~S7Service()
+    {
+        Dispose(false);
+    }
+
+    #endregion Deconstructors
+
+    #region Disposing
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            _client.Connecting -= Client_Connecting;
+            _client.Connected -= Client_Connected;
+            _client.Disconnecting -= Client_Disconnecting;
+            _client.Disconnected -= Client_Disconnected;
+            _client.Reconnecting -= Client_Reconnecting;
+            _client.Reconnected -= Client_Reconnected;
+
+            _client.Dispose();
+
+            _disposed = true;
+        }
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+    }
+
+    #endregion Disposing
+
+    #region Public Events
+
     #region Connection Events
 
     /// <inheritdoc cref="IS7Service.Connecting"/>
@@ -94,6 +148,17 @@ public class S7Service : IS7Service
 
     #endregion Connection Events
 
+    #region Variables Events
+
+    /// <inheritdoc cref="IS7Service.VariableValueChanged"/>
+    public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
+
+    #endregion Variables Events
+
+    #endregion Public Events
+
+    #region Public Properties
+
     /// <inheritdoc cref="IS7Service.KeepAliveInterval"/>
     public int KeepAliveInterval { get => _client.KeepAliveInterval; set => _client.KeepAliveInterval = value; }
 
@@ -115,25 +180,35 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.IsConnected"/>
     public bool IsConnected => _client.IsConnected;
 
+    #endregion Public Properties
+
+    #region Public Methods
+
     #region Connection Methods
 
     /// <inheritdoc cref="IS7Service.ConnectAsync(string, bool, CancellationToken)"/>
     public async Task ConnectAsync(string serverUrl, bool useSecurity = true, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         await _client.ConnectAsync(serverUrl, useSecurity, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc cref="IS7Service.Disconnect(bool)"/>
     public void Disconnect(bool leaveChannelOpen = false)
     {
+        ThrowIfDisposed();
         _client.Disconnect(leaveChannelOpen);
     }
 
     #endregion Connection Methods
 
+    #region Structure Discovery Methods
+
     /// <inheritdoc cref="IS7Service.DiscoverStructure"/>
     public void DiscoverStructure()
     {
+        ThrowIfDisposed();
+
         if (!_client.IsConnected)
         {
             throw new InvalidOperationException("Client is not connected. Please connect before discovering the structure.");
@@ -166,9 +241,15 @@ public class S7Service : IS7Service
         _dataStore.BuildCache();
     }
 
+    #endregion Structure Discovery Methods
+
+    #region Variables Access and Manipulation Methods
+
     /// <inheritdoc cref="IS7Service.ReadAllVariables"/>
     public void ReadAllVariables()
     {
+        ThrowIfDisposed();
+
         if (!_client.IsConnected)
         {
             throw new InvalidOperationException("Client is not connected. Cannot read variables.");
@@ -211,6 +292,8 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.WriteVariableAsync(string, object)"/>
     public async Task<bool> WriteVariableAsync(string fullPath, object value)
     {
+        ThrowIfDisposed();
+
         if (!_dataStore.TryGetVariableByPath(fullPath, out var variable) || variable?.NodeId is null)
         {
             _logger?.LogWarning("Cannot write to variable: Path '{Path}' not found in data store or variable has no NodeId.", fullPath);
@@ -231,6 +314,8 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.UpdateVariableType(string, S7DataType)"/>
     public bool UpdateVariableType(string fullPath, S7DataType newType)
     {
+        ThrowIfDisposed();
+
         if (!_dataStore.TryGetVariableByPath(fullPath, out var oldVariable) || oldVariable is not S7Variable oldS7Var)
         {
             _logger?.LogWarning("Cannot update type: Path '{Path}' not found or variable is not of type S7Variable.", fullPath);
@@ -295,15 +380,21 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.GetVariable(string)"/>
     public IS7Variable? GetVariable(string fullPath)
     {
+        ThrowIfDisposed();
+
         _dataStore.TryGetVariableByPath(fullPath, out var variable);
         return variable;
     }
 
-    #region Persistence methods
+    #endregion Variables Access and Manipulation Methods
+
+    #region Persistence Methods
 
     /// <inheritdoc cref="IS7Service.SaveStructureAsync(string)"/>
     public async Task SaveStructureAsync(string filePath)
     {
+        ThrowIfDisposed();
+
         ArgumentException.ThrowIfNullOrEmpty(filePath);
 
         var structureModel = new S7StructureStorageModel
@@ -335,6 +426,8 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.SaveStructureAsync(string)"/>
     public async Task LoadStructureAsync(string filePath)
     {
+        ThrowIfDisposed();
+
         ArgumentException.ThrowIfNullOrEmpty(filePath);
 
         if (!_fileSystem.File.Exists(filePath))
@@ -371,7 +464,11 @@ public class S7Service : IS7Service
         }
     }
 
-    #endregion Persistence methods
+    #endregion Persistence Methods
+
+    #endregion Public Methods
+
+    #region Private Methods
 
     protected virtual void OnVariableValueChanged(VariableValueChangedEventArgs e)
     {
@@ -380,11 +477,43 @@ public class S7Service : IS7Service
 
     private void RegisterClientEventHandlers()
     {
-        _client.Connecting += (s, e) => Connecting?.Invoke(s, e);
-        _client.Connected += (s, e) => Connected?.Invoke(s, e);
-        _client.Disconnecting += (s, e) => Disconnecting?.Invoke(s, e);
-        _client.Disconnected += (s, e) => Disconnected?.Invoke(s, e);
-        _client.Reconnecting += (s, e) => Reconnecting?.Invoke(s, e);
-        _client.Reconnected += (s, e) => Reconnected?.Invoke(s, e);
+        _client.Connecting += Client_Connecting;
+        _client.Connected += Client_Connected;
+        _client.Disconnecting += Client_Disconnecting;
+        _client.Disconnected += Client_Disconnected;
+        _client.Reconnecting += Client_Reconnecting;
+        _client.Reconnected += Client_Reconnected;
     }
+
+    private void Client_Connecting(object? sender, ConnectionEventArgs args)
+    {
+        Connecting?.Invoke(sender, args);
+    }
+
+    private void Client_Connected(object? sender, ConnectionEventArgs args)
+    {
+        Connected?.Invoke(sender, args);
+    }
+
+    private void Client_Disconnecting(object? sender, ConnectionEventArgs args)
+    {
+        Disconnecting?.Invoke(sender, args);
+    }
+
+    private void Client_Disconnected(object? sender, ConnectionEventArgs args)
+    {
+        Disconnected?.Invoke(sender, args);
+    }
+
+    private void Client_Reconnecting(object? sender, ConnectionEventArgs args)
+    {
+        Reconnecting?.Invoke(sender, args);
+    }
+
+    private void Client_Reconnected(object? sender, ConnectionEventArgs args)
+    {
+        Reconnected?.Invoke(sender, args);
+    }
+
+    #endregion Private Methods
 }

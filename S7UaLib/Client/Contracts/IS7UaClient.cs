@@ -9,7 +9,7 @@ namespace S7UaLib.Client.Contracts;
 /// <summary>
 /// Defines a common interface for S7 UA clients that manage connections to S7 devices using the OPC UA protocol.
 /// </summary>
-internal interface IS7UaClient
+internal interface IS7UaClient : IDisposable
 {
     #region Public Events
 

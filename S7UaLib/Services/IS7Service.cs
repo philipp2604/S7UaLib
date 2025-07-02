@@ -12,8 +12,57 @@ namespace S7UaLib.Services;
 /// <remarks>This interface provides methods and events for working with S7 PLCs, including reading and writing
 /// variable values,  discovering the server structure, and updating variable types. Implementations of this interface
 /// are expected to  handle communication with the PLC and manage the internal data store.</remarks>
-internal interface IS7Service
+internal interface IS7Service : IDisposable
 {
+    #region Public Events
+
+    #region Connection Events
+
+    /// <summary>
+    /// Occurs when a connection attempt to the server is initiated.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Connecting;
+
+    /// <summary>
+    /// Occurs when a connection to the server has been successfully established.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Connected;
+
+    /// <summary>
+    /// Occurs when a disconnection from the server is initiated.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Disconnecting;
+
+    /// <summary>
+    /// Occurs when the client has been disconnected from the server.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Disconnected;
+
+    /// <summary>
+    /// Occurs when the client is attempting to reconnect to the server after a connection loss.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Reconnecting;
+
+    /// <summary>
+    /// Occurs when the client has successfully reconnected to the server.
+    /// </summary>
+    public event EventHandler<ConnectionEventArgs>? Reconnected;
+
+    #endregion Connection Events
+
+    #region Variables Events
+
+    /// <summary>
+    /// Occurs when a variable's value changes after a read operation.
+    /// </summary>
+    public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
+
+    #endregion Variables Events
+
+    #endregion Public Events
+
+    #region Public Properties
+
     /// <summary>
     /// Gets or sets the interval, in milliseconds, at which keep-alive messages are sent to maintain a connection.
     /// </summary>
@@ -54,6 +103,12 @@ internal interface IS7Service
     /// </summary>
     public bool IsConnected { get; }
 
+    #endregion Public Properties
+
+    #region Public Methods
+
+    #region Connection Methods
+
     /// <summary>
     /// Asynchronously connects to the specified S7 UA server endpoint.
     /// </summary>
@@ -70,46 +125,19 @@ internal interface IS7Service
     /// otherwise, it is closed.</param>
     public void Disconnect(bool leaveChannelOpen = false);
 
-    /// <summary>
-    /// Occurs when a variable's value changes after a read operation.
-    /// </summary>
-    public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
+    #endregion Connection Methods
 
-    /// <summary>
-    /// Occurs when a connection attempt to the server is initiated.
-    /// </summary>
-    public event EventHandler<ConnectionEventArgs>? Connecting;
-
-    /// <summary>
-    /// Occurs when a connection to the server has been successfully established.
-    /// </summary>
-    public event EventHandler<ConnectionEventArgs>? Connected;
-
-    /// <summary>
-    /// Occurs when a disconnection from the server is initiated.
-    /// </summary>
-    public event EventHandler<ConnectionEventArgs>? Disconnecting;
-
-    /// <summary>
-    /// Occurs when the client has been disconnected from the server.
-    /// </summary>
-    public event EventHandler<ConnectionEventArgs>? Disconnected;
-
-    /// <summary>
-    /// Occurs when the client is attempting to reconnect to the server after a connection loss.
-    /// </summary>
-    public event EventHandler<ConnectionEventArgs>? Reconnecting;
-
-    /// <summary>
-    /// Occurs when the client has successfully reconnected to the server.
-    /// </summary>
-    public event EventHandler<ConnectionEventArgs>? Reconnected;
+    #region Structure Discovery Methods
 
     /// <summary>
     /// Discovers the entire structure of the OPC UA server and populates the internal data store.
     /// This includes all data blocks, I/O areas, and their variables.
     /// </summary>
     public void DiscoverStructure();
+
+    #endregion Structure Discovery Methods
+
+    #region Variables Access and Manipulation Methods
 
     /// <summary>
     /// Reads the values of all discovered variables from the PLC.
@@ -141,6 +169,10 @@ internal interface IS7Service
     /// <returns>The <see cref="IS7Variable"/> if found; otherwise, null.</returns>
     public IS7Variable? GetVariable(string fullPath);
 
+    #endregion Variables Access and Manipulation Methods
+
+    #region Persistence Methods
+
     /// <summary>
     /// Saves the current entire PLC structure from the data store to a JSON file.
     /// This includes all discovered elements and their assigned data types.
@@ -156,4 +188,8 @@ internal interface IS7Service
     /// <param name="filePath">The path to the file from which the structure will be loaded.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task LoadStructureAsync(string filePath);
+
+    #endregion Persistence Methods
+
+    #endregion Public Methods
 }

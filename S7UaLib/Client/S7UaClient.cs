@@ -19,8 +19,7 @@ using System.Collections.ObjectModel;
 /// </summary>
 /// <remarks>The <see cref="S7UaClient"/> class provides methods and properties for establishing and managing a
 /// session with an S7 UA server, including connection, disconnection, and reconnection handling. It supports
-/// configurable keep-alive intervals, session timeouts, and reconnection strategies.  This class is thread-safe and
-/// implements <see cref="IDisposable"/> to ensure proper resource cleanup.</remarks>
+/// configurable keep-alive intervals, session timeouts, and reconnection strategies.
 internal class S7UaClient : IS7UaClient, IDisposable
 {
     #region Private Fields
@@ -114,13 +113,43 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Constructors
 
+    #region Deconstructors
+
+    ~S7UaClient()
+    {
+        Dispose(false);
+    }
+
+    #endregion Deconstructors
+
     #region Disposing
 
     public void Dispose()
     {
-        _disposed = true;
-        Utils.SilentDispose(_session);
+        Dispose(true);
         GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+        {
+            if (_session != null)
+            {
+                if (_session.Connected)
+                    Disconnect();
+            }
+
+            _disposed = true;
+        }
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     #endregion Disposing
@@ -180,12 +209,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Connection Methods
 
-    #region Connection Methods
-
     /// <inheritdoc cref="IS7UaClient.ConnectAsync(string, bool, CancellationToken)"/>
     public async Task ConnectAsync(string serverUrl, bool useSecurity = true, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, nameof(S7UaClient));
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(serverUrl, nameof(serverUrl));
 
         if (_session?.Connected == true)
@@ -235,6 +262,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.Disconnect(bool)"/>
     public void Disconnect(bool leaveChannelOpen = false)
     {
+        ThrowIfDisposed();
+
         if (_session != null)
         {
             OnDisconnecting(ConnectionEventArgs.Empty);
@@ -265,12 +294,17 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #region Structure Browsing and Discovery Methods
 
     /// <inheritdoc cref="IS7UaClient.GetAllGlobalDataBlocks"/>
-    public IReadOnlyList<S7DataBlockGlobal> GetAllGlobalDataBlocks() =>
-        GetAllStructureElements<S7DataBlockGlobal>(_dataBlocksGlobalRootNode, NodeClass.Object);
+    public IReadOnlyList<S7DataBlockGlobal> GetAllGlobalDataBlocks()
+    {
+        ThrowIfDisposed();
+        return GetAllStructureElements<S7DataBlockGlobal>(_dataBlocksGlobalRootNode, NodeClass.Object);
+    }
 
     /// <inheritdoc cref="IS7UaClient.GetAllInstanceDataBlocks"/>
     public IReadOnlyList<S7DataBlockInstance> GetAllInstanceDataBlocks()
     {
+        ThrowIfDisposed();
+
         if (!IsConnected)
         {
             _logger?.LogError("Cannot get instance data blocks; session is not connected.");
@@ -293,23 +327,45 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     /// <inheritdoc cref="IS7UaClient.GetMemory"/>
-    public S7Memory? GetMemory() => GetSingletonStructureElement<S7Memory>(_memoryRootNode);
+    public S7Memory? GetMemory()
+    {
+        ThrowIfDisposed();
+        return GetSingletonStructureElement<S7Memory>(_memoryRootNode);
+    }
 
     /// <inheritdoc cref="IS7UaClient.GetInputs"/>
-    public S7Inputs? GetInputs() => GetSingletonStructureElement<S7Inputs>(_inputsRootNode);
+    public S7Inputs? GetInputs()
+    {
+        ThrowIfDisposed();
+        return GetSingletonStructureElement<S7Inputs>(_inputsRootNode);
+    }
 
     /// <inheritdoc cref="IS7UaClient.GetOutputs"/>
-    public S7Outputs? GetOutputs() => GetSingletonStructureElement<S7Outputs>(_outputsRootNode);
+    public S7Outputs? GetOutputs()
+    {
+        ThrowIfDisposed();
+        return GetSingletonStructureElement<S7Outputs>(_outputsRootNode);
+    }
 
     /// <inheritdoc cref="IS7UaClient.GetTimers"/>
-    public S7Timers? GetTimers() => GetSingletonStructureElement<S7Timers>(_timersRootNode);
+    public S7Timers? GetTimers()
+    {
+        ThrowIfDisposed();
+        return GetSingletonStructureElement<S7Timers>(_timersRootNode);
+    }
 
     /// <inheritdoc cref="IS7UaClient.GetCounters"/>
-    public S7Counters? GetCounters() => GetSingletonStructureElement<S7Counters>(_countersRootNode);
+    public S7Counters? GetCounters()
+    {
+        ThrowIfDisposed();
+        return GetSingletonStructureElement<S7Counters>(_countersRootNode);
+    }
 
     /// <inheritdoc cref="IS7UaClient.DiscoverElement(IUaElement elementShell)"/>
     public IUaElement? DiscoverElement(IUaElement elementShell)
     {
+        ThrowIfDisposed();
+
         if (elementShell is null)
         {
             _logger?.LogWarning("DiscoverElement was called with a null element shell.");
@@ -331,6 +387,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.DiscoverInstanceOfDataBlock(S7DataBlockInstance)"/>
     public T DiscoverVariablesOfElement<T>(T element) where T : S7StructureElement
     {
+        ThrowIfDisposed();
+
         if (element?.NodeId is null)
         {
             _logger?.LogWarning("Cannot discover variables for element of type {ElementType} because it or its NodeId is null.", typeof(T).Name);
@@ -374,6 +432,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.DiscoverInstanceOfDataBlock(S7DataBlockInstance)"/>
     public S7DataBlockInstance DiscoverInstanceOfDataBlock(S7DataBlockInstance instanceDbShell)
     {
+        ThrowIfDisposed();
+
         if (instanceDbShell?.NodeId is null)
         {
             _logger?.LogWarning("Cannot discover instance DB because the provided shell or its NodeId is null.");
@@ -418,6 +478,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.ReadValuesOfElement{T}(T, string?)"/>
     public T ReadValuesOfElement<T>(T elementWithStructure, string? rootContextName = null) where T : IUaElement
     {
+        ThrowIfDisposed();
+
         if (elementWithStructure?.NodeId is null)
         {
             _logger?.LogWarning("ReadValuesOfElement called with a null element or element with a null NodeId.");
@@ -457,6 +519,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.WriteValuesOfElement{T}(T, string?)"/>
     public async Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type)
     {
+        ThrowIfDisposed();
+
         ArgumentNullException.ThrowIfNull(nodeId);
         ArgumentNullException.ThrowIfNull(value);
 
@@ -468,6 +532,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(S7Variable, object)"/>/>
     public async Task<bool> WriteVariableAsync(S7Variable variable, object value)
     {
+        ThrowIfDisposed();
+
         ArgumentNullException.ThrowIfNull(variable);
         ArgumentNullException.ThrowIfNull(value);
         return variable.NodeId is null
@@ -478,6 +544,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.WriteRawVariableAsync(NodeId, object)"/>
     public async Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue)
     {
+        ThrowIfDisposed();
+
         ArgumentNullException.ThrowIfNull(nodeId);
         ArgumentNullException.ThrowIfNull(rawValue);
 
@@ -517,7 +585,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Reading and Writing Methods
 
-    #endregion Connection Methods
+    #endregion Public Methods
 
     #region Private Methods
 
@@ -842,6 +910,4 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Event Dispatchers
-
-    #endregion Public Methods
 }
