@@ -58,9 +58,10 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-
+        
+    # ENDGÜLTIGE KORREKTUR: Ersetze den fehlerhaften --framework Schalter durch die robuste MSBuild-Eigenschaft.
     - name: Create NuGet package
-      run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
+      run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
 
     - name: Publish NuGet artifact
       uses: actions/upload-artifact@v4
