@@ -58,15 +58,12 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-    
-    - name: Restore Project for Packing
-      run: dotnet restore ${{ env.PROJECT_TO_PACK_PATH }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-
+        
     - name: Build Project for Packing
-      run: dotnet build ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
+      run: dotnet build ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
 
     - name: Create NuGet package (without building)
-      run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --no-build
+      run: dotnet pack ${{ env.PROJECT_TO_PACK_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --no-build -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
 
     - name: Publish NuGet artifact
       uses: actions/upload-artifact@v4
