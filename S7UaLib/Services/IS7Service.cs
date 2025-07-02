@@ -54,6 +54,8 @@ internal interface IS7Service : IDisposable
 
     /// <summary>
     /// Occurs when a variable's value changes after a read operation.
+    /// IMPORTANT: This event may be raised on a background thread.
+    /// Subscribers must ensure their event handling logic is thread-safe.
     /// </summary>
     public event EventHandler<VariableValueChangedEventArgs>? VariableValueChanged;
 
@@ -122,8 +124,10 @@ internal interface IS7Service : IDisposable
     /// Disconnects from the S7 UA server.
     /// </summary>
     /// <param name="leaveChannelOpen">If <c>true</c>, the underlying communication channel is left open;
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// otherwise, it is closed.</param>
-    public void Disconnect(bool leaveChannelOpen = false);
+    /// <returns>A <see cref="Task"/> representing the asynchronous disconnect operation.</returns>
+    public Task DisconnectAsync(bool leaveChannelOpen = false, CancellationToken cancellationToken = default);
 
     #endregion Connection Methods
 
@@ -132,8 +136,11 @@ internal interface IS7Service : IDisposable
     /// <summary>
     /// Discovers the entire structure of the OPC UA server and populates the internal data store.
     /// This includes all data blocks, I/O areas, and their variables.
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// otherwise, it is closed.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     /// </summary>
-    public void DiscoverStructure();
+    public Task DiscoverStructureAsync(CancellationToken cancellationToken = default);
 
     #endregion Structure Discovery Methods
 
@@ -142,8 +149,11 @@ internal interface IS7Service : IDisposable
     /// <summary>
     /// Reads the values of all discovered variables from the PLC.
     /// Raises the VariableValueChanged event for any variable whose value has changed.
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// otherwise, it is closed.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     /// </summary>
-    public void ReadAllVariables();
+    public Task ReadAllVariablesAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Writes a value to a variable specified by its full symbolic path.
@@ -159,8 +169,10 @@ internal interface IS7Service : IDisposable
     /// </summary>
     /// <param name="fullPath">The full path of the variable to update.</param>
     /// <param name="newType">The new <see cref="S7DataType"/> to apply.</param>
-    /// <returns>True if the variable was found and the type was updated; otherwise, false.</returns>
-    public bool UpdateVariableType(string fullPath, S7DataType newType);
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.
+    /// The TaskResult is true if the variable was found and the type was updated; otherwise, false.</returns>
+    public Task<bool> UpdateVariableTypeAsync(string fullPath, S7DataType newType, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a variable from the data store by its full symbolic path.

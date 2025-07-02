@@ -16,37 +16,52 @@ internal interface IS7DataStore
     /// <summary>
     /// Gets the collection of global data blocks.
     /// </summary>
-    public IReadOnlyList<S7DataBlockGlobal> DataBlocksGlobal { get; set; }
+    public IReadOnlyList<S7DataBlockGlobal> DataBlocksGlobal { get; }
 
     /// <summary>
     /// Gets the collection of instance data blocks.
     /// </summary>
-    public IReadOnlyList<S7DataBlockInstance> DataBlocksInstance { get; set; }
+    public IReadOnlyList<S7DataBlockInstance> DataBlocksInstance { get; }
 
     /// <summary>
     /// Gets the S7 Input memory area.
     /// </summary>
-    public S7Inputs? Inputs { get; set; }
+    public S7Inputs? Inputs { get; }
 
     /// <summary>
     /// Gets the S7 Output memory area.
     /// </summary>
-    public S7Outputs? Outputs { get; set; }
+    public S7Outputs? Outputs { get; }
 
     /// <summary>
     /// Gets the S7 Memory/Flag area.
     /// </summary>
-    public S7Memory? Memory { get; set; }
+    public S7Memory? Memory { get; }
 
     /// <summary>
     /// Gets the S7 Timers memory area.
     /// </summary>
-    public S7Timers? Timers { get; set; }
+    public S7Timers? Timers { get; }
 
     /// <summary>
     /// Gets the S7 Counters memory area.
     /// </summary>
-    public S7Counters? Counters { get; set; }
+    public S7Counters? Counters { get; }
+
+    /// <summary>
+    /// Updates the structure of the S7 PLC data by setting the provided data blocks, inputs, outputs, memory, timers,
+    /// and counters.
+    /// </summary>
+    /// <remarks>This method is thread-safe and ensures that the structure is updated atomically. Use this
+    /// method to configure or reconfigure the PLC data structure.</remarks>
+    /// <param name="globalDbs">A read-only list of global data blocks to be set. Cannot be null.</param>
+    /// <param name="instDbs">A read-only list of instance data blocks to be set. Cannot be null.</param>
+    /// <param name="inputs">The input configuration for the PLC. Can be null.</param>
+    /// <param name="outputs">The output configuration for the PLC. Can be null.</param>
+    /// <param name="memory">The memory configuration for the PLC. Can be null.</param>
+    /// <param name="timers">The timer configuration for the PLC. Can be null.</param>
+    /// <param name="counters">The counter configuration for the PLC. Can be null.</param>
+    public void SetStructure(IReadOnlyList<S7DataBlockGlobal> globalDbs, IReadOnlyList<S7DataBlockInstance> instDbs, S7Inputs? inputs, S7Outputs? outputs, S7Memory? memory, S7Timers? timers, S7Counters? counters);
 
     /// <summary>
     /// Tries to retrieve a variable by its full symbolic path.

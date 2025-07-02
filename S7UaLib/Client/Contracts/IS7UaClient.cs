@@ -122,7 +122,9 @@ internal interface IS7UaClient : IDisposable
     /// Disconnects from the server and optionally leaves the channel open.
     /// </summary>
     /// <param name="leaveChannelOpen">Whether to leave the transport channel open.</param>
-    public void Disconnect(bool leaveChannelOpen = false);
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A task indicating the state of the async function.</returns>
+    public Task DisconnectAsync(bool leaveChannelOpen = false, CancellationToken cancellationToken = default);
 
     #endregion Connection Methods
 
@@ -131,67 +133,77 @@ internal interface IS7UaClient : IDisposable
     /// <summary>
     /// Retrieves all global data blocks from the OPC UA server.
     /// </summary>
-    /// <returns>A read-only list of discovered <see cref="S7DataBlockGlobal"/> shells.</returns>
-    public IReadOnlyList<S7DataBlockGlobal> GetAllGlobalDataBlocks();
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a read-only list of discovered <see cref="S7DataBlockGlobal"/> shells.</returns>
+    public Task<IReadOnlyList<S7DataBlockGlobal>> GetAllGlobalDataBlocksAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all instance data blocks from the OPC UA server.
     /// </summary>
-    /// <returns>A read-only list of discovered <see cref="S7DataBlockInstance"/> shells.</returns>
-    public IReadOnlyList<S7DataBlockInstance> GetAllInstanceDataBlocks();
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a read-only list of discovered <see cref="S7DataBlockInstance"/> shells.</returns>
+    public Task<IReadOnlyList<S7DataBlockInstance>> GetAllInstanceDataBlocksAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the S7 Memory (M) area organizational element.
     /// </summary>
-    /// <returns>A <see cref="S7Memory"/> shell, or null if not found or an error occurs.</returns>
-    public S7Memory? GetMemory();
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a <see cref="S7Memory"/> shell, or null if not found or an error occurs.</returns>
+    public Task<S7Memory?> GetMemoryAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the S7 Inputs (I) area organizational element.
     /// </summary>
-    /// <returns>A <see cref="S7Inputs"/> shell, or null if not found or an error occurs.</returns>
-    public S7Inputs? GetInputs();
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a <see cref="S7Inputs"/> shell, or null if not found or an error occurs.</returns>
+    public Task<S7Inputs?> GetInputsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the S7 Outputs (Q) area organizational element.
     /// </summary>
-    /// <returns>A <see cref="S7Outputs"/> shell, or null if not found or an error occurs.</returns>
-    public S7Outputs? GetOutputs();
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a <see cref="S7Outputs"/> shell, or null if not found or an error occurs.</returns>
+    public Task<S7Outputs?> GetOutputsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the S7 Timers (T) area organizational element.
     /// </summary>
-    /// <returns>A <see cref="S7Timers"/> shell, or null if not found or an error occurs.</returns>
-    public S7Timers? GetTimers();
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A task encapsulating a <see cref="S7Timers"/> shell, or null if not found or an error occurs.</returns>
+    public Task<S7Timers?> GetTimersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the S7 Counters (C) area organizational element.
     /// </summary>
-    /// <returns>A <see cref="S7Counters"/> shell, or null if not found or an error occurs.</returns>
-    public S7Counters? GetCounters();
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a <see cref="S7Counters"/> shell, or null if not found or an error occurs.</returns>
+    public Task<S7Counters?> GetCountersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Discovers the full structure of a given UA element shell. This method acts as a dispatcher,
     /// calling the appropriate specialized "Discover" method based on the element's type.
     /// </summary>
     /// <param name="elementShell">The "shell" element, typically containing only a NodeId and DisplayName.</param>
-    /// <returns>A fully discovered element as <see cref="IUaElement"/>, or null if the type is unsupported or an error occurs.</returns>
-    public IUaElement? DiscoverElement(IUaElement elementShell);
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a fully discovered element as <see cref="IUaElement"/>, or null if the type is unsupported or an error occurs.</returns>
+    public Task<IUaElement?> DiscoverElementAsync(IUaElement elementShell, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Discovers the variables contained within a simple structure element (like a global DB or I/O area).
     /// </summary>
     /// <typeparam name="T">The type of the structure element, which must be a derivative of <see cref="S7StructureElement"/>.</typeparam>
     /// <param name="element">The structure element shell whose variables are to be discovered.</param>
-    /// <returns>A new instance of the element with its <c>Variables</c> list populated. Returns the original element on failure.</returns>
-    public T DiscoverVariablesOfElement<T>(T element) where T : S7StructureElement;
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a new instance of the element with its <c>Variables</c> list populated. Returns the original element on failure.</returns>
+    public Task<T> DiscoverVariablesOfElementAsync<T>(T element, CancellationToken cancellationToken = default) where T : S7StructureElement;
 
     /// <summary>
     /// Discovers the full nested structure of an instance data block.
     /// </summary>
     /// <param name="instanceDbShell">The instance data block shell to discover.</param>
-    /// <returns>A new instance of the data block with its sections populated. Returns the original element on failure.</returns>
-    public S7DataBlockInstance DiscoverInstanceOfDataBlock(S7DataBlockInstance instanceDbShell);
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a new instance of the data block with its sections populated. Returns the original element on failure.</returns>
+    public Task<S7DataBlockInstance> DiscoverInstanceOfDataBlockAsync(S7DataBlockInstance instanceDbShell, CancellationToken cancellationToken = default);
 
     #endregion Structure Browsing and Discovery Methods
 
@@ -205,8 +217,9 @@ internal interface IS7UaClient : IDisposable
     /// <typeparam name="T">The type of the element to read, which must implement <see cref="IUaElement"/>.</typeparam>
     /// <param name="elementWithStructure">An element whose structure has already been discovered.</param>
     /// <param name="rootContextName">The name of the root collection (e.g., "DataBlocksGlobal", "Inputs") used for building the full path.</param>
-    /// <returns>A new instance of the element, populated with values. Returns the original element on failure.</returns>
-    public T ReadValuesOfElement<T>(T elementWithStructure, string? rootContextName = null) where T : IUaElement;
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A Task encapsulating a new instance of the element, populated with values. Returns the original element on failure.</returns>
+    public Task<T> ReadValuesOfElementAsync<T>(T elementWithStructure, string? rootContextName = null, CancellationToken cancellationToken = default) where T : IUaElement;
 
     #endregion Reading Methods
 
@@ -218,29 +231,32 @@ internal interface IS7UaClient : IDisposable
     /// <param name="nodeId">The NodeId of the variable to write to.</param>
     /// <param name="value">The user-friendly .NET value.</param>
     /// <param name="s7Type">The target S7 data type for correct conversion.</param>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if nodeId or value is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown if the value conversion fails or the session is not connected.</exception>
-    public Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type);
+    public Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a value to a variable, performing S7-specific type conversion before sending.
     /// </summary>
     /// <param name="variable">The S7Variable object containing the NodeId and S7Type.</param>
     /// <param name="value">The user-friendly .NET value.</param>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if variable or value is null.</exception>
     /// <exception cref="ArgumentException">Thrown if the variable's NodeId is null.</exception>
-    public Task<bool> WriteVariableAsync(S7Variable variable, object value);
+    public Task<bool> WriteVariableAsync(S7Variable variable, object value, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a raw, Variant-compatible value directly to an OPC UA variable.
     /// </summary>
     /// <param name="nodeId">The NodeId of the variable to write to.</param>
     /// <param name="rawValue">The raw value to be written.</param>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if nodeId or rawValue is null.</exception>
-    public Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue);
+    public Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue, CancellationToken cancellationToken = default);
 
     #endregion Writing Methods
 

@@ -35,19 +35,22 @@ public class S7DataStoreUnitTests
         var structMember = new S7Variable { DisplayName = "Member1" };
         var structVar = new S7Variable { DisplayName = "MyStruct", StructMembers = [structMember] };
 
-        sut.DataBlocksGlobal =
-        [
-            new S7DataBlockGlobal
-            {
-                DisplayName = "DB1",
-                Variables = [var1, var2]
-            }
-        ];
-        sut.Inputs = new S7Inputs
-        {
-            DisplayName = "Inputs",
-            Variables = [structVar]
-        };
+        sut.SetStructure(
+            [
+                new S7DataBlockGlobal
+                {
+                    DisplayName = "DB1",
+                    Variables = [var1, var2]
+                }
+            ],
+            [],
+                new S7Inputs
+                {
+                    DisplayName = "Inputs",
+                    Variables = [structVar]
+                }
+                ,
+            null, null, null, null);
 
         // Act
         sut.BuildCache();
@@ -64,7 +67,8 @@ public class S7DataStoreUnitTests
 
         structMember = structMember with { FullPath = "Inputs.MyStruct.Member1" };
         structVar = structVar with { StructMembers = [structMember] };
-        sut.Inputs = sut.Inputs with { Variables = [structVar] };
+        sut.SetStructure(sut.DataBlocksGlobal, [], sut?.Inputs! with { Variables = [structVar] }, null, null, null, null);
+
         sut.BuildCache();
 
         Assert.True(sut.TryGetVariableByPath("Inputs.MyStruct.Member1", out var foundMember));
@@ -78,12 +82,14 @@ public class S7DataStoreUnitTests
         var sut = CreateSut();
         var varWithFullPath = new S7Variable { DisplayName = "Var", FullPath = "Some.Explicit.Path.Var" };
 
-        sut.Memory = new S7Memory
-        {
-            DisplayName = "Memory",
-            FullPath = "Some.Explicit.Path",
-            Variables = [varWithFullPath]
-        };
+        sut.SetStructure([], [], null, null,
+            new S7Memory
+            {
+                DisplayName = "Memory",
+                FullPath = "Some.Explicit.Path",
+                Variables = [varWithFullPath]
+            },
+            null, null);
 
         // Act
         sut.BuildCache();
@@ -99,25 +105,31 @@ public class S7DataStoreUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        sut.DataBlocksGlobal =
-        [
-            new S7DataBlockGlobal
-            {
-                DisplayName = "DB_TO_REMOVE",
-                Variables = [ new S7Variable { DisplayName = "OldVar" } ]
-            }
-        ];
+
+        sut.SetStructure(
+            [
+                new S7DataBlockGlobal
+                {
+                    DisplayName = "DB_TO_REMOVE",
+                    Variables = [new S7Variable { DisplayName = "OldVar" }]
+                }
+            ],
+            [],
+            null, null, null, null, null);
+
         sut.BuildCache();
         Assert.True(sut.TryGetVariableByPath("DataBlocksGlobal.DB_TO_REMOVE.OldVar", out _));
 
-        sut.DataBlocksGlobal =
-        [
-            new S7DataBlockGlobal
+        sut.SetStructure(
+            [
+                new S7DataBlockGlobal
             {
                 DisplayName = "DB_NEW",
                 Variables = [ new S7Variable { DisplayName = "NewVar" } ]
             }
-        ];
+            ],
+            [],
+            null, null, null, null, null);
 
         // Act
         sut.BuildCache();
@@ -151,14 +163,17 @@ public class S7DataStoreUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        sut.DataBlocksGlobal =
-        [
-            new S7DataBlockGlobal
-            {
-                DisplayName = "DB1",
-                Variables = [ new S7Variable { DisplayName = "Var1" }]
-            }
-        ];
+        sut.SetStructure(
+            [
+                new S7DataBlockGlobal
+                {
+                    DisplayName = "DB1",
+                    Variables = [ new S7Variable { DisplayName = "Var1" }]
+                }
+            ],
+            [],
+            null, null, null, null, null);
+
         sut.BuildCache();
 
         // Act
@@ -179,14 +194,17 @@ public class S7DataStoreUnitTests
         // Arrange
         var sut = CreateSut();
         var oldVar = new S7Variable { DisplayName = "VarToReplace", Value = 1 };
-        sut.DataBlocksGlobal =
-        [
-            new S7DataBlockGlobal
-        {
-            DisplayName = "DB1",
-            Variables = [ oldVar ]
-        }
-        ];
+        sut.SetStructure(
+            [
+                new S7DataBlockGlobal
+                {
+                    DisplayName = "DB1",
+                    Variables = [ oldVar ]
+                }
+            ],
+            [],
+            null, null, null, null, null);
+
         sut.BuildCache();
 
         var newVar = new S7Variable { DisplayName = "VarToReplace", Value = 99 };
@@ -208,11 +226,15 @@ public class S7DataStoreUnitTests
         // Arrange
         var sut = CreateSut();
         var oldVar = new S7Variable { DisplayName = "TestInput", Value = false };
-        sut.Inputs = new S7Inputs
-        {
-            DisplayName = "Inputs",
-            Variables = [oldVar]
-        };
+        sut.SetStructure(
+            [], [],
+            new S7Inputs
+            {
+                DisplayName = "Inputs",
+                Variables = [oldVar]
+            },
+            null, null, null, null);
+
         sut.BuildCache();
 
         var newVar = new S7Variable { DisplayName = "TestInput", Value = true };
@@ -236,14 +258,17 @@ public class S7DataStoreUnitTests
         var sut = CreateSut();
         var oldMember = new S7Variable { DisplayName = "Member", Value = 123 };
         var structVar = new S7Variable { DisplayName = "MyStruct", S7Type = S7UaLib.S7.Types.S7DataType.STRUCT, StructMembers = [oldMember] };
-        sut.DataBlocksGlobal =
-        [
-            new S7DataBlockGlobal
-        {
-            DisplayName = "DB1",
-            Variables = [ structVar ]
-        }
-        ];
+        sut.SetStructure(
+            [
+                new S7DataBlockGlobal
+                {
+                    DisplayName = "DB1",
+                    Variables = [ structVar ]
+                }
+            ],
+            [],
+            null, null, null, null, null);
+
         sut.BuildCache();
 
         var newMember = new S7Variable { DisplayName = "Member", Value = 456 };

@@ -73,7 +73,7 @@ public class S7UaClientIntegrationTests
             Assert.True(connectedFired, "Connected event flag should be true.");
 
             // Act & Assert: Disconnect
-            client.Disconnect();
+            await client.DisconnectAsync();
 
             bool disconnectedInTime = disconnectedEvent.Wait(TimeSpan.FromSeconds(5));
 
@@ -130,7 +130,7 @@ public class S7UaClientIntegrationTests
             client = await CreateAndConnectClientAsync();
 
             // Act
-            var instanceDbs = client.GetAllInstanceDataBlocks();
+            var instanceDbs = await client.GetAllInstanceDataBlocksAsync();
 
             // Assert
             Assert.NotNull(instanceDbs);
@@ -139,7 +139,7 @@ public class S7UaClientIntegrationTests
         }
         finally
         {
-            client?.Disconnect();
+            await client!.DisconnectAsync();
         }
     }
 
@@ -153,14 +153,14 @@ public class S7UaClientIntegrationTests
             client = await CreateAndConnectClientAsync();
 
             // Act
-            var inputsShell = client.GetInputs();
+            var inputsShell = await client.GetInputsAsync();
 
             // Assert
             Assert.NotNull(inputsShell);
             Assert.False(inputsShell.Variables?.Any(), "Variables list should be empty before discovery.");
 
             // Act
-            var populatedInputs = client.DiscoverVariablesOfElement(inputsShell);
+            var populatedInputs = await client.DiscoverVariablesOfElementAsync(inputsShell);
 
             // Assert
             Assert.NotNull(populatedInputs);
@@ -170,7 +170,7 @@ public class S7UaClientIntegrationTests
         }
         finally
         {
-            client?.Disconnect();
+            await client!.DisconnectAsync();
         }
     }
 
@@ -182,14 +182,14 @@ public class S7UaClientIntegrationTests
         {
             // Arrange
             client = await CreateAndConnectClientAsync();
-            var instanceDbs = client.GetAllInstanceDataBlocks();
+            var instanceDbs = await client.GetAllInstanceDataBlocksAsync();
             var dbShell = instanceDbs.FirstOrDefault(db => db.DisplayName == "FunctionBlock_InstDB");
             Assert.NotNull(dbShell);
             Assert.Null(dbShell.Outputs);
             Assert.Null(dbShell.Inputs);
 
             // Act
-            var discoveredElement = client.DiscoverElement(dbShell);
+            var discoveredElement = await client.DiscoverElementAsync(dbShell);
 
             // Assert
             Assert.NotNull(discoveredElement);
@@ -203,7 +203,7 @@ public class S7UaClientIntegrationTests
         }
         finally
         {
-            client?.Disconnect();
+            await client!.DisconnectAsync();
         }
     }
 
@@ -219,26 +219,26 @@ public class S7UaClientIntegrationTests
         {
             // Arrange
             client = await CreateAndConnectClientAsync();
-            var inputsShell = client.GetInputs();
-            var outputsShell = client.GetOutputs();
-            var memoryShell = client.GetMemory();
+            var inputsShell = await client.GetInputsAsync();
+            var outputsShell = await client.GetOutputsAsync();
+            var memoryShell = await client.GetMemoryAsync();
             Assert.NotNull(inputsShell);
             Assert.NotNull(outputsShell);
             Assert.NotNull(memoryShell);
 
             // Act
-            var populatedInputs = client.DiscoverVariablesOfElement(inputsShell);
-            var populatedOutputs = client.DiscoverVariablesOfElement(outputsShell);
-            var populatedMemory = client.DiscoverVariablesOfElement(memoryShell);
+            var populatedInputs = await client.DiscoverVariablesOfElementAsync(inputsShell);
+            var populatedOutputs = await client.DiscoverVariablesOfElementAsync(outputsShell);
+            var populatedMemory = await client.DiscoverVariablesOfElementAsync(memoryShell);
             var correctlyTypedInputs = populatedInputs.Variables.Cast<S7Variable>().Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
             var correctlyTypedOutputs = populatedOutputs.Variables.Cast<S7Variable>().Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
             var correctlyTypedMemory = populatedMemory.Variables.Cast<S7Variable>().Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
             var inputsToRead = populatedInputs with { Variables = correctlyTypedInputs };
             var outputsToRead = populatedOutputs with { Variables = correctlyTypedOutputs };
             var memoryToRead = populatedMemory with { Variables = correctlyTypedMemory };
-            var inputsWithValues = client.ReadValuesOfElement(inputsToRead, "Inputs");
-            var outputsWithValues = client.ReadValuesOfElement(outputsToRead, "Outputs");
-            var memoryWithValues = client.ReadValuesOfElement(memoryToRead, "Memory");
+            var inputsWithValues = await client.ReadValuesOfElementAsync(inputsToRead, "Inputs");
+            var outputsWithValues = await client.ReadValuesOfElementAsync(outputsToRead, "Outputs");
+            var memoryWithValues = await client.ReadValuesOfElementAsync(memoryToRead, "Memory");
 
             // Assert
             var inputVar = inputsWithValues.Variables.First(v => v.DisplayName == "TestInput");
@@ -255,7 +255,7 @@ public class S7UaClientIntegrationTests
         }
         finally
         {
-            client?.Disconnect();
+            await client!.DisconnectAsync();
         }
     }
 
@@ -267,12 +267,12 @@ public class S7UaClientIntegrationTests
         {
             // Arrange
             client = await CreateAndConnectClientAsync();
-            var globalDbs = client.GetAllGlobalDataBlocks();
+            var globalDbs = await client.GetAllGlobalDataBlocksAsync();
             var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "Datablock");
             Assert.NotNull(dbShell);
 
             // Act
-            var dbWithVars = client.DiscoverVariablesOfElement(dbShell);
+            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
             Assert.NotNull(dbWithVars?.Variables);
             var correctlyTypedVars = dbWithVars.Variables.Cast<S7Variable>().Select(variable => variable with
             {
@@ -325,7 +325,7 @@ public class S7UaClientIntegrationTests
             var dbToRead = dbWithVars with { Variables = correctlyTypedVars };
 
             // Act
-            var dbWithValues = client.ReadValuesOfElement(dbToRead, "DataBlocksGlobal");
+            var dbWithValues = await client.ReadValuesOfElementAsync(dbToRead, "DataBlocksGlobal");
 
             // Assert
             void AssertVar(string name, object? expected)
@@ -361,7 +361,7 @@ public class S7UaClientIntegrationTests
         }
         finally
         {
-            client?.Disconnect();
+            await client!.DisconnectAsync();
         }
     }
 
@@ -378,16 +378,16 @@ public class S7UaClientIntegrationTests
         {
             // Arrange
             client = await CreateAndConnectClientAsync();
-            var globalDbs = client.GetAllGlobalDataBlocks();
+            var globalDbs = await client.GetAllGlobalDataBlocksAsync();
             var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "Datablock");
             Assert.NotNull(dbShell);
-            var dbWithVars = client.DiscoverVariablesOfElement(dbShell);
+            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
             testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestInt") as S7Variable;
             Assert.NotNull(testVar);
             testVar = testVar with { S7Type = S7DataType.INT };
 
             // Act & Assert
-            var dbWithOriginalValues = client.ReadValuesOfElement(dbWithVars with { Variables = [testVar] });
+            var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
             originalValue = dbWithOriginalValues.Variables[0].Value;
             Assert.NotNull(originalValue);
 
@@ -396,7 +396,7 @@ public class S7UaClientIntegrationTests
             Assert.True(writeSuccess, "Writing the new value failed.");
 
             // Act & Assert
-            var dbWithNewValues = client.ReadValuesOfElement(dbWithVars with { Variables = [testVar] });
+            var dbWithNewValues = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
             Assert.Equal(newValue, dbWithNewValues.Variables[0].Value);
         }
         finally
@@ -406,7 +406,7 @@ public class S7UaClientIntegrationTests
             {
                 await client.WriteVariableAsync(testVar, originalValue);
             }
-            client?.Disconnect();
+            await client!.DisconnectAsync();
         }
     }
 

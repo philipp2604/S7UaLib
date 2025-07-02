@@ -62,13 +62,13 @@ internal static class Program
             else
             {
                 Console.WriteLine("No configuration file found. Performing discovery...");
-                _service.DiscoverStructure();
+                await _service.DiscoverStructureAsync();
                 Console.WriteLine("Discovery complete. Saving structure...");
                 await _service.SaveStructureAsync(_configFilePath);
                 Console.WriteLine($"Structure saved to '{_configFilePath}'.");
             }
 
-            _service.ReadAllVariables();
+            await _service.ReadAllVariablesAsync();
 
             // Subscribe to the value changed event
             _service.VariableValueChanged += OnVariableValueChanged;
@@ -88,7 +88,7 @@ internal static class Program
             if (_service?.IsConnected == true)
             {
                 Console.WriteLine("Disconnecting...");
-                _service.Disconnect();
+                await _service.DiscoverStructureAsync();
             }
             if (_service != null)
             {
@@ -135,7 +135,7 @@ internal static class Program
                         break;
 
                     case "refresh":
-                        RefreshAllVariables();
+                        await RefreshAllVariables();
                         break;
 
                     case "exit":
@@ -252,10 +252,10 @@ internal static class Program
         }
     }
 
-    private static void RefreshAllVariables()
+    private static async Task RefreshAllVariables()
     {
         Console.WriteLine("Refreshing all variables from the server...");
-        _service?.ReadAllVariables();
+        await _service!.ReadAllVariablesAsync();
         Console.WriteLine("Refresh complete. Changes (if any) have been displayed.");
     }
 }
