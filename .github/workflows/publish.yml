@@ -2,16 +2,18 @@
 
 name: Publish to NuGet
 on:
-  workflow_dispatch: # Allow running the workflow manually from the GitHub UI
+  workflow_dispatch:
   release:
-    types:
-      - published
+    types: [published]
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
   DOTNET_NOLOGO: true
   NuGetDirectory: ${{ github.workspace}}/nuget
-  TARGET_FRAMEWORK: 'net8.0' 
+  SOLUTION_FILE_PATH: S7UaLib.sln
+  PROJECT_FILE_PATH: S7UaLib/S7UaLib.csproj
+  TARGET_FRAMEWORK: 'net8.0'
+  CONFIGURATION: 'Release'
 
 defaults:
   run:
@@ -29,51 +31,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x' 
-          
-      - name: Restore dependencies
-        run: dotnet restore S7UaLib/S7UaLib.csproj -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
-      
-      - name: Build
-        run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release --no-restore --framework ${{ env.TARGET_FRAMEWORK }}
-    
-      - name: Test
-        run: dotnet test --no-build --verbosity normal --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies for the entire solution
+        run: dotnet restore ${{ env.SOLUTION_FILE_PATH }} -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
+
+      - name: Build the entire solution
+        run: dotnet build ${{ env.SOLUTION_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --no-restore
+
+      - name: Run tests
+        run: dotnet test ${{ env.SOLUTION_FILE_PATH }} --no-build --configuration ${{ env.CONFIGURATION }} --filter "Category!=Integration"
 
   create_nuget:
     name: Create NuGet Package
     runs-on: windows-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-        
-    - name: Create NuGet package
-      run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
+      - name: Create NuGet package
+        run: dotnet pack ${{ env.PROJECT_FILE_PATH }} --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
 
-    - name: Publish NuGet artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: nuget-package
-        if-no-files-found: error
-        retention-days: 7
-        path: ${{ env.NuGetDirectory }}/*.nupkg
+      - name: Publish NuGet artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          if-no-files-found: error
+          retention-days: 7
+          path: ${{ env.NuGetDirectory }}/*.nupkg
 
   deploy_nuget:
     name: Deploy to NuGet.org
     runs-on: windows-latest
-    needs: [ build_and_test, create_nuget ] 
+    needs: [build_and_test, create_nuget]
     if: github.event_name == 'release' && github.event.action == 'published'
-    
     steps:
       - name: Download NuGet package artifact
         uses: actions/download-artifact@v4
@@ -90,5 +91,5 @@ jobs:
       - name: Publish NuGet package
         run: |
           foreach($file in (Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg)) {
-              dotnet nuget push $file --skip-duplicate --api-key "${{ secrets.NUGET_APIKEY }}" --source https://api.nuget.org/v3/index.json 
+              dotnet nuget push $file --skip-duplicate --api-key "${{ secrets.NUGET_APIKEY }}" --source https://api.nuget.org/v3/index.json
           }
