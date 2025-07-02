@@ -746,15 +746,19 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 {
                     var discoveredMembers = DiscoverVariablesOfElementCore(new S7StructureElement { NodeId = variable.NodeId }).Variables;
 
-                    var templateTypeLookup = variable.StructMembers
+                    var templateMembersByName = variable.StructMembers
                         .Where(m => m.DisplayName is not null)
-                        .ToDictionary(m => m.DisplayName!, m => m.S7Type);
+                        .ToDictionary(m => m.DisplayName!, m => m);
 
                     var membersToProcess = discoveredMembers.Cast<S7Variable>().Select(discoveredMember =>
                     {
-                        templateTypeLookup.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var s7Type);
+                        templateMembersByName.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var templateMember);
 
-                        return (IS7Variable)(discoveredMember with { S7Type = s7Type });
+                        return (IS7Variable)(discoveredMember with
+                        {
+                            S7Type = templateMember?.S7Type ?? S7DataType.UNKNOWN,
+                            StructMembers = templateMember?.StructMembers ?? []
+                        });
                     });
 
                     var processedMembers = membersToProcess
@@ -812,10 +816,35 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 string fullPath = $"{currentPath}.{variable.DisplayName}";
                 if (variable.S7Type == S7DataType.STRUCT)
                 {
-                    var structMembers = DiscoverVariablesOfElementCore(new S7StructureElement { NodeId = variable.NodeId }).Variables;
-                    foreach (var member in structMembers)
+                    var discoveredMembers = DiscoverVariablesOfElementCore(new S7StructureElement { NodeId = variable.NodeId }).Variables;
+
+                    if (variable.StructMembers.Any())
                     {
-                        CollectNodesToReadRecursivelyCore(member, collectedNodes, fullPath);
+                        var templateMembersByName = variable.StructMembers.ToDictionary(m => m.DisplayName!, m => m);
+
+                        foreach (var discoveredMember in discoveredMembers.Cast<S7Variable>())
+                        {
+                            if (templateMembersByName.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var templateMember))
+                            {
+                                var memberToRecurse = discoveredMember with
+                                {
+                                    S7Type = templateMember.S7Type,
+                                    StructMembers = templateMember.StructMembers
+                                };
+                                CollectNodesToReadRecursivelyCore(memberToRecurse, collectedNodes, fullPath);
+                            }
+                            else
+                            {
+                                CollectNodesToReadRecursivelyCore(discoveredMember, collectedNodes, fullPath);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        foreach (var member in discoveredMembers)
+                        {
+                            CollectNodesToReadRecursivelyCore(member, collectedNodes, fullPath);
+                        }
                     }
                 }
                 else if (variable.NodeId != null)
