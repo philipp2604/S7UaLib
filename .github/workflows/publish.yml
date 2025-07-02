@@ -11,6 +11,7 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
   DOTNET_NOLOGO: true
   NuGetDirectory: ${{ github.workspace}}/nuget
+  TARGET_FRAMEWORK: 'net8.0' 
 
 defaults:
   run:
@@ -30,38 +31,39 @@ jobs:
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
-        # Wenn du eine global.json hast, wird die Version automatisch erkannt.
-        # with:
-        #   dotnet-version: '8.0.x' 
+        with:
+          dotnet-version: '8.0.x' 
 
+      # KORREKTUR: 'dotnet restore' benötigt keinen --framework Schalter.
+      # Es stellt Abhängigkeiten für alle TargetFrameworks in der .csproj wieder her.
       - name: Restore dependencies
         run: dotnet restore S7UaLib/S7UaLib.csproj
       
+      # KORREKT: 'build' benötigt den Schalter, um das Ziel auszuwählen.
       - name: Build
-        run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release --no-restore
+        run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release --no-restore --framework ${{ env.TARGET_FRAMEWORK }}
     
+      # KORREKT: 'test' benötigt den Schalter, um das Ziel auszuwählen.
       - name: Test
-        # Führt Tests aus, die nicht als "Integration" markiert sind
-        run: dotnet test --no-build --verbosity normal --filter "Category!=Integration"
+        run: dotnet test --no-build --verbosity normal --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
 
   create_nuget:
     name: Create NuGet Package
     runs-on: windows-latest
-    # Dieser Job muss nicht auf die Tests warten, er kann parallel laufen.
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # Nötig für Versionierungstools wie MinVer
+        fetch-depth: 0 # Nötig für Versionierungstools
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
 
+    # KORREKT: 'pack' benötigt den Schalter, um das Ziel auszuwählen.
     - name: Create NuGet package
-      # dotnet pack führt implizit einen build aus. 
-      # Du könntest --no-build hinzufügen, wenn du sicherstellen willst,
-      # dass ein vorheriger Build-Schritt verwendet wird.
-      run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }}
+      run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
 
     - name: Publish NuGet artifact
       uses: actions/upload-artifact@v4
@@ -74,17 +76,14 @@ jobs:
   deploy_nuget:
     name: Deploy to NuGet.org
     runs-on: windows-latest
-    # FIX: Füge BEIDE Jobs als Abhängigkeit hinzu
     needs: [ build_and_test, create_nuget ] 
-    
-    # BEST PRACTICE: Nur bei einem echten Release deployen, nicht bei manuellen Tests.
     if: github.event_name == 'release' && github.event.action == 'published'
     
     steps:
       - name: Download NuGet package artifact
         uses: actions/download-artifact@v4
         with:
-          name: nuget-package # Name muss mit dem Upload-Job übereinstimmen
+          name: nuget-package
           path: ${{ env.NuGetDirectory }}
 
       - name: Setup .NET
