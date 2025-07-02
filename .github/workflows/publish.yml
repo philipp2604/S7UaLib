@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 
-name: publish
+name: Publish to NuGet
 on:
   workflow_dispatch: # Allow running the workflow manually from the GitHub UI
   release:
@@ -17,72 +17,82 @@ defaults:
     shell: pwsh
 
 jobs:
-  create_nuget:
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0 # Get all history to allow automatic versioning using MinVer
-
-    # Install the .NET SDK indicated in the global.json file
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-
-    # Create the NuGet package in the folder from the environment variable NuGetDirectory
-    
-    - run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release
-    - run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }}
-
-    # Publish the NuGet package as an artifact, so they can be used in the following jobs
-    - uses: actions/upload-artifact@v4
-      with:
-        name: nuget
-        if-no-files-found: error
-        retention-days: 7
-        path: ${{ env.NuGetDirectory }}/*.nupkg
-
-  run_test:
+  build_and_test:
+    name: Build & Test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        # Wenn du eine global.json hast, wird die Version automatisch erkannt.
+        # with:
+        #   dotnet-version: '8.0.x' 
+
+      - name: Restore dependencies
+        run: dotnet restore S7UaLib/S7UaLib.csproj
+      
+      - name: Build
+        run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release --no-restore
+    
+      - name: Test
+        # Führt Tests aus, die nicht als "Integration" markiert sind
+        run: dotnet test --no-build --verbosity normal --filter "Category!=Integration"
+
+  create_nuget:
+    name: Create NuGet Package
+    runs-on: windows-latest
+    # Dieser Job muss nicht auf die Tests warten, er kann parallel laufen.
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Nötig für Versionierungstools wie MinVer
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-    - name: Install dependencies for target framework
-      run: dotnet restore /p:TargetFramework='net8.0'
-      
-    - name: Build
-      run: dotnet build --configuration Release --no-restore --framework 'net8.0'
-    
-    - name: Test
-      run: dotnet test --no-restore --verbosity normal --framework 'net8.0' --filter "Category!=Integration"
 
-  deploy:
-    # Publish only when creating a GitHub Release
-    # https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository
-    # You can update this logic if you want to manage releases differently
-    #if: github.event_name == 'release'
+    - name: Create NuGet package
+      # dotnet pack führt implizit einen build aus. 
+      # Du könntest --no-build hinzufügen, wenn du sicherstellen willst,
+      # dass ein vorheriger Build-Schritt verwendet wird.
+      run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }}
+
+    - name: Publish NuGet artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-package
+        if-no-files-found: error
+        retention-days: 7
+        path: ${{ env.NuGetDirectory }}/*.nupkg
+
+  deploy_nuget:
+    name: Deploy to NuGet.org
     runs-on: windows-latest
-    needs: [ run_test ]
+    # FIX: Füge BEIDE Jobs als Abhängigkeit hinzu
+    needs: [ build_and_test, create_nuget ] 
+    
+    # BEST PRACTICE: Nur bei einem echten Release deployen, nicht bei manuellen Tests.
+    if: github.event_name == 'release' && github.event.action == 'published'
+    
     steps:
-      # Download the NuGet package created in the previous job
-      - uses: actions/download-artifact@v4
+      - name: Download NuGet package artifact
+        uses: actions/download-artifact@v4
         with:
-          name: nuget
+          name: nuget-package # Name muss mit dem Upload-Job übereinstimmen
           path: ${{ env.NuGetDirectory }}
 
-      # Install the .NET SDK indicated in the global.json file
-      - name: Setup .NET Core
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
 
-      # Publish all NuGet packages to NuGet.org
-      # Use --skip-duplicate to prevent errors if a package with the same version already exists.
-      # If you retry a failed workflow, already published packages will be skipped without error.
+      - name: Display structure of downloaded files
+        run: Get-ChildItem -Path ${{ env.NuGetDirectory }} -Recurse
+
       - name: Publish NuGet package
         run: |
           foreach($file in (Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg)) {
