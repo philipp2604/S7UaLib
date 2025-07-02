@@ -12,6 +12,7 @@ env:
   DOTNET_NOLOGO: true
   NuGetDirectory: ${{ github.workspace}}/nuget
   TARGET_FRAMEWORK: 'net8.0' 
+  CONFIGURATION: 'Release'
 
 defaults:
   run:
@@ -33,15 +34,15 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x' 
-          
+
       - name: Restore dependencies
         run: dotnet restore S7UaLib/S7UaLib.csproj -p:TargetFramework=${{ env.TARGET_FRAMEWORK }}
       
       - name: Build
-        run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release --no-restore --framework ${{ env.TARGET_FRAMEWORK }}
+        run: dotnet build S7UaLib/S7UaLib.csproj --configuration ${{ env.CONFIGURATION }} --no-restore --framework ${{ env.TARGET_FRAMEWORK }}
     
       - name: Test
-        run: dotnet test --no-build --verbosity normal --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
+        run: dotnet test --no-build --configuration ${{ env.CONFIGURATION }} --verbosity normal --framework ${{ env.TARGET_FRAMEWORK }} --filter "Category!=Integration"
 
   create_nuget:
     name: Create NuGet Package
@@ -56,9 +57,9 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-        
+
     - name: Create NuGet package
-      run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
+      run: dotnet pack S7UaLib/S7UaLib.csproj --configuration ${{ env.CONFIGURATION }} --output ${{ env.NuGetDirectory }} --framework ${{ env.TARGET_FRAMEWORK }}
 
     - name: Publish NuGet artifact
       uses: actions/upload-artifact@v4
