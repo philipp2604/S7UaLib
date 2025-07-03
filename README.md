@@ -156,8 +156,8 @@ void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
 ```
 
 ## 📖 Documentation
-
-- **[API Reference](./S7UaLib/Services/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
+- **[Manual](./MANUAL.md)**: A small manual on how to use this library.
+- **[IS7Service Reference](./S7UaLib/Services/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
 - **[Example Project](./S7UaLib.Example/Program.cs)**: A runnable console application demonstrating library usage in more detail.
 - **[Integration Tests](./S7UaLib.IntegrationTests/Services/S7ServiceIntegrationTests.cs)**: These tests showcase real-world usage patterns against a live S7-1500 PLC and serve as excellent, practical examples.
 
