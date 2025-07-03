@@ -8,6 +8,7 @@ using S7UaLib.S7.Types;
 using S7UaLib.UA;
 using S7UaLib.UnitTests.Helpers;
 using System.Collections;
+using S7UaLib.S7.Converters; // Added for S7CharConverter and DefaultConverter
 
 namespace S7UaLib.UnitTests.Client;
 
