@@ -4,14 +4,12 @@ using Moq.Protected;
 using Opc.Ua;
 using Opc.Ua.Client;
 using S7UaLib.Client;
-using S7UaLib.Events;
 using S7UaLib.S7.Converters; // Added for S7CharConverter and DefaultConverter
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Types;
 using S7UaLib.UA;
 using S7UaLib.UnitTests.Helpers;
 using System.Collections;
-using System.Reflection;
 
 namespace S7UaLib.UnitTests.Client;
 
@@ -668,7 +666,7 @@ public class S7UaClientUnitTests
         mockClient.Protected().Verify("ApplySubscriptionChangesAsync", Times.Once(), ItExpr.IsAny<Subscription>());
     }
 
-    #endregion
+    #endregion Subscription Tests
 
     #region Write Tests
 

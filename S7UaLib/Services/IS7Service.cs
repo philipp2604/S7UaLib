@@ -186,9 +186,17 @@ internal interface IS7Service : IDisposable
     /// Will create the main subscription on the first call.
     /// </summary>
     /// <param name="fullPath">The full symbolic path of the variable to subscribe to.</param>
+    /// <param name="samplingInterval">The sampling interval in ms.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task that returns true if the subscription was successful; otherwise, false.</returns>
-    Task<bool> SubscribeToVariableAsync(string fullPath, CancellationToken cancellationToken = default);
+    Task<bool> SubscribeToVariableAsync(string fullPath, uint samplingInterval = 500, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Subscribes to all configured variables inside the service's data store.
+    /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that returns true if the subscriptions were successful; otherwise, false.</returns>
+    public Task<bool> SubscribeToAllConfiguredVariablesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Unsubscribes from a variable to stop receiving value changes.

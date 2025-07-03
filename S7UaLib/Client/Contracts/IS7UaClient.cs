@@ -1,5 +1,4 @@
 using Opc.Ua;
-using Opc.Ua.Client;
 using S7UaLib.Events;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Types;

@@ -239,18 +239,18 @@ internal class S7DataStore : IS7DataStore
         switch (element)
         {
             case S7Variable variable when variable.S7Type == S7DataType.STRUCT:
-                {
-                    (var newMembers, bool replaced) = ReplaceVariableInList(variable.StructMembers, path, newVariable);
-                    if (replaced) return variable with { StructMembers = newMembers };
-                    break;
-                }
+            {
+                (var newMembers, bool replaced) = ReplaceVariableInList(variable.StructMembers, path, newVariable);
+                if (replaced) return variable with { StructMembers = newMembers };
+                break;
+            }
 
             case S7StructureElement s7Element:
-                {
-                    (var newVars, bool replaced) = ReplaceVariableInList(s7Element.Variables, path, newVariable);
-                    if (replaced) return s7Element with { Variables = newVars };
-                    break;
-                }
+            {
+                (var newVars, bool replaced) = ReplaceVariableInList(s7Element.Variables, path, newVariable);
+                if (replaced) return s7Element with { Variables = newVars };
+                break;
+            }
 
             case S7DataBlockInstance idb:
                 if (idb.Inputs?.DisplayName == nextSegment)
@@ -271,14 +271,14 @@ internal class S7DataStore : IS7DataStore
                 break;
 
             case S7InstanceDbSection section:
-                {
-                    (var newVars, bool varsReplaced) = ReplaceVariableInList(section.Variables, path, newVariable);
-                    if (varsReplaced) return section with { Variables = newVars };
+            {
+                (var newVars, bool varsReplaced) = ReplaceVariableInList(section.Variables, path, newVariable);
+                if (varsReplaced) return section with { Variables = newVars };
 
-                    (var newNested, bool nestedReplaced) = ReplaceVariableInList(section.NestedInstances, path, newVariable);
-                    if (nestedReplaced) return section with { NestedInstances = newNested };
-                    break;
-                }
+                (var newNested, bool nestedReplaced) = ReplaceVariableInList(section.NestedInstances, path, newVariable);
+                if (nestedReplaced) return section with { NestedInstances = newNested };
+                break;
+            }
         }
         return element;
     }

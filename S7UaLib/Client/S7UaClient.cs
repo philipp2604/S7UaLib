@@ -200,7 +200,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.MonitoredItemChanged"/>
     public event EventHandler<ClientMonitoredItemChangedEventArgs>? MonitoredItemChanged;
 
-    #endregion
+    #endregion Subscription Events
 
     #endregion Public Events
 
@@ -1126,12 +1126,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return _session is null
             ? throw new InvalidOperationException("Session is not available to create a subscription.")
             : new Subscription(_session.DefaultSubscription)
-        {
-            PublishingInterval = publishingInterval,
-            LifetimeCount = 600,
-            MaxNotificationsPerPublish = 1000,
-            TimestampsToReturn = TimestampsToReturn.Both
-        };
+            {
+                PublishingInterval = publishingInterval,
+                LifetimeCount = 600,
+                MaxNotificationsPerPublish = 1000,
+                TimestampsToReturn = TimestampsToReturn.Both
+            };
     }
 
     protected virtual Task ApplySubscriptionChangesAsync(Subscription subscription)

@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using Opc.Ua;
-using Opc.Ua.Client;
 using S7UaLib.Client;
 using S7UaLib.Client.Contracts;
 using S7UaLib.DataStore;
@@ -458,9 +457,36 @@ public class S7Service : IS7Service
         return variable;
     }
 
-    public async Task<bool> SubscribeToVariableAsync(string fullPath, CancellationToken cancellationToken = default)
+    /// <inheritdoc cref="IS7Service.SubscribeToAllConfiguredVariablesAsync(CancellationToken)"/>
+    public async Task<bool> SubscribeToAllConfiguredVariablesAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+
+        bool result = true;
+
+        foreach (var variable in _dataStore.GetAllVariables().Values.Where(v => v.IsSubscribed))
+        {
+            if (variable.FullPath == null) continue;
+            if (!await SubscribeToVariableAsync(variable.FullPath, variable.SamplingInterval, cancellationToken))
+            {
+                result = false;
+            }
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc cref="IS7Service.SubscribeToVariableAsync(string, uint, CancellationToken)"/>
+    public async Task<bool> SubscribeToVariableAsync(string fullPath, uint samplingInterval = 500, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (samplingInterval == 0)
+        {
+            _logger?.LogWarning("Cannot subscribe, sampling interval is set to '0'.");
+            return false;
+        }
+
         if (!_client.IsConnected)
         {
             _logger?.LogWarning("Cannot subscribe, client is not connected.");
@@ -473,12 +499,13 @@ public class S7Service : IS7Service
             return false;
         }
 
-        // Subscription-Objekt auf dem Server anlegen, falls es noch nicht existiert.
         if (!await _client.CreateSubscriptionAsync().ConfigureAwait(false))
         {
             _logger?.LogError("Failed to create the main subscription object on the server.");
             return false;
         }
+
+        s7Var = s7Var with { SamplingInterval = samplingInterval };
 
         var success = await _client.SubscribeToVariableAsync(s7Var).ConfigureAwait(false);
         if (success)
@@ -505,7 +532,7 @@ public class S7Service : IS7Service
         var success = await _client.UnsubscribeFromVariableAsync(s7Var).ConfigureAwait(false);
         if (success)
         {
-            var newVariable = s7Var with { IsSubscribed = false };
+            var newVariable = s7Var with { IsSubscribed = false, SamplingInterval = 0 };
             _dataStore.UpdateVariable(fullPath, newVariable);
         }
         return success;

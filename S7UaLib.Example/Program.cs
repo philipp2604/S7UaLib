@@ -59,6 +59,17 @@ internal static class Program
                 Console.WriteLine($"Loading structure from '{_configFilePath}'...");
                 await _service.LoadStructureAsync(_configFilePath);
                 Console.WriteLine("Structure loaded successfully.");
+
+                Console.WriteLine("Subscribing to all configured variables.");
+                var result = await _service.SubscribeToAllConfiguredVariablesAsync();
+                if(result)
+                {
+                    Console.WriteLine("Subscribed successfully to all configured variables.");
+                }
+                else
+                {
+                    Console.WriteLine("Could not subscribe to all configured variables.");
+                }
             }
             else
             {
@@ -88,6 +99,8 @@ internal static class Program
         finally
         {
             // Clean up
+            Console.WriteLine("Saving structure...");
+            await _service.SaveStructureAsync(_configFilePath);
             if (_service?.IsConnected == true)
             {
                 Console.WriteLine("Disconnecting...");
@@ -283,7 +296,6 @@ internal static class Program
             Console.ResetColor();
         }
     }
-
 
     private static async Task WriteVariableAsync(string[] parts)
     {
