@@ -1,14 +1,15 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using Moq.Protected;
 using Opc.Ua;
 using Opc.Ua.Client;
 using S7UaLib.Client;
+using S7UaLib.S7.Converters; // Added for S7CharConverter and DefaultConverter
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Types;
 using S7UaLib.UA;
 using S7UaLib.UnitTests.Helpers;
 using System.Collections;
-using S7UaLib.S7.Converters; // Added for S7CharConverter and DefaultConverter
 
 namespace S7UaLib.UnitTests.Client;
 
@@ -540,6 +541,132 @@ public class S7UaClientUnitTests
         out DiagnosticInfoCollection diagnosticInfos);
 
     #endregion Reading Tests
+
+    #region Subscription Tests
+
+    [Fact]
+    public async Task CreateSubscriptionAsync_WhenNotConnected_ReturnsFalse()
+    {
+        // Arrange
+        var client = CreateSut();
+        _mockSession.SetupGet(s => s.Connected).Returns(false);
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+
+        // Act
+        var result = await client.CreateSubscriptionAsync();
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task CreateSubscriptionAsync_WhenCalledFirstTime_CreatesAndRegistersSubscription()
+    {
+        // Arrange
+        var mockClient = new Mock<S7UaClient>(_appConfig, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
+        var client = mockClient.Object;
+
+        _mockSession.Setup(s => s.DefaultSubscription).Returns(new Subscription());
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+        _mockSession.Setup(s => s.AddSubscription(It.IsAny<Subscription>())).Returns(true);
+
+        mockClient.Protected()
+            .Setup<Task>("CreateSubscriptionOnServerAsync", ItExpr.IsAny<Subscription>())
+            .Returns(Task.CompletedTask)
+            .Verifiable();
+
+        // Act
+        var result = await client.CreateSubscriptionAsync();
+
+        // Assert
+        Assert.True(result, "CreateSubscriptionAsync should have returned true.");
+        _mockSession.Verify(s => s.AddSubscription(It.IsAny<Subscription>()), Times.Once);
+        mockClient.Protected().Verify("CreateSubscriptionOnServerAsync", Times.Once(), ItExpr.IsAny<Subscription>());
+    }
+
+    [Fact]
+    public async Task CreateSubscriptionAsync_WhenAlreadyExists_DoesNothingAndReturnsTrue()
+    {
+        // Arrange
+        var client = CreateSut();
+
+        var existingSubscription = new Mock<Subscription>(new Subscription());
+        PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
+        PrivateFieldHelpers.SetPrivateField(client, "_subscription", existingSubscription.Object);
+
+        // Act
+        var result = await client.CreateSubscriptionAsync();
+
+        // Assert
+        Assert.True(result);
+        _mockSession.Verify(s => s.AddSubscription(It.IsAny<Subscription>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SubscribeToVariableAsync_WithValidSubscription_AddsItemAndAppliesChanges()
+    {
+        // Arrange
+        var mockClient = new Mock<S7UaClient>(_appConfig, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
+        var client = mockClient.Object;
+        var variable = new S7Variable { NodeId = new NodeId("ns=2;s=Var1"), DisplayName = "Var1" };
+
+        var subscription = new Subscription(_mockSession.Object.DefaultSubscription);
+
+        PrivateFieldHelpers.SetPrivateField(client, "_subscription", subscription);
+
+        mockClient.Protected()
+            .Setup<Task>("ApplySubscriptionChangesAsync", ItExpr.IsAny<Subscription>())
+            .Returns(Task.CompletedTask)
+            .Verifiable();
+
+        // Act
+        var result = await client.SubscribeToVariableAsync(variable);
+
+        // Assert
+        Assert.True(result);
+        Assert.Single(subscription.MonitoredItems);
+        Assert.Equal(variable.NodeId, subscription.MonitoredItems.First().StartNodeId);
+
+        mockClient.Protected().Verify("ApplySubscriptionChangesAsync", Times.Once(), ItExpr.IsAny<Subscription>());
+    }
+
+    [Fact]
+    public async Task UnsubscribeFromVariableAsync_WhenSubscribed_RemovesItemAndAppliesChanges()
+    {
+        // Arrange
+        var mockClient = new Mock<S7UaClient>(_appConfig, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
+        var client = mockClient.Object;
+
+        var variable = new S7Variable { NodeId = new NodeId("ns=2;s=Var1"), DisplayName = "Var1" };
+
+        var subscription = new Subscription(_mockSession.Object.DefaultSubscription);
+        var monitoredItem = new MonitoredItem(subscription.DefaultItem)
+        {
+            StartNodeId = variable.NodeId
+        };
+        subscription.AddItem(monitoredItem);
+
+        PrivateFieldHelpers.SetPrivateField(client, "_subscription", subscription);
+        var monitoredItemsDict = (Dictionary<NodeId, MonitoredItem>)PrivateFieldHelpers.GetPrivateField(client, "_monitoredItems")!;
+        monitoredItemsDict[variable.NodeId] = monitoredItem;
+
+        Assert.Single(subscription.MonitoredItems);
+
+        mockClient.Protected()
+            .Setup<Task>("ApplySubscriptionChangesAsync", ItExpr.IsAny<Subscription>())
+            .Returns(Task.CompletedTask)
+            .Verifiable();
+
+        // Act
+        var result = await client.UnsubscribeFromVariableAsync(variable);
+
+        // Assert
+        Assert.True(result, "UnsubscribeFromVariableAsync should return true on success.");
+        Assert.Empty(subscription.MonitoredItems);
+        mockClient.Protected().Verify("ApplySubscriptionChangesAsync", Times.Once(), ItExpr.IsAny<Subscription>());
+    }
+
+    #endregion Subscription Tests
 
     #region Write Tests
 

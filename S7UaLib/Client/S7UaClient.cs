@@ -33,6 +33,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private readonly Action<IList, IList> _validateResponse;
     private bool _disposed;
     private readonly SemaphoreSlim _sessionSemaphore = new(1, 1);
+    private Subscription? _subscription;
+    private readonly Dictionary<NodeId, MonitoredItem> _monitoredItems = [];
+    private readonly SemaphoreSlim _subscriptionSemaphore = new(1, 1);
 
     private static readonly NodeId _dataBlocksGlobalRootNode = new("DataBlocksGlobal", 3);
     private static readonly NodeId _dataBlocksInstanceRootNode = new("DataBlocksInstance", 3);
@@ -156,6 +159,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             }
 
             _sessionSemaphore.Dispose();
+            _subscriptionSemaphore.Dispose();
             _disposed = true;
         }
     }
@@ -190,6 +194,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public event EventHandler<ConnectionEventArgs>? Reconnected;
 
     #endregion Connection Events
+
+    #region Subscription Events
+
+    /// <inheritdoc cref="IS7UaClient.MonitoredItemChanged"/>
+    public event EventHandler<ClientMonitoredItemChangedEventArgs>? MonitoredItemChanged;
+
+    #endregion Subscription Events
 
     #endregion Public Events
 
@@ -300,6 +311,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
         if (_session != null)
         {
             OnDisconnecting(ConnectionEventArgs.Empty);
+
+            if (_subscription != null)
+            {
+                _session.RemoveSubscription(_subscription);
+                _subscription.Dispose();
+                _subscription = null;
+                _monitoredItems.Clear();
+            }
 
             _session.KeepAlive -= Session_KeepAlive;
             _reconnectHandler?.Dispose();
@@ -647,6 +666,136 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Reading Methods
 
+    #region Subscription Methods
+
+    /// <inheritdoc cref="IS7UaClient.CreateSubscriptionAsync(int)"/>
+    public async Task<bool> CreateSubscriptionAsync(int publishingInterval = 100)
+    {
+        ThrowIfDisposed();
+        if (!IsConnected || _session is null)
+        {
+            _logger?.LogError("Cannot create subscription; session is not connected.");
+            return false;
+        }
+
+        await _subscriptionSemaphore.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_subscription != null)
+            {
+                return true;
+            }
+
+            _subscription = CreateNewSubscription(publishingInterval);
+
+            _session.AddSubscription(_subscription);
+            await CreateSubscriptionOnServerAsync(_subscription).ConfigureAwait(false);
+
+            _logger?.LogInformation("Subscription created successfully with PublishingInterval={interval}ms.", publishingInterval);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to create subscription.");
+            return false;
+        }
+        finally
+        {
+            _subscriptionSemaphore.Release();
+        }
+    }
+
+    /// <inheritdoc cref="IS7UaClient.SubscribeToVariableAsync(S7Variable)"/>
+    public async Task<bool> SubscribeToVariableAsync(S7Variable variable)
+    {
+        ThrowIfDisposed();
+        if (_subscription is null)
+        {
+            _logger?.LogError("Cannot subscribe variable '{name}'. Subscription does not exist.", variable.DisplayName);
+            return false;
+        }
+        if (variable.NodeId is null)
+        {
+            _logger?.LogWarning("Cannot subscribe variable '{name}'. NodeId is null.", variable.DisplayName);
+            return false;
+        }
+
+        await _subscriptionSemaphore.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_monitoredItems.ContainsKey(variable.NodeId))
+            {
+                _logger?.LogInformation("Variable '{name}' is already subscribed.", variable.DisplayName);
+                return true;
+            }
+
+            var item = new MonitoredItem(_subscription.DefaultItem)
+            {
+                DisplayName = variable.DisplayName,
+                StartNodeId = variable.NodeId,
+                AttributeId = Attributes.Value,
+                SamplingInterval = (int)variable.SamplingInterval,
+                QueueSize = 1,
+                DiscardOldest = true,
+                MonitoringMode = MonitoringMode.Reporting
+            };
+
+            item.Notification += OnMonitoredItemNotification;
+
+            _monitoredItems.Add(variable.NodeId, item);
+            _subscription.AddItem(item);
+            await ApplySubscriptionChangesAsync(_subscription).ConfigureAwait(false);
+
+            _logger?.LogDebug("Variable '{name}' ({nodeId}) subscribed.", variable.DisplayName, variable.NodeId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to subscribe to variable '{name}'.", variable.DisplayName);
+            if (variable.NodeId is not null) _monitoredItems.Remove(variable.NodeId);
+            return false;
+        }
+        finally
+        {
+            _subscriptionSemaphore.Release();
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> UnsubscribeFromVariableAsync(S7Variable variable)
+    {
+        ThrowIfDisposed();
+        if (_subscription is null || variable.NodeId is null || !_monitoredItems.TryGetValue(variable.NodeId, out var item))
+        {
+            _logger?.LogWarning("Cannot unsubscribe variable '{name}'. It is not currently subscribed.", variable.DisplayName);
+            return false;
+        }
+
+        await _subscriptionSemaphore.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            item.Notification -= OnMonitoredItemNotification;
+
+            _subscription.RemoveItem(item);
+            _monitoredItems.Remove(variable.NodeId);
+            await ApplySubscriptionChangesAsync(_subscription).ConfigureAwait(false);
+
+            _logger?.LogDebug("Variable '{name}' ({nodeId}) unsubscribed.", variable.DisplayName, variable.NodeId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to unsubscribe from variable '{name}'.", variable.DisplayName);
+            return false;
+        }
+        finally
+        {
+            _subscriptionSemaphore.Release();
+        }
+    }
+
+    #endregion Subscription Methods
+
     #region Writing Methods
 
     /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(NodeId, object, S7DataType, CancellationToken)"/>
@@ -965,6 +1114,33 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Structure Browsing and Discovery Helpers
 
+    #region Subscription Helpers
+
+    protected virtual Task CreateSubscriptionOnServerAsync(Subscription subscription)
+    {
+        return subscription.CreateAsync();
+    }
+
+    protected virtual Subscription CreateNewSubscription(int publishingInterval)
+    {
+        return _session is null
+            ? throw new InvalidOperationException("Session is not available to create a subscription.")
+            : new Subscription(_session.DefaultSubscription)
+            {
+                PublishingInterval = publishingInterval,
+                LifetimeCount = 600,
+                MaxNotificationsPerPublish = 1000,
+                TimestampsToReturn = TimestampsToReturn.Both
+            };
+    }
+
+    protected virtual Task ApplySubscriptionChangesAsync(Subscription subscription)
+    {
+        return subscription.ApplyChangesAsync();
+    }
+
+    #endregion Subscription Helpers
+
     #endregion Private Methods
 
     #region Event Callbacks
@@ -1082,6 +1258,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private void OnReconnected(ConnectionEventArgs e)
     {
         Reconnected?.Invoke(this, e);
+    }
+
+    private void OnMonitoredItemNotification(MonitoredItem monitoredItem, MonitoredItemNotificationEventArgs e)
+    {
+        if (e.NotificationValue is MonitoredItemNotification notification)
+        {
+            MonitoredItemChanged?.Invoke(this, new ClientMonitoredItemChangedEventArgs(monitoredItem, notification));
+        }
     }
 
     #endregion Event Dispatchers

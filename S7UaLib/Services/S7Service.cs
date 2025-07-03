@@ -29,6 +29,7 @@ public class S7Service : IS7Service
     private readonly ILogger? _logger;
     private readonly IFileSystem _fileSystem;
     private bool _disposed;
+    private readonly Dictionary<NodeId, string> _nodeIdToPathMap = [];
 
     #endregion Private Fields
 
@@ -110,6 +111,7 @@ public class S7Service : IS7Service
             _client.Disconnected -= Client_Disconnected;
             _client.Reconnecting -= Client_Reconnecting;
             _client.Reconnected -= Client_Reconnected;
+            _client.MonitoredItemChanged -= Client_MonitoredItemChanged;
 
             _client.Dispose();
 
@@ -266,6 +268,7 @@ public class S7Service : IS7Service
         _dataStore.SetStructure(globalDbs!, instanceDbs!, inputs, outputs, memory, timers, counters);
 
         _dataStore.BuildCache();
+        RebuildNodeIdCache();
     }
 
     #endregion Structure Discovery Methods
@@ -454,6 +457,87 @@ public class S7Service : IS7Service
         return variable;
     }
 
+    /// <inheritdoc cref="IS7Service.SubscribeToAllConfiguredVariablesAsync(CancellationToken)"/>
+    public async Task<bool> SubscribeToAllConfiguredVariablesAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        bool result = true;
+
+        foreach (var variable in _dataStore.GetAllVariables().Values.Where(v => v.IsSubscribed))
+        {
+            if (variable.FullPath == null) continue;
+            if (!await SubscribeToVariableAsync(variable.FullPath, variable.SamplingInterval, cancellationToken))
+            {
+                result = false;
+            }
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc cref="IS7Service.SubscribeToVariableAsync(string, uint, CancellationToken)"/>
+    public async Task<bool> SubscribeToVariableAsync(string fullPath, uint samplingInterval = 500, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (samplingInterval == 0)
+        {
+            _logger?.LogWarning("Cannot subscribe, sampling interval is set to '0'.");
+            return false;
+        }
+
+        if (!_client.IsConnected)
+        {
+            _logger?.LogWarning("Cannot subscribe, client is not connected.");
+            return false;
+        }
+
+        if (!_dataStore.TryGetVariableByPath(fullPath, out var variable) || variable is not S7Variable s7Var)
+        {
+            _logger?.LogWarning("Cannot subscribe: Path '{Path}' not found or not a valid S7Variable.", fullPath);
+            return false;
+        }
+
+        if (!await _client.CreateSubscriptionAsync().ConfigureAwait(false))
+        {
+            _logger?.LogError("Failed to create the main subscription object on the server.");
+            return false;
+        }
+
+        s7Var = s7Var with { SamplingInterval = samplingInterval };
+
+        var success = await _client.SubscribeToVariableAsync(s7Var).ConfigureAwait(false);
+        if (success)
+        {
+            var newVariable = s7Var with { IsSubscribed = true };
+            _dataStore.UpdateVariable(fullPath, newVariable);
+            if (newVariable.NodeId is not null)
+            {
+                _nodeIdToPathMap[newVariable.NodeId] = fullPath;
+            }
+        }
+        return success;
+    }
+
+    public async Task<bool> UnsubscribeFromVariableAsync(string fullPath, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!_dataStore.TryGetVariableByPath(fullPath, out var variable) || variable is not S7Variable s7Var)
+        {
+            _logger?.LogWarning("Cannot unsubscribe: Path '{Path}' not found.", fullPath);
+            return false;
+        }
+
+        var success = await _client.UnsubscribeFromVariableAsync(s7Var).ConfigureAwait(false);
+        if (success)
+        {
+            var newVariable = s7Var with { IsSubscribed = false, SamplingInterval = 0 };
+            _dataStore.UpdateVariable(fullPath, newVariable);
+        }
+        return success;
+    }
+
     #endregion Variables Access and Manipulation Methods
 
     #region Persistence Methods
@@ -517,6 +601,8 @@ public class S7Service : IS7Service
             _logger?.LogInformation("S7 structure successfully loaded. Rebuilding internal cache...");
 
             _dataStore.BuildCache();
+            RebuildNodeIdCache();
+
             _logger?.LogInformation("Internal cache rebuilt.");
         }
         catch (Exception ex)
@@ -532,6 +618,61 @@ public class S7Service : IS7Service
 
     #region Private Methods
 
+    private void RebuildNodeIdCache()
+    {
+        _nodeIdToPathMap.Clear();
+        var allVars = _dataStore.GetAllVariables();
+        foreach (var entry in allVars)
+        {
+            if (entry.Value.NodeId is not null && !string.IsNullOrEmpty(entry.Key))
+            {
+                _nodeIdToPathMap[entry.Value.NodeId] = entry.Key;
+            }
+        }
+        _logger?.LogDebug("NodeId-to-Path cache rebuilt with {Count} entries.", _nodeIdToPathMap.Count);
+    }
+
+    private void Client_MonitoredItemChanged(object? sender, ClientMonitoredItemChangedEventArgs e)
+    {
+        var monitoredItem = e.MonitoredItem;
+        var notification = e.Notification;
+
+        if (monitoredItem?.StartNodeId is null || notification?.Value is null) return;
+
+        if (!_nodeIdToPathMap.TryGetValue(monitoredItem.StartNodeId, out var fullPath) ||
+            !_dataStore.TryGetVariableByPath(fullPath, out var oldVariable) ||
+            oldVariable is not S7Variable oldS7Var)
+        {
+            _logger?.LogWarning("Received notification for unknown or unmapped NodeId: {NodeId}", monitoredItem.StartNodeId);
+            return;
+        }
+
+        var dataValue = notification.Value;
+
+        var converter = _client.GetConverter(oldS7Var.S7Type, dataValue.Value?.GetType() ?? typeof(object));
+        var newValue = converter.ConvertFromOpc(dataValue.Value);
+
+        if (object.Equals(oldVariable.Value, newValue))
+        {
+            return;
+        }
+
+        var newVariable = oldS7Var with
+        {
+            Value = newValue,
+            RawOpcValue = dataValue.Value,
+            StatusCode = dataValue.StatusCode,
+            SystemType = converter.TargetType,
+            FullPath = oldS7Var.FullPath
+        };
+
+        if (_dataStore.UpdateVariable(fullPath, newVariable))
+        {
+            OnVariableValueChanged(new VariableValueChangedEventArgs(oldVariable, newVariable));
+            _logger?.LogTrace("Value for '{Path}' updated via subscription to: {Value}", fullPath, newValue);
+        }
+    }
+
     protected virtual void OnVariableValueChanged(VariableValueChangedEventArgs e)
     {
         VariableValueChanged?.Invoke(this, e);
@@ -545,6 +686,7 @@ public class S7Service : IS7Service
         _client.Disconnected += Client_Disconnected;
         _client.Reconnecting += Client_Reconnecting;
         _client.Reconnected += Client_Reconnected;
+        _client.MonitoredItemChanged += Client_MonitoredItemChanged;
     }
 
     private void Client_Connecting(object? sender, ConnectionEventArgs args)

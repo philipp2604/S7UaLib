@@ -61,6 +61,15 @@ internal interface IS7UaClient : IDisposable
 
     #endregion Connection Events
 
+    #region Subscription Events
+
+    /// <summary>
+    /// Occurs when a notification for a monitored item is received from the server.
+    /// </summary>
+    event EventHandler<ClientMonitoredItemChangedEventArgs>? MonitoredItemChanged;
+
+    #endregion Subscription Events
+
     #endregion Public Events
 
     #region Public Properties
@@ -222,6 +231,31 @@ internal interface IS7UaClient : IDisposable
     public Task<T> ReadValuesOfElementAsync<T>(T elementWithStructure, string? rootContextName = null, CancellationToken cancellationToken = default) where T : IUaElement;
 
     #endregion Reading Methods
+
+    #region Subscription Methods
+
+    /// <summary>
+    /// Creates the main subscription object on the session.
+    /// </summary>
+    /// <param name="publishingInterval">The interval in milliseconds at which the server should send notifications.</param>
+    /// <returns>A task that returns true if the subscription was created successfully; otherwise, false.</returns>
+    Task<bool> CreateSubscriptionAsync(int publishingInterval = 100);
+
+    /// <summary>
+    /// Subscribes to a variable by adding a MonitoredItem to the subscription.
+    /// </summary>
+    /// <param name="variable">The variable to subscribe to. Must have a valid NodeId.</param>
+    /// <returns>A task that returns true if the item was added successfully; otherwise, false.</returns>
+    Task<bool> SubscribeToVariableAsync(S7Variable variable);
+
+    /// <summary>
+    /// Unsubscribes from a variable by removing the MonitoredItem.
+    /// </summary>
+    /// <param name="variable">The variable to unsubscribe from.</param>
+    /// <returns>A task that returns true if the item was removed successfully; otherwise, false.</returns>
+    Task<bool> UnsubscribeFromVariableAsync(S7Variable variable);
+
+    #endregion Subscription Methods
 
     #region Writing Methods
 
