@@ -335,6 +335,96 @@ public class S7ServiceIntegrationTests
 
     #endregion Full Workflow Tests
 
+    #region Subscription Workflow Tests
+
+    [Fact]
+    public async Task SubscribeToVariableAsync_ReceivesNotification_OnValueChange()
+    {
+        S7Service? service = null;
+        const string varPath = "DataBlocksGlobal.Datablock.AnotherTestInt";
+        object? originalValue = null;
+
+        try
+        {
+            // Arrange
+            // 1. Create service, connect, and discover the structure
+            service = await CreateAndConnectServiceAsync();
+            await service.DiscoverStructureAsync();
+            // Necessary to set the S7DataType for the variable, so Write/Read work correctly
+            await service.UpdateVariableTypeAsync(varPath, S7DataType.INT);
+            await service.ReadAllVariablesAsync();
+
+            var testVar = service.GetVariable(varPath);
+            Assert.NotNull(testVar);
+            originalValue = testVar.Value;
+            Assert.NotNull(originalValue);
+
+            // 2. Set up event handling for the notification
+            var notificationReceivedEvent = new ManualResetEventSlim();
+            VariableValueChangedEventArgs? receivedArgs = null;
+
+            service.VariableValueChanged += (sender, args) =>
+            {
+                // We are only interested in notifications for our test item
+                if (args.NewVariable.FullPath == varPath)
+                {
+                    receivedArgs = args;
+                    notificationReceivedEvent.Set();
+                }
+            };
+
+            // 3. Subscribe to the variable
+            Assert.True(await service.SubscribeToVariableAsync(varPath), "Subscribing to the variable failed.");
+
+            var subscribedVar = service.GetVariable(varPath);
+            Assert.True(subscribedVar?.IsSubscribed, "Variable should be marked as 'IsSubscribed' after subscribing.");
+
+            // Act
+            // 4. Change the value on the server to trigger a notification
+            const short newValue = 888;
+            Assert.NotEqual(newValue, (short)originalValue); // Ensure the value actually changes
+            Assert.True(await service.WriteVariableAsync(varPath, newValue), "Writing the new value failed.");
+
+            // 5. Wait for the notification
+            bool eventWasSet = notificationReceivedEvent.Wait(TimeSpan.FromSeconds(10));
+
+            // Assert
+            Assert.True(eventWasSet, "Did not receive VariableValueChanged event within the timeout.");
+            Assert.NotNull(receivedArgs);
+
+            // Validate the event arguments
+            Assert.Equal(originalValue, receivedArgs.OldVariable.Value);
+            Assert.Equal(newValue, receivedArgs.NewVariable.Value);
+            Assert.Equal(varPath, receivedArgs.NewVariable.FullPath);
+
+            // The value in the DataStore should also be updated
+            var finalVar = service.GetVariable(varPath);
+            Assert.NotNull(finalVar);
+            Assert.Equal(newValue, finalVar.Value);
+
+            // 6. Test Unsubscribe
+            Assert.True(await service.UnsubscribeFromVariableAsync(varPath), "Unsubscribing from the variable failed.");
+            var unsubscribedVar = service.GetVariable(varPath);
+            Assert.False(unsubscribedVar?.IsSubscribed, "Variable should no longer be marked as 'IsSubscribed' after unsubscribing.");
+        }
+        catch (ServiceResultException ex)
+        {
+            Assert.Fail($"Test failed due to a server communication error. Ensure the server is running. Error: {ex.Message}");
+        }
+        finally
+        {
+            // Cleanup: Restore the original value
+            if (service?.IsConnected == true && originalValue is not null)
+            {
+                await service.WriteVariableAsync(varPath, originalValue);
+            }
+            await service!.DisconnectAsync();
+            service.Dispose();
+        }
+    }
+
+    #endregion Subscription Workflow Tests
+
     #region Helper - Type Update
 
     // This helper simulates loading a configuration where S7 data types are known,

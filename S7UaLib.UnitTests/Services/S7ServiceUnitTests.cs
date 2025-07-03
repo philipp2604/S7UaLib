@@ -1,14 +1,17 @@
 ﻿using Microsoft.Extensions.Logging;
 using Moq;
 using Opc.Ua;
+using Opc.Ua.Client;
 using S7UaLib.Client.Contracts;
 using S7UaLib.DataStore;
 using S7UaLib.Events;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Structure.Contracts;
+using S7UaLib.S7.Types;
 using S7UaLib.Serialization.Json;
 using S7UaLib.Serialization.Models;
 using S7UaLib.Services;
+using S7UaLib.UnitTests.Helpers;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 
@@ -321,6 +324,148 @@ public class S7ServiceUnitTests
     }
 
     #endregion WriteVariableAsync Tests
+
+    #region Subscription Tests
+
+    [Fact]
+    public async Task SubscribeToVariableAsync_WhenPathIsValid_CallsClientAndUpdatesStore()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.DB1.TestVar";
+        var variable = new S7Variable { DisplayName = "TestVar", NodeId = new NodeId(1), IsSubscribed = false };
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
+        _realDataStore.BuildCache();
+
+        _mockClient.Setup(c => c.IsConnected).Returns(true);
+        _mockClient.Setup(c => c.CreateSubscriptionAsync(It.IsAny<int>())).ReturnsAsync(true);
+        _mockClient.Setup(c => c.SubscribeToVariableAsync(It.IsAny<S7Variable>())).ReturnsAsync(true);
+
+        // Act
+        var result = await sut.SubscribeToVariableAsync(path);
+
+        // Assert
+        Assert.True(result);
+        _mockClient.Verify(c => c.CreateSubscriptionAsync(It.IsAny<int>()), Times.Once);
+        _mockClient.Verify(c => c.SubscribeToVariableAsync(It.Is<S7Variable>(v => v.NodeId == variable.NodeId)), Times.Once);
+
+        var updatedVar = sut.GetVariable(path);
+        Assert.NotNull(updatedVar);
+        Assert.True(updatedVar.IsSubscribed);
+    }
+
+    [Fact]
+    public async Task UnsubscribeFromVariableAsync_WhenPathIsValid_CallsClientAndUpdatesStore()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.DB1.TestVar";
+        var variable = new S7Variable { DisplayName = "TestVar", NodeId = new NodeId(1), IsSubscribed = true };
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
+        _realDataStore.BuildCache();
+
+        _mockClient.Setup(c => c.UnsubscribeFromVariableAsync(It.IsAny<S7Variable>())).ReturnsAsync(true);
+
+        // Act
+        var result = await sut.UnsubscribeFromVariableAsync(path);
+
+        // Assert
+        Assert.True(result);
+        _mockClient.Verify(c => c.UnsubscribeFromVariableAsync(It.Is<S7Variable>(v => v.NodeId == variable.NodeId)), Times.Once);
+
+        var updatedVar = sut.GetVariable(path);
+        Assert.NotNull(updatedVar);
+        Assert.False(updatedVar.IsSubscribed);
+    }
+
+    [Fact]
+    public void Client_MonitoredItemChanged_WithValidData_UpdatesStoreAndFiresEvent()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.DB1.TestVar";
+        var nodeId = new NodeId(123, 2);
+        var oldVariable = new S7Variable
+        {
+            NodeId = nodeId,
+            DisplayName = "TestVar",
+            Value = 100, // Alter Wert
+            S7Type = S7DataType.INT,
+            FullPath = path
+        };
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVariable] }], [], null, null, null, null, null);
+        _realDataStore.BuildCache();
+
+        var nodeIdToPathMap = (Dictionary<NodeId, string>)PrivateFieldHelpers.GetPrivateField(sut, "_nodeIdToPathMap")!;
+        nodeIdToPathMap[nodeId] = path;
+
+        var monitoredItem = new MonitoredItem { StartNodeId = nodeId, DisplayName = "TestVar" };
+        var notification = new MonitoredItemNotification { Value = new DataValue(new Variant((short)200)) };
+        var clientEventArgs = new ClientMonitoredItemChangedEventArgs(monitoredItem, notification);
+
+        _mockClient.Setup(c => c.GetConverter(S7DataType.INT, typeof(short)))
+            .Returns(new S7UaLib.S7.Converters.DefaultConverter(typeof(short)));
+
+        VariableValueChangedEventArgs? receivedServiceArgs = null;
+        sut.VariableValueChanged += (s, e) => receivedServiceArgs = e;
+
+        // Act
+        _mockClient.Raise(c => c.MonitoredItemChanged += null, clientEventArgs);
+
+        // Assert
+        Assert.NotNull(receivedServiceArgs);
+        Assert.Equal(100, receivedServiceArgs.OldVariable.Value);
+        Assert.Equal((short)200, receivedServiceArgs.NewVariable.Value);
+        Assert.Equal(path, receivedServiceArgs.NewVariable.FullPath);
+
+        var finalVar = sut.GetVariable(path);
+        Assert.NotNull(finalVar);
+        Assert.Equal((short)200, finalVar.Value);
+    }
+
+    [Fact]
+    public void Client_MonitoredItemChanged_WithSameValue_DoesNotUpdateStoreOrFireEvent()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.DB1.TestVar";
+        var nodeId = new NodeId(123, 2);
+        const short sameValue = 150;
+        var oldVariable = new S7Variable
+        {
+            NodeId = nodeId,
+            DisplayName = "TestVar",
+            Value = sameValue,
+            S7Type = S7DataType.INT,
+            FullPath = path
+        };
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVariable] }], [], null, null, null, null, null);
+        _realDataStore.BuildCache();
+        var nodeIdToPathMap = (Dictionary<NodeId, string>)PrivateFieldHelpers.GetPrivateField(sut, "_nodeIdToPathMap")!;
+        nodeIdToPathMap[nodeId] = path;
+
+        var monitoredItem = new MonitoredItem { StartNodeId = nodeId };
+        var notification = new MonitoredItemNotification { Value = new DataValue(new Variant(sameValue)) };
+        var clientEventArgs = new ClientMonitoredItemChangedEventArgs(monitoredItem, notification);
+
+        _mockClient.Setup(c => c.GetConverter(It.IsAny<S7DataType>(), It.IsAny<Type>()))
+            .Returns(new S7UaLib.S7.Converters.DefaultConverter(typeof(short)));
+
+        bool eventFired = false;
+        sut.VariableValueChanged += (s, e) => eventFired = true;
+
+        // Act
+        _mockClient.Raise(c => c.MonitoredItemChanged += null, clientEventArgs);
+
+        // Assert
+        Assert.False(eventFired, "VariableValueChanged should not be fired if the value is the same.");
+
+        var finalVar = sut.GetVariable(path);
+        Assert.NotNull(finalVar);
+        Assert.Same(oldVariable, finalVar);
+    }
+
+    #endregion
 
     #region File Operations Tests
 

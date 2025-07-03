@@ -1,5 +1,6 @@
 ﻿using Opc.Ua;
 using S7UaLib.Client;
+using S7UaLib.Events;
 using S7UaLib.S7.Structure;
 using S7UaLib.S7.Types;
 using System.Collections;
@@ -413,4 +414,79 @@ public class S7UaClientIntegrationTests
     #endregion Write Tests
 
     #endregion Reading and Writing Tests
+
+    #region Subscription Tests
+
+    [Fact]
+    public async Task SubscribeToVariableAsync_ReceivesNotification_OnValueChange()
+    {
+        S7UaClient? client = null;
+        S7Variable? testVar = null;
+        object? originalValue = null;
+
+        try
+        {
+            // Arrange
+            client = await CreateAndConnectClientAsync();
+            var globalDbs = await client.GetAllGlobalDataBlocksAsync();
+            var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "Datablock");
+            Assert.NotNull(dbShell);
+            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestDInt") as S7Variable;
+            Assert.NotNull(testVar);
+            testVar = testVar with { S7Type = S7DataType.SINT, SamplingInterval = 100 };
+
+            var dbWithOriginalValue = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
+            originalValue = dbWithOriginalValue.Variables[0].Value;
+            Assert.NotNull(originalValue);
+
+            var notificationReceivedEvent = new ManualResetEventSlim();
+            ClientMonitoredItemChangedEventArgs? receivedArgs = null;
+
+            client.MonitoredItemChanged += (sender, args) =>
+            {
+                if (args.MonitoredItem.StartNodeId == testVar.NodeId)
+                {
+                    receivedArgs = args;
+                    notificationReceivedEvent.Set();
+                }
+            };
+
+            Assert.True(await client.CreateSubscriptionAsync(publishingInterval: 200));
+            Assert.True(await client.SubscribeToVariableAsync(testVar));
+
+            // Act
+            const int newValue = -22;
+            Assert.NotEqual(newValue, originalValue);
+            Assert.True(await client.WriteVariableAsync(testVar, newValue), "Error while writing new value to variable.");
+
+            bool eventWasSet = notificationReceivedEvent.Wait(TimeSpan.FromSeconds(10));
+
+            // Assert
+            Assert.True(eventWasSet, "No Notification received before timeout.");
+            Assert.NotNull(receivedArgs);
+
+            var notificationValue = receivedArgs.Notification.Value;
+            Assert.NotNull(notificationValue);
+            Assert.Equal(StatusCodes.Good, notificationValue.StatusCode);
+            Assert.Equal(newValue, notificationValue.Value!);
+
+            Assert.True(await client.UnsubscribeFromVariableAsync(testVar));
+        }
+        catch (ServiceResultException ex)
+        {
+            Assert.Fail($"Test failed due to a server communication error. Ensure the server is running. Error: {ex.Message}");
+        }
+        finally
+        {
+            if (client?.IsConnected == true && testVar?.NodeId is not null && originalValue is not null)
+            {
+                await client.WriteVariableAsync(testVar.NodeId, originalValue, testVar.S7Type);
+            }
+            await client!.DisconnectAsync();
+            client.Dispose();
+        }
+    }
+
+    #endregion Subscription Tests
 }
