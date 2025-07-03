@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Opc.Ua;
 using S7UaLib.Events;
+using S7UaLib.S7.Types; // Hinzufügen für S7DataType
 using S7UaLib.Services;
 using System.Collections;
 
@@ -68,7 +69,9 @@ internal static class Program
                 Console.WriteLine($"Structure saved to '{_configFilePath}'.");
             }
 
+            Console.WriteLine("Performing initial read of all variables...");
             await _service.ReadAllVariablesAsync();
+            Console.WriteLine("Initial read complete.");
 
             // Subscribe to the value changed event
             _service.VariableValueChanged += OnVariableValueChanged;
@@ -88,11 +91,12 @@ internal static class Program
             if (_service?.IsConnected == true)
             {
                 Console.WriteLine("Disconnecting...");
-                await _service.DiscoverStructureAsync();
+                await _service.DisconnectAsync();
             }
             if (_service != null)
             {
                 _service.VariableValueChanged -= OnVariableValueChanged;
+                _service.Dispose();
             }
         }
     }
@@ -128,6 +132,14 @@ internal static class Program
 
                     case "read":
                         ReadVariable(parts);
+                        break;
+
+                    case "subscribe":
+                        await SubscribeToVariableAsync(parts);
+                        break;
+
+                    case "unsubscribe":
+                        await UnsubscribeFromVariableAsync(parts);
                         break;
 
                     case "write":
@@ -174,8 +186,10 @@ internal static class Program
         Console.WriteLine("  list-gdb                        - Lists all global data blocks.");
         Console.WriteLine("  list-idb                        - Lists all instance data blocks.");
         Console.WriteLine("  read <path>                     - Reads a variable (e.g., read DataBlocksGlobal.DB1.MyVar).");
-        Console.WriteLine("  write <path> <value>            - Writes a value to a variable (e.g., write DataBlocksGlobal.DB1.Counter 123).");
-        Console.WriteLine("  refresh                         - Re-reads all variables and shows changes.");
+        Console.WriteLine("  write <path> <value>            - Writes a value to a string variable (e.g., write ...TestString 'Hello').");
+        Console.WriteLine("  subscribe <path>                - Subscribes to real-time changes for a variable.");
+        Console.WriteLine("  unsubscribe <path>              - Unsubscribes from a variable.");
+        Console.WriteLine("  refresh                         - Re-reads all variables from the PLC.");
         Console.WriteLine("  exit                            - Exits the application.");
         Console.WriteLine();
     }
@@ -183,12 +197,14 @@ internal static class Program
     private static void ListGlobalDataBlocks()
     {
         Console.WriteLine("\n--- Global Data Blocks ---");
+        // TODO: Implement logic to get and display from _service.DataStore.DataBlocksGlobal
         Console.WriteLine("TODO");
     }
 
     private static void ListInstanceDataBlocks()
     {
         Console.WriteLine("\n--- Instance Data Blocks ---");
+        // TODO: Implement logic to get and display from _service.DataStore.DataBlocksInstance
         Console.WriteLine("TODO");
     }
 
@@ -209,30 +225,87 @@ internal static class Program
         }
 
         Console.WriteLine($"\n--- Variable: {variable.FullPath} ---");
-        Console.WriteLine($"  Value:      {variable.Value ?? "null"}");
-        Console.WriteLine($"  S7 Type:    {variable.S7Type}");
-        Console.WriteLine($"  .NET Type:  {variable.SystemType?.Name ?? "unknown"}");
-        Console.WriteLine($"  Status:     {variable.StatusCode}");
+        Console.WriteLine($"  Value:        {variable.Value ?? "null"}");
+        Console.WriteLine($"  S7 Type:      {variable.S7Type}");
+        Console.WriteLine($"  .NET Type:    {variable.SystemType?.Name ?? "unknown"}");
+        Console.WriteLine($"  Subscribed:   {variable.IsSubscribed}");
+        Console.WriteLine($"  Status:       {variable.StatusCode}");
     }
+
+    private static async Task SubscribeToVariableAsync(string[] parts)
+    {
+        if (parts.Length < 2)
+        {
+            Console.WriteLine("Error: Please provide a path. Example: subscribe DataBlocksGlobal.DB1.MyVar");
+            return;
+        }
+        string path = parts[1];
+
+        Console.WriteLine($"Subscribing to '{path}'...");
+        bool success = await _service!.SubscribeToVariableAsync(path);
+
+        if (success)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("Successfully subscribed. You will now receive notifications for this variable.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("Failed to subscribe. Check if the path is correct.");
+            Console.ResetColor();
+        }
+    }
+
+    private static async Task UnsubscribeFromVariableAsync(string[] parts)
+    {
+        if (parts.Length < 2)
+        {
+            Console.WriteLine("Error: Please provide a path. Example: unsubscribe DataBlocksGlobal.DB1.MyVar");
+            return;
+        }
+        string path = parts[1];
+
+        Console.WriteLine($"Unsubscribing from '{path}'...");
+        bool success = await _service!.UnsubscribeFromVariableAsync(path);
+
+        if (success)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("Successfully unsubscribed.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("Failed to unsubscribe. Was the variable subscribed?");
+            Console.ResetColor();
+        }
+    }
+
 
     private static async Task WriteVariableAsync(string[] parts)
     {
         if (parts.Length < 3)
         {
-            Console.WriteLine("Error: Please provide a path and a value. Example: write DataBlocksGlobal.DB1.MyVar 42");
+            Console.WriteLine("Error: Please provide a path and a value. Example: write DataBlocksGlobal.DB1.MyString 'Hello World'");
             return;
         }
         string path = parts[1];
-        string valueStr = parts[2];
+        // Join all remaining parts to allow for values with spaces (if enclosed in quotes)
+        string valueStr = string.Join(" ", parts.Skip(2));
 
         object valueToWrite = valueStr;
 
         var variable = _service?.GetVariable(path);
-        if (variable?.S7Type != S7.Types.S7DataType.STRING && variable?.SystemType != typeof(string))
+        // This example is simplified to only write strings. A real application would need type conversion.
+        if (variable?.S7Type != S7DataType.STRING && variable?.S7Type != S7DataType.WSTRING)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("Error: Only writing to string variables is possible in this example.");
+            Console.WriteLine("Error: This example only supports writing to STRING or WSTRING variables for simplicity.");
             Console.ResetColor();
+            return;
         }
 
         Console.WriteLine($"Writing value '{valueToWrite}' to variable '{path}'...");
