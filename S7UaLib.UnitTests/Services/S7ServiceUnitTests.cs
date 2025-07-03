@@ -207,6 +207,11 @@ public class S7ServiceUnitTests
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVar] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
+        // Mock the client's GetConverter method
+        var mockCharConverter = new S7UaLib.S7.Converters.S7CharConverter(); // Using real converter for simplicity in test
+        _mockClient.Setup(c => c.GetConverter(S7UaLib.S7.Types.S7DataType.CHAR, typeof(byte)))
+            .Returns(mockCharConverter);
+
         VariableValueChangedEventArgs? eventArgs = null;
         sut.VariableValueChanged += (s, e) => eventArgs = e;
 

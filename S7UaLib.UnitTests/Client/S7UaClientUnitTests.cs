@@ -712,4 +712,69 @@ public class S7UaClientUnitTests
     #endregion Write Tests
 
     #endregion Reading and Writing Tests
+
+    #region GetConverter Tests
+
+    [Fact]
+    public void GetConverter_WhenSpecificConverterExists_ReturnsInstanceWithLogger()
+    {
+        // Arrange
+        var mockSpecificLogger = new Mock<ILogger<S7CharConverter>>();
+        _mockLoggerFactory.Setup(f => f.CreateLogger(typeof(S7CharConverter).FullName!)).Returns(mockSpecificLogger.Object);
+
+        var client = new S7UaClient(_appConfig, _validateResponse, _mockLoggerFactory.Object); // Recreate to pass factory
+
+        // Act
+        var converter = client.GetConverter(S7DataType.CHAR, typeof(object));
+
+        // Assert
+        Assert.NotNull(converter);
+        Assert.IsType<S7UaLib.S7.Converters.S7CharConverter>(converter);
+
+        // Verify logger was passed (indirectly, by checking if the logger factory was called)
+        _mockLoggerFactory.Verify(f => f.CreateLogger(typeof(S7UaLib.S7.Converters.S7CharConverter).FullName!), Times.Once);
+    }
+
+    [Fact]
+    public void GetConverter_WhenSpecificConverterDoesNotExist_ReturnsDefaultConverterWithLogger()
+    {
+        // Arrange
+        var mockDefaultLogger = new Mock<ILogger<S7UaLib.S7.Converters.DefaultConverter>>();
+        _mockLoggerFactory.Setup(f => f.CreateLogger(typeof(S7UaLib.S7.Converters.DefaultConverter).FullName!)).Returns(mockDefaultLogger.Object);
+
+        var client = new S7UaClient(_appConfig, _validateResponse, _mockLoggerFactory.Object); // Recreate to pass factory
+
+        // Act
+        var converter = client.GetConverter(S7DataType.UNKNOWN, typeof(int)); // UNKNOWN type will use DefaultConverter
+
+        // Assert
+        Assert.NotNull(converter);
+        var defaultConverter = Assert.IsType<S7UaLib.S7.Converters.DefaultConverter>(converter);
+        Assert.Equal(typeof(int), defaultConverter.TargetType);
+
+        _mockLoggerFactory.Verify(f => f.CreateLogger(typeof(S7UaLib.S7.Converters.DefaultConverter).FullName!), Times.Once);
+    }
+
+    [Fact]
+    public void GetConverter_WhenLoggerFactoryIsNull_ConvertersAreCreatedWithoutLoggers()
+    {
+        // Arrange
+        var client = new S7UaClient(_appConfig, _validateResponse, null); // No logger factory
+
+        // Act
+        var charConverter = client.GetConverter(S7DataType.CHAR, typeof(object));
+        var defaultConverter = client.GetConverter(S7DataType.UNKNOWN, typeof(int));
+
+        // Assert
+        Assert.NotNull(charConverter);
+        Assert.IsType<S7UaLib.S7.Converters.S7CharConverter>(charConverter);
+        // Cannot directly verify logger is null without reflection, but no call to factory means no logger was passed.
+
+        Assert.NotNull(defaultConverter);
+        Assert.IsType<S7UaLib.S7.Converters.DefaultConverter>(defaultConverter);
+        // Factory mock will not be called.
+        _mockLoggerFactory.Verify(f => f.CreateLogger(It.IsAny<string>()), Times.Never); //Verify overall factory usage
+    }
+
+    #endregion GetConverter Tests
 }

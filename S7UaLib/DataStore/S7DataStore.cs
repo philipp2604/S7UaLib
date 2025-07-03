@@ -97,6 +97,7 @@ internal class S7DataStore : IS7DataStore
     {
         lock (_lock)
         {
+            _logger?.LogDebug("Starting to build variable cache.");
             _variableCacheByPath.Clear();
 
             foreach (var db in DataBlocksGlobal)
@@ -113,6 +114,8 @@ internal class S7DataStore : IS7DataStore
             if (Memory is not null) AddVariablesToCacheRecursively(Memory, null);
             if (Timers is not null) AddVariablesToCacheRecursively(Timers, null);
             if (Counters is not null) AddVariablesToCacheRecursively(Counters, null);
+
+            _logger?.LogDebug("Variable cache build completed. Cached {Count} variables.", _variableCacheByPath.Count);
         }
     }
 
@@ -186,7 +189,12 @@ internal class S7DataStore : IS7DataStore
 
             if (replaced)
             {
+                _logger?.LogDebug("Variable '{FullPath}' updated in data store. Rebuilding cache.", fullPath);
                 BuildCache();
+            }
+            else
+            {
+                _logger?.LogDebug("Variable '{FullPath}' not found or no change made during update attempt in data store.", fullPath);
             }
 
             return replaced;

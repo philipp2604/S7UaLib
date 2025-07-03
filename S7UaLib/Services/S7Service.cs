@@ -419,7 +419,7 @@ public class S7Service : IS7Service
         {
             try
             {
-                var converter = S7UaClient.GetConverter(newType, newVariable.RawOpcValue.GetType());
+                var converter = _client.GetConverter(newType, newVariable.RawOpcValue.GetType());
                 var convertedValue = converter.ConvertFromOpc(newVariable.RawOpcValue);
                 newVariable = newVariable with { Value = convertedValue, SystemType = converter.TargetType };
             }

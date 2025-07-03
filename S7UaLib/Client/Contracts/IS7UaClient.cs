@@ -260,6 +260,18 @@ internal interface IS7UaClient : IDisposable
 
     #endregion Writing Methods
 
+    #region Type Converter Access
+
+    /// <summary>
+    /// Gets the appropriate type converter for a given S7 data type.
+    /// </summary>
+    /// <param name="s7Type">The S7 data type.</param>
+    /// <param name="fallbackType">The .NET type to use for the <see cref="DefaultConverter"/> if no specific converter is found.</param>
+    /// <returns>An <see cref="IS7TypeConverter"/> instance.</returns>
+    S7.Converters.Contracts.IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType);
+
+    #endregion Type Converter Access
+
     #endregion Reading and Writing Methods
 
     #endregion Public Methods
