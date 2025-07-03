@@ -26,6 +26,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #region Private Fields
 
     private readonly ILogger? _logger;
+    private readonly ILoggerFactory? _loggerFactory;
     private SessionReconnectHandler? _reconnectHandler;
     private ISession? _session;
     private readonly ApplicationConfiguration _appConfig;
@@ -41,48 +42,23 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private static readonly NodeId _timersRootNode = new("Timers", 3);
     private static readonly NodeId _countersRootNode = new("Counters", 3);
 
-    #region Static Type Converters
+    #region Instance Type Converters
 
-    private static readonly S7CharConverter _charConverter = new();
-    private static readonly S7WCharConverter _wCharConverter = new();
-    private static readonly S7DateConverter _dateConverter = new();
-    private static readonly S7TimeConverter _timeConverter = new();
-    private static readonly S7LTimeConverter _lTimeConverter = new();
-    private static readonly S7DateAndTimeConverter _dateAndTimeConverter = new();
-    private static readonly S7TimeOfDayConverter _timeOfDayConverter = new();
-    private static readonly S7LTimeOfDayConverter _lTimeOfDayConverter = new();
-    private static readonly S7S5TimeConverter _s5TimeConverter = new();
-    private static readonly S7DTLConverter _dtlConverter = new();
-    private static readonly S7CounterConverter _counterConverter = new();
+    private readonly S7CharConverter _charConverterInstance;
+    private readonly S7WCharConverter _wCharConverterInstance;
+    private readonly S7DateConverter _dateConverterInstance;
+    private readonly S7TimeConverter _timeConverterInstance;
+    private readonly S7LTimeConverter _lTimeConverterInstance;
+    private readonly S7DateAndTimeConverter _dateAndTimeConverterInstance;
+    private readonly S7TimeOfDayConverter _timeOfDayConverterInstance;
+    private readonly S7LTimeOfDayConverter _lTimeOfDayConverterInstance;
+    private readonly S7S5TimeConverter _s5TimeConverterInstance;
+    private readonly S7DTLConverter _dtlConverterInstance;
+    private readonly S7CounterConverter _counterConverterInstance;
 
-    private static readonly Dictionary<S7DataType, IS7TypeConverter> _typeConverters =
-        new()
-        {
-            [S7DataType.CHAR] = _charConverter,
-            [S7DataType.WCHAR] = _wCharConverter,
-            [S7DataType.DATE] = _dateConverter,
-            [S7DataType.TIME] = _timeConverter,
-            [S7DataType.LTIME] = _lTimeConverter,
-            [S7DataType.TIME_OF_DAY] = _timeOfDayConverter,
-            [S7DataType.LTIME_OF_DAY] = _lTimeOfDayConverter,
-            [S7DataType.S5TIME] = _s5TimeConverter,
-            [S7DataType.DATE_AND_TIME] = _dateAndTimeConverter,
-            [S7DataType.DTL] = _dtlConverter,
-            [S7DataType.COUNTER] = _counterConverter,
-            [S7DataType.ARRAY_OF_CHAR] = new S7ElementwiseArrayConverter(_charConverter, typeof(byte)),
-            [S7DataType.ARRAY_OF_WCHAR] = new S7ElementwiseArrayConverter(_wCharConverter, typeof(ushort)),
-            [S7DataType.ARRAY_OF_DATE] = new S7ElementwiseArrayConverter(_dateConverter, typeof(ushort)),
-            [S7DataType.ARRAY_OF_TIME] = new S7ElementwiseArrayConverter(_timeConverter, typeof(int)),
-            [S7DataType.ARRAY_OF_LTIME] = new S7ElementwiseArrayConverter(_lTimeConverter, typeof(long)),
-            [S7DataType.ARRAY_OF_TIME_OF_DAY] = new S7ElementwiseArrayConverter(_timeOfDayConverter, typeof(uint)),
-            [S7DataType.ARRAY_OF_LTIME_OF_DAY] = new S7ElementwiseArrayConverter(_lTimeOfDayConverter, typeof(ulong)),
-            [S7DataType.ARRAY_OF_S5TIME] = new S7ElementwiseArrayConverter(_s5TimeConverter, typeof(ushort)),
-            [S7DataType.ARRAY_OF_DATE_AND_TIME] = new S7ElementwiseArrayConverter(_dateAndTimeConverter, typeof(byte)),
-            [S7DataType.ARRAY_OF_DTL] = new S7ElementwiseArrayConverter(_dtlConverter, typeof(byte[])),
-            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverter, typeof(ushort))
-        };
+    private readonly Dictionary<S7DataType, IS7TypeConverter> _typeConvertersInstance;
 
-    #endregion Static Type Converters
+    #endregion Instance Type Converters
 
     #endregion Private Fields
 
@@ -100,11 +76,51 @@ internal class S7UaClient : IS7UaClient, IDisposable
     {
         _appConfig = appConfig ?? throw new ArgumentNullException(nameof(appConfig));
         _validateResponse = validateResponse ?? throw new ArgumentNullException(nameof(validateResponse));
+        _loggerFactory = loggerFactory;
 
-        if (loggerFactory != null)
+        if (_loggerFactory != null)
         {
-            _logger = loggerFactory.CreateLogger<S7UaClient>();
+            _logger = _loggerFactory.CreateLogger<S7UaClient>();
         }
+
+        // Initialize instance converters
+        _charConverterInstance = new S7CharConverter(_loggerFactory?.CreateLogger<S7CharConverter>());
+        _wCharConverterInstance = new S7WCharConverter(_loggerFactory?.CreateLogger<S7WCharConverter>());
+        _dateConverterInstance = new S7DateConverter(_loggerFactory?.CreateLogger<S7DateConverter>());
+        _timeConverterInstance = new S7TimeConverter(_loggerFactory?.CreateLogger<S7TimeConverter>());
+        _lTimeConverterInstance = new S7LTimeConverter(_loggerFactory?.CreateLogger<S7LTimeConverter>());
+        _dateAndTimeConverterInstance = new S7DateAndTimeConverter(_loggerFactory?.CreateLogger<S7DateAndTimeConverter>());
+        _timeOfDayConverterInstance = new S7TimeOfDayConverter(_loggerFactory?.CreateLogger<S7TimeOfDayConverter>());
+        _lTimeOfDayConverterInstance = new S7LTimeOfDayConverter(_loggerFactory?.CreateLogger<S7LTimeOfDayConverter>());
+        _s5TimeConverterInstance = new S7S5TimeConverter(_loggerFactory?.CreateLogger<S7S5TimeConverter>());
+        _dtlConverterInstance = new S7DTLConverter(_loggerFactory?.CreateLogger<S7DTLConverter>());
+        _counterConverterInstance = new S7CounterConverter(_loggerFactory?.CreateLogger<S7CounterConverter>());
+
+        _typeConvertersInstance = new Dictionary<S7DataType, IS7TypeConverter>
+        {
+            [S7DataType.CHAR] = _charConverterInstance,
+            [S7DataType.WCHAR] = _wCharConverterInstance,
+            [S7DataType.DATE] = _dateConverterInstance,
+            [S7DataType.TIME] = _timeConverterInstance,
+            [S7DataType.LTIME] = _lTimeConverterInstance,
+            [S7DataType.TIME_OF_DAY] = _timeOfDayConverterInstance,
+            [S7DataType.LTIME_OF_DAY] = _lTimeOfDayConverterInstance,
+            [S7DataType.S5TIME] = _s5TimeConverterInstance,
+            [S7DataType.DATE_AND_TIME] = _dateAndTimeConverterInstance,
+            [S7DataType.DTL] = _dtlConverterInstance,
+            [S7DataType.COUNTER] = _counterConverterInstance,
+            [S7DataType.ARRAY_OF_CHAR] = new S7ElementwiseArrayConverter(_charConverterInstance, typeof(byte), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_WCHAR] = new S7ElementwiseArrayConverter(_wCharConverterInstance, typeof(ushort), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_DATE] = new S7ElementwiseArrayConverter(_dateConverterInstance, typeof(ushort), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_TIME] = new S7ElementwiseArrayConverter(_timeConverterInstance, typeof(int), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_LTIME] = new S7ElementwiseArrayConverter(_lTimeConverterInstance, typeof(long), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_TIME_OF_DAY] = new S7ElementwiseArrayConverter(_timeOfDayConverterInstance, typeof(uint), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_LTIME_OF_DAY] = new S7ElementwiseArrayConverter(_lTimeOfDayConverterInstance, typeof(ulong), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_S5TIME] = new S7ElementwiseArrayConverter(_s5TimeConverterInstance, typeof(ushort), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_DATE_AND_TIME] = new S7ElementwiseArrayConverter(_dateAndTimeConverterInstance, typeof(byte), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_DTL] = new S7ElementwiseArrayConverter(_dtlConverterInstance, typeof(byte[]), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>()),
+            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverterInstance, typeof(ushort), _loggerFactory?.CreateLogger<S7ElementwiseArrayConverter>())
+        };
     }
 
     #endregion Constructors
@@ -641,7 +657,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         ArgumentNullException.ThrowIfNull(nodeId);
         ArgumentNullException.ThrowIfNull(value);
 
-        var converter = GetConverter(s7Type, value.GetType());
+        var converter = this.GetConverter(s7Type, value.GetType());
         var opcValue = converter.ConvertToOpc(value) ?? throw new InvalidOperationException($"Conversion of value for S7Type {s7Type} resulted in null.");
         return await WriteRawVariableAsync(nodeId, opcValue, cancellationToken).ConfigureAwait(false);
     }
@@ -703,8 +719,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Reading and Writing Helpers
 
-    public static IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
-        _typeConverters.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType);
+    public IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
+        _typeConvertersInstance.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType, _loggerFactory?.CreateLogger<DefaultConverter>());
 
     #endregion Reading and Writing Helpers
 
@@ -770,7 +786,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
                 if (variable.NodeId != null && readResultsMap.TryGetValue(variable.NodeId, out var dataValue))
                 {
-                    var converter = GetConverter(variable.S7Type, dataValue.Value?.GetType() ?? typeof(object));
+                    var converter = this.GetConverter(variable.S7Type, dataValue.Value?.GetType() ?? typeof(object));
                     var rawValue = dataValue.Value;
                     var finalValue = converter.ConvertFromOpc(rawValue);
 
@@ -978,7 +994,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     break;
 
                 case SessionReconnectHandler.ReconnectState.Ready:
-                    _logger?.LogError("Reconnection ready.");
+                    _logger?.LogWarning("Reconnection handler is in 'Ready' state after BeginReconnect attempt. This might indicate automatic reconnection could not be triggered.");
                     break;
 
                 case SessionReconnectHandler.ReconnectState.Reconnecting:
