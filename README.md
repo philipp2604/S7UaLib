@@ -26,7 +26,9 @@ A modern, high-level .NET library designed to simplify communication with Siemen
   - And all corresponding `ARRAY` types.
 - **💾 Structure Persistence**: Save your discovered PLC structure to a JSON file and load it on startup to bypass the time-consuming discovery process.
 - **⚡️ Type-Safe & Path-Based Access**: Read and write variables using their full symbolic path (e.g., `"DataBlocksGlobal.MyDb.MySetting"`).
-- **🔔 Event-Driven Value Changes**: Subscribe to the `VariableValueChanged` event to react to data changes in your application.
+- **🔔 Event-Driven Value Changes**: React to data changes in your application through two powerful mechanisms:
+  - **Polling:** Use `ReadAllVariablesAsync()` to get a snapshot and trigger `VariableValueChanged` for any changes since the last read.
+  - **Subscriptions:** Use `SubscribeToVariableAsync()` to receive real-time updates from the PLC, which also trigger the `VariableValueChanged` event.
 - **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations ensures your application remains responsive. Built from the ground up to be thread-safe, allowing you to reliably use a single `S7Service` instance across multiple concurrent tasks.
 - **🏗️ Modern & Immutable**: Built with modern C# features, using immutable records for data structures to ensure thread safety and predictability.
 
@@ -43,7 +45,7 @@ Or via the NuGet Package Manager in Visual Studio.
 
 ### Quick Start
 
-Here's a simple example demonstrating the main workflow: connect, discover, read, write, and disconnect.
+Here's a simple example demonstrating the main workflow: connect, discover, subscribe to changes, and write a value.
 
 ```csharp
 using Microsoft.Extensions.Logging;
@@ -55,6 +57,8 @@ using System.Collections;
 // --- Configuration ---
 const string serverUrl = "opc.tcp://192.168.0.1:4840";
 const string configFile = "my_plc_structure.json";
+const string myIntVarPath = "DataBlocksGlobal.Datablock.TestInt";
+const string myStringVarPath = "DataBlocksGlobal.Datablock.TestString";
 
 // 1. Configure the OPC UA Application
 var appConfig = new ApplicationConfiguration
@@ -97,31 +101,33 @@ try
     // After discovery/loading, it's often necessary to set the specific S7 data types
     // for variables, as this info isn't always exposed by the server.
     // This is typically done once and saved in the config file.
-    await service.UpdateVariableTypeAsync("DataBlocksGlobal.Datablock.TestInt", S7DataType.INT);
-    await service.UpdateVariableTypeAsync("DataBlocksGlobal.Datablock.TestString", S7DataType.STRING);
+    await service.UpdateVariableTypeAsync(myIntVarPath, S7DataType.INT);
+    await service.UpdateVariableTypeAsync(myStringVarPath, S7DataType.STRING);
 
-    // 5. Read all variables from the PLC
+    // 5. Read all variables to get the initial state
     Console.WriteLine("\nReading all variable values...");
     await service.ReadAllVariablesAsync();
 
-    // 6. Access a variable by its path
-    var myIntVar = service.GetVariable("DataBlocksGlobal.Datablock.TestInt");
-    if (myIntVar != null)
-    {
-        Console.WriteLine($"Read value of '{myIntVar.FullPath}': {myIntVar.Value}");
-    }
+    // 6. Subscribe to real-time changes for a specific variable
+    Console.WriteLine($"Subscribing to changes for '{myIntVarPath}'...");
+    await service.SubscribeToVariableAsync(myIntVarPath);
+    
+    Console.WriteLine("\nLibrary is now listening for changes. Try changing the value in the PLC.");
+    Console.WriteLine("Or press Enter to write a value from here and trigger a change...");
+    Console.ReadLine();
 
-    // 7. Write a new value to a variable
-    string stringVarPath = "DataBlocksGlobal.Datablock.TestString";
+    // 7. Write a new value to a different variable
     string newValue = $"Hello from S7UaLib at {DateTime.Now:T}";
-    Console.WriteLine($"Writing '{newValue}' to '{stringVarPath}'...");
-    bool success = await service.WriteVariableAsync(stringVarPath, newValue);
+    Console.WriteLine($"Writing '{newValue}' to '{myStringVarPath}'...");
+    bool success = await service.WriteVariableAsync(myStringVarPath, newValue);
     
     if (success)
     {
-        Console.WriteLine("Write successful!");
-        await service.ReadAllVariablesAsync(); // Refresh to see the change
+        Console.WriteLine("Write successful! A new value change event should have been triggered if subscribed.");
     }
+    
+    Console.WriteLine("\nPress Enter to disconnect.");
+    Console.ReadLine();
 }
 catch (Exception ex)
 {
@@ -137,7 +143,7 @@ finally
     service.VariableValueChanged -= OnVariableValueChanged;
 }
 
-// Event handler for value changes
+// Event handler for value changes (from polling or subscriptions)
 void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
 {
     Console.ForegroundColor = ConsoleColor.Cyan;

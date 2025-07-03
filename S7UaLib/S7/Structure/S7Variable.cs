@@ -46,5 +46,5 @@ public record S7Variable : IS7Variable
     public bool IsSubscribed { get; init; } = false;
 
     /// <inheritdoc cref="IS7Variable.SamplingInterval" />
-    public uint SamplingInterval { get; init; } = 200;
+    public uint SamplingInterval { get; init; } = 0;
 }
