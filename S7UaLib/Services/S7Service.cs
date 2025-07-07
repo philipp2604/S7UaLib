@@ -10,6 +10,7 @@ using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
 using S7UaLib.Serialization.Json;
 using S7UaLib.Serialization.Models;
+using S7UaLib.Services.Contracts;
 using System.Collections;
 using System.IO.Abstractions;
 using System.Text.Json;
