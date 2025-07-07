@@ -705,8 +705,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
     }
 
-    /// <inheritdoc cref="IS7UaClient.SubscribeToVariableAsync(S7Variable)"/>
-    public async Task<bool> SubscribeToVariableAsync(S7Variable variable)
+    /// <inheritdoc cref="IS7UaClient.SubscribeToVariableAsync(IS7Variable)"/>
+    public async Task<bool> SubscribeToVariableAsync(IS7Variable variable)
     {
         ThrowIfDisposed();
         if (_subscription is null)
@@ -761,8 +761,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
     }
 
-    /// <inheritdoc/>
-    public async Task<bool> UnsubscribeFromVariableAsync(S7Variable variable)
+    /// <inheritdoc cref="IS7UaClient.UnsubscribeFromVariableAsync(IS7Variable)"/>
+    public async Task<bool> UnsubscribeFromVariableAsync(IS7Variable variable)
     {
         ThrowIfDisposed();
         if (_subscription is null || variable.NodeId is null || !_monitoredItems.TryGetValue(variable.NodeId, out var item))
@@ -811,8 +811,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return await WriteRawVariableAsync(nodeId, opcValue, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(S7Variable, object, CancellationToken)"/>
-    public async Task<bool> WriteVariableAsync(S7Variable variable, object value, CancellationToken cancellationToken = default)
+    /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(IS7Variable, object, CancellationToken)"/>
+    public async Task<bool> WriteVariableAsync(IS7Variable variable, object value, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 

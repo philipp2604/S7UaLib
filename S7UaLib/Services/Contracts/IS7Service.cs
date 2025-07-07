@@ -3,7 +3,7 @@ using S7UaLib.Events;
 using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
 
-namespace S7UaLib.Services;
+namespace S7UaLib.Services.Contracts;
 
 /// <summary>
 /// Defines the contract for interacting with an S7 service, including operations for discovering structure,  reading

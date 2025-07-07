@@ -1,6 +1,7 @@
 using Opc.Ua;
 using S7UaLib.Events;
 using S7UaLib.S7.Structure;
+using S7UaLib.S7.Structure.Contracts;
 using S7UaLib.S7.Types;
 using S7UaLib.UA;
 
@@ -246,14 +247,14 @@ internal interface IS7UaClient : IDisposable
     /// </summary>
     /// <param name="variable">The variable to subscribe to. Must have a valid NodeId.</param>
     /// <returns>A task that returns true if the item was added successfully; otherwise, false.</returns>
-    Task<bool> SubscribeToVariableAsync(S7Variable variable);
+    Task<bool> SubscribeToVariableAsync(IS7Variable variable);
 
     /// <summary>
     /// Unsubscribes from a variable by removing the MonitoredItem.
     /// </summary>
     /// <param name="variable">The variable to unsubscribe from.</param>
     /// <returns>A task that returns true if the item was removed successfully; otherwise, false.</returns>
-    Task<bool> UnsubscribeFromVariableAsync(S7Variable variable);
+    Task<bool> UnsubscribeFromVariableAsync(IS7Variable variable);
 
     #endregion Subscription Methods
 
@@ -280,7 +281,7 @@ internal interface IS7UaClient : IDisposable
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if variable or value is null.</exception>
     /// <exception cref="ArgumentException">Thrown if the variable's NodeId is null.</exception>
-    public Task<bool> WriteVariableAsync(S7Variable variable, object value, CancellationToken cancellationToken = default);
+    public Task<bool> WriteVariableAsync(IS7Variable variable, object value, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a raw, Variant-compatible value directly to an OPC UA variable.
