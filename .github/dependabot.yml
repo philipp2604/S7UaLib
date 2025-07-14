@@ -5,5 +5,13 @@ updates:
   schedule:
     interval: daily
   target-branch: "dev"
+
+  groups:
+    s7ualib-internal:
+      patterns:
+        - "philipp2604.*"
+        - "S7UaLib.*"
+
   ignore:
     - dependency-name: "philipp2604.*"
+    - dependency-name: "S7UaLib.*"
