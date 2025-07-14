@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\S7UaLib.Core\S7UaLib.Core.csproj" />
     <ProjectReference Include="..\..\src\S7UaLib.Infrastructure\S7UaLib.Infrastructure.csproj" />
     <ProjectReference Include="..\S7UaLib.TestHelpers\S7UaLib.TestHelpers.csproj" />
   </ItemGroup>

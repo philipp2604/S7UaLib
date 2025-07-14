@@ -32,6 +32,16 @@ A modern, high-level .NET library designed to simplify communication with Siemen
 - **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations ensures your application remains responsive. Built from the ground up to be thread-safe, allowing you to reliably use a single `S7Service` instance across multiple concurrent tasks.
 - **🏗️ Modern & Immutable**: Built with modern C# features, using immutable records for data structures to ensure thread safety and predictability.
 
+## 🏛️ Architecture
+
+The library is designed with a clean, modular architecture, split into several key projects. This separation of concerns makes the library more maintainable and easier to understand.
+
+-   **`S7UaLib.Core`**: The foundational library. It defines all shared interfaces, enumerations, and data models (`IS7Variable`, `S7DataType`, etc.). It's the "vocabulary" of the ecosystem.
+-   **`S7UaLib.Infrastructure`**: The implementation engine. This library contains the concrete logic for communicating via OPC UA, converting data types, and caching the PLC structure. It's the internal "machinery".
+-   **`S7UaLib` (S7UaLib.Services)**: The high-level public API. It exposes the simple `S7Service`, which orchestrates the underlying components to provide the easy-to-use functionality you see in the features list.
+
+As an end-user, you only need to install the main `philipp2604.S7UaLib` NuGet package. The others will be included automatically as dependencies.
+
 ## 🚀 Getting Started
 
 ### Installation
@@ -48,14 +58,14 @@ Or via the NuGet Package Manager in Visual Studio.
 Here's a simple example demonstrating the main workflow: connect, discover, subscribe to changes, and write a value.
 
 ```csharp
-using Microsoft.Extensions.Logging;
-using Opc.Ua;
-using S7UaLib.Events;
-using S7UaLib.Services;
-using System.Collections;
+using S7UaLib.Core.Enums;
+using S7UaLib.Core.Events;
+using S7UaLib.Core.Ua;
+using S7UaLib.Services.S7;
 
 // --- Configuration ---
-const string serverUrl = "opc.tcp://192.168.0.1:4840";
+
+const string serverUrl = "opc.tcp://172.168.0.1:4840";
 const string configFile = "my_plc_structure.json";
 const string myIntVarPath = "DataBlocksGlobal.Datablock.TestInt";
 const string myStringVarPath = "DataBlocksGlobal.Datablock.TestString";
@@ -63,16 +73,14 @@ const string myStringVarPath = "DataBlocksGlobal.Datablock.TestString";
 // 1. Configure the OPC UA Application
 var appConfig = new ApplicationConfiguration
 {
-    ApplicationName = "S7UaLib QuickStart",
-    ApplicationType = ApplicationType.Client,
-    SecurityConfiguration = new SecurityConfiguration { AutoAcceptUntrustedCertificates = true },
-    ClientConfiguration = new ClientConfiguration(),
-    TransportQuotas = new TransportQuotas { OperationTimeout = 15000 }
+    ApplicationName = "S7UaLib Console Example Client",
+    ApplicationUri = "urn:localhost:UA:S7UaLib:ConsoleExampleClient",
+    ProductUri = "uri:philipp2604:S7UaLib:ConsoleExampleClient",
+    AutoAcceptUntrustedCertificates = true
 };
 
 // 2. Initialize the S7Service
-// The second parameter is the standard OPC UA response validation action.
-var service = new S7Service(appConfig, ClientBase.ValidateResponse);
+var service = new S7Service(appConfig);
 
 // Optional: Subscribe to value changes
 service.VariableValueChanged += OnVariableValueChanged;
@@ -97,7 +105,7 @@ try
         Console.WriteLine("Saving structure for next time...");
         await service.SaveStructureAsync(configFile);
     }
-    
+
     // After discovery/loading, it's often necessary to set the specific S7 data types
     // for variables, as this info isn't always exposed by the server.
     // This is typically done once and saved in the config file.
@@ -111,21 +119,37 @@ try
     // 6. Subscribe to real-time changes for a specific variable
     Console.WriteLine($"Subscribing to changes for '{myIntVarPath}'...");
     await service.SubscribeToVariableAsync(myIntVarPath);
-    
+
     Console.WriteLine("\nLibrary is now listening for changes. Try changing the value in the PLC.");
     Console.WriteLine("Or press Enter to write a value from here and trigger a change...");
     Console.ReadLine();
 
-    // 7. Write a new value to a different variable
+    // 7. Write a new value to the variable
+    var success = false;
+    if (service.GetVariable(myIntVarPath)?.Value is short intVal)
+    {
+        intVal = (short)(intVal + 1);
+        Console.WriteLine($"Writing '{intVal}' to '{myIntVarPath}'...");
+        success = await service.WriteVariableAsync(myIntVarPath, intVal);
+        if (success)
+        {
+            Console.WriteLine($"Write to {myIntVarPath} successful! A new value change event should have been triggered.");
+        }
+    }
+
+    Console.WriteLine($"Press Enter to write a value to {myStringVarPath} from here...");
+    Console.ReadLine();
+
+    // 8. Write a string value
     string newValue = $"Hello from S7UaLib at {DateTime.Now:T}";
     Console.WriteLine($"Writing '{newValue}' to '{myStringVarPath}'...");
-    bool success = await service.WriteVariableAsync(myStringVarPath, newValue);
-    
+    success = await service.WriteVariableAsync(myStringVarPath, newValue);
+
     if (success)
     {
         Console.WriteLine("Write successful! A new value change event should have been triggered if subscribed.");
     }
-    
+
     Console.WriteLine("\nPress Enter to disconnect.");
     Console.ReadLine();
 }
@@ -157,9 +181,8 @@ void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
 
 ## 📖 Documentation
 - **[Manual](./MANUAL.md)**: A small manual on how to use this library.
-- **[IS7Service Reference](./S7UaLib/Services/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
-- **[Example Project](./S7UaLib.Example/Program.cs)**: A runnable console application demonstrating library usage in more detail.
-- **[Integration Tests](./S7UaLib.IntegrationTests/Services/S7ServiceIntegrationTests.cs)**: These tests showcase real-world usage patterns against a live S7-1500 PLC and serve as excellent, practical examples.
+- **[IS7Service Reference](./src/S7UaLib.Services/S7/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
+- **[Integration Tests](./tests/S7UaLib.Services.Tests/Integration/S7ServiceIntegrationTests.cs)**: These tests showcase real-world usage patterns against a live S7-1500 PLC and serve as excellent, practical examples.
 
 ## 🤝 Contributing
 

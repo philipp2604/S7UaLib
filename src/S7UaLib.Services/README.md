@@ -58,10 +58,10 @@ using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.Ua;
 using S7UaLib.Services.S7;
-using System.Collections;
 
 // --- Configuration ---
-const string serverUrl = "opc.tcp://192.168.0.1:4840";
+
+const string serverUrl = "opc.tcp://172.168.0.1:4840";
 const string configFile = "my_plc_structure.json";
 const string myIntVarPath = "DataBlocksGlobal.Datablock.TestInt";
 const string myStringVarPath = "DataBlocksGlobal.Datablock.TestString";
@@ -69,14 +69,13 @@ const string myStringVarPath = "DataBlocksGlobal.Datablock.TestString";
 // 1. Configure the OPC UA Application
 var appConfig = new ApplicationConfiguration
 {
-    ApplicationName = "S7UaLib QuickStart",
-    ApplicationUri = "urn:localhost:S7UaLib:QuickStart", // Must be unique
-    ProductUri = "https://github.com/philipp2604/S7UaLib",
+    ApplicationName = "S7UaLib Console Example Client",
+    ApplicationUri = "urn:localhost:UA:S7UaLib:ConsoleExampleClient",
+    ProductUri = "uri:philipp2604:S7UaLib:ConsoleExampleClient",
     AutoAcceptUntrustedCertificates = true
 };
 
 // 2. Initialize the S7Service
-// The second parameter is optional and is the standard OPC UA response validation action.
 var service = new S7Service(appConfig);
 
 // Optional: Subscribe to value changes
@@ -121,10 +120,26 @@ try
     Console.WriteLine("Or press Enter to write a value from here and trigger a change...");
     Console.ReadLine();
 
-    // 7. Write a new value to a different variable
+    // 7. Write a new value to the variable
+    var success = false;
+    if (service.GetVariable(myIntVarPath)?.Value is short intVal)
+    {
+        intVal = (short)(intVal + 1);
+        Console.WriteLine($"Writing '{intVal}' to '{myIntVarPath}'...");
+        success = await service.WriteVariableAsync(myIntVarPath, intVal);
+        if (success)
+        {
+            Console.WriteLine($"Write to {myIntVarPath} successful! A new value change event should have been triggered.");
+        }
+    }
+
+    Console.WriteLine($"Press Enter to write a value to {myStringVarPath} from here...");
+    Console.ReadLine();
+
+    // 8. Write a string value
     string newValue = $"Hello from S7UaLib at {DateTime.Now:T}";
     Console.WriteLine($"Writing '{newValue}' to '{myStringVarPath}'...");
-    bool success = await service.WriteVariableAsync(myStringVarPath, newValue);
+    success = await service.WriteVariableAsync(myStringVarPath, newValue);
 
     if (success)
     {
@@ -159,13 +174,6 @@ void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
     Console.ResetColor();
 }
 ```
-
-## 📖 Documentation
-
--   **[Manual](./MANUAL.md)**: A small manual on how to use this library.
--   **[IS7Service Reference](./S7UaLib.Services/S7/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
--   **[Example Project](./S7UaLib.Example/Program.cs)**: A runnable console application demonstrating library usage in more detail.
--   **[Integration Tests](./S7UaLib.IntegrationTests/Services/S7ServiceIntegrationTests.cs)**: These tests showcase real-world usage patterns against a live S7-1500 PLC and serve as excellent, practical examples.
 
 ## 🤝 Contributing
 
