@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\S7UaLib.Services\S7UaLib.Services.csproj" />
+    <ProjectReference Include="..\S7UaLib.Services\S7UaLib.Services.csproj" />
   </ItemGroup>
 
   <ItemGroup>
