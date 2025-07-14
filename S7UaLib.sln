@@ -15,8 +15,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib.TestHelpers", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib.Services.Tests", "tests\S7UaLib.Services.Tests\S7UaLib.Services.Tests.csproj", "{8A701DCF-84FE-4288-8628-271DA4554CC9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S7UaLib.Example", "src\S7UaLib.Example\S7UaLib.Example.csproj", "{048949D5-5CCA-DA13-68B8-E4E04083A0FD}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -47,10 +45,6 @@ Global
 		{8A701DCF-84FE-4288-8628-271DA4554CC9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8A701DCF-84FE-4288-8628-271DA4554CC9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8A701DCF-84FE-4288-8628-271DA4554CC9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{048949D5-5CCA-DA13-68B8-E4E04083A0FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{048949D5-5CCA-DA13-68B8-E4E04083A0FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{048949D5-5CCA-DA13-68B8-E4E04083A0FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{048949D5-5CCA-DA13-68B8-E4E04083A0FD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
