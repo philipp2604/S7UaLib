@@ -218,7 +218,7 @@ public class S7UaClientUnitTests
         _mockSession.Setup(s => s.Browse(
                 It.IsAny<Opc.Ua.RequestHeader>(), It.IsAny<Opc.Ua.ViewDescription>(), It.IsAny<uint>(), It.IsAny<Opc.Ua.BrowseDescriptionCollection>(),
                 out It.Ref<Opc.Ua.BrowseResultCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
-            .Callback(new SessionBrowseCallback((_, _, _, bdc, out brc, out dic) =>
+            .Callback(new SessionBrowseCallback((Opc.Ua.RequestHeader _, Opc.Ua.ViewDescription _, uint _, Opc.Ua.BrowseDescriptionCollection bdc, out Opc.Ua.BrowseResultCollection brc, out Opc.Ua.DiagnosticInfoCollection dic) =>
             {
                 brc = [];
                 dic = [];
@@ -254,7 +254,7 @@ public class S7UaClientUnitTests
         _mockSession.Setup(s => s.Browse(
                 It.IsAny<Opc.Ua.RequestHeader>(), It.IsAny<Opc.Ua.ViewDescription>(), It.IsAny<uint>(), It.IsAny<Opc.Ua.BrowseDescriptionCollection>(),
                 out It.Ref<Opc.Ua.BrowseResultCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
-            .Callback(new SessionBrowseCallback((_, _, _, bdc, out brc, out dic) =>
+            .Callback(new SessionBrowseCallback((Opc.Ua.RequestHeader _, Opc.Ua.ViewDescription _, uint _, Opc.Ua.BrowseDescriptionCollection bdc, out Opc.Ua.BrowseResultCollection brc, out Opc.Ua.DiagnosticInfoCollection dic) =>
             {
                 brc = [];
                 dic = [];
@@ -380,7 +380,7 @@ public class S7UaClientUnitTests
         _mockSession.Setup(s => s.Read(
                 It.IsAny<Opc.Ua.RequestHeader>(), It.IsAny<double>(), It.IsAny<Opc.Ua.TimestampsToReturn>(),
                 It.IsAny<Opc.Ua.ReadValueIdCollection>(), out It.Ref<Opc.Ua.DataValueCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
-            .Callback(new SessionReadCallback((_, _, _, _, out results, out diags) =>
+            .Callback(new SessionReadCallback((Opc.Ua.RequestHeader _, double _, Opc.Ua.TimestampsToReturn _, Opc.Ua.ReadValueIdCollection _, out Opc.Ua.DataValueCollection results, out Opc.Ua.DiagnosticInfoCollection diags) =>
             {
                 results =
                 [
@@ -439,7 +439,7 @@ public class S7UaClientUnitTests
         _mockSession.Setup(s => s.Browse(It.IsAny<Opc.Ua.RequestHeader>(), It.IsAny<Opc.Ua.ViewDescription>(), It.IsAny<uint>(),
                 It.Is<Opc.Ua.BrowseDescriptionCollection>(bdc => bdc[0].NodeId == structNodeId),
                 out It.Ref<Opc.Ua.BrowseResultCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
-            .Callback(new SessionBrowseCallback((_, _, _, _, out brc, out dic) =>
+            .Callback(new SessionBrowseCallback((Opc.Ua.RequestHeader _, Opc.Ua.ViewDescription _, uint _, Opc.Ua.BrowseDescriptionCollection _, out Opc.Ua.BrowseResultCollection brc, out Opc.Ua.DiagnosticInfoCollection dic) =>
             {
                 brc = [new() { References = structMemberReferences, StatusCode = Opc.Ua.StatusCodes.Good }];
                 dic = [];
@@ -449,7 +449,7 @@ public class S7UaClientUnitTests
         _mockSession.Setup(s => s.Read(It.IsAny<Opc.Ua.RequestHeader>(), It.IsAny<double>(), It.IsAny<Opc.Ua.TimestampsToReturn>(),
                 It.Is<Opc.Ua.ReadValueIdCollection>(rvc => rvc.Count == 2 && rvc.Any(r => r.NodeId == structMember1NodeId)),
                 out It.Ref<Opc.Ua.DataValueCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
-            .Callback(new SessionReadCallback((_, _, _, _, out results, out diags) =>
+            .Callback(new SessionReadCallback((Opc.Ua.RequestHeader _, double _, Opc.Ua.TimestampsToReturn _, Opc.Ua.ReadValueIdCollection _, out Opc.Ua.DataValueCollection results, out Opc.Ua.DiagnosticInfoCollection diags) =>
             {
                 results =
                 [
@@ -506,7 +506,7 @@ public class S7UaClientUnitTests
                 It.IsAny<Opc.Ua.RequestHeader>(), It.IsAny<double>(), It.IsAny<Opc.Ua.TimestampsToReturn>(),
                 It.Is<Opc.Ua.ReadValueIdCollection>(nodes => nodes.Count == 1 && nodes[0].NodeId == charNodeId),
                 out It.Ref<Opc.Ua.DataValueCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
-            .Callback(new SessionReadCallback((_, _, _, _, out results, out diags) =>
+            .Callback(new SessionReadCallback((Opc.Ua.RequestHeader _, double _, Opc.Ua.TimestampsToReturn _, Opc.Ua.ReadValueIdCollection _, out Opc.Ua.DataValueCollection results, out Opc.Ua.DiagnosticInfoCollection diags) =>
             {
                 results = [new(new Opc.Ua.Variant(opcRawValue)) { StatusCode = Opc.Ua.StatusCodes.Good }];
                 diags = [];
