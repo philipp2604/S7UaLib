@@ -30,15 +30,33 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       
-    - run: dotnet build S7UaLib/S7UaLib.csproj --configuration Release
-    - run: dotnet pack S7UaLib/S7UaLib.csproj --configuration Release --output ${{ env.NuGetDirectory }}
+    # --- Core ---
+    - name: Build S7UaLib.Core
+      run: dotnet build src/S7UaLib.Core/S7UaLib.Core.csproj --configuration Release
+    - name: Pack S7UaLib.Core 
+      run: dotnet pack src/S7UaLib.Core/S7UaLib.Core.csproj --configuration Release --output ${{ env.NuGetDirectory }}
 
-    - uses: actions/upload-artifact@v4
+    # --- Infrastructure ---
+    - name: Build S7UaLib.Infrastructure
+      run: dotnet build src/S7UaLib.Infrastructure/S7UaLib.Infrastructure.csproj --configuration Release
+    - name: Pack S7UaLib.Infrastructure
+      run: dotnet pack src/S7UaLib.Infrastructure/S7UaLib.Infrastructure.csproj --configuration Release --output ${{ env.NuGetDirectory }}
+
+    # --- Services ---
+    - name: Build S7UaLib.Services
+      run: dotnet build src/S7UaLib.Services/S7UaLib.Services.csproj --configuration Release
+    - name: Pack S7UaLib.Services
+      run: dotnet pack src/S7UaLib.Services/S7UaLib.Services.csproj --configuration Release --output ${{ env.NuGetDirectory }}
+
+    - name: Upload NuGet packages artifact
+      uses: actions/upload-artifact@v4
       with:
         name: nuget
         if-no-files-found: error
         retention-days: 7
-        path: ${{ env.NuGetDirectory }}/*.nupkg
+        path: |
+          ${{ env.NuGetDirectory }}/*.nupkg
+          ${{ env.NuGetDirectory }}/*.snupkg
 
   run_test:
     runs-on: ${{ matrix.os }}
