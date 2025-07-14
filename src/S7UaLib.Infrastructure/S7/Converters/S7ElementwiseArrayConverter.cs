@@ -1,6 +1,6 @@
 ﻿using Opc.Ua;
-using System.Collections;
 using S7UaLib.Core.S7.Converters;
+using System.Collections;
 
 namespace S7UaLib.Infrastructure.S7.Converters;
 

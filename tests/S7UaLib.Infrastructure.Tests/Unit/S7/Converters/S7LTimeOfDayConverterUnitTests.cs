@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-using Moq;
-using S7UaLib.Infrastructure.S7.Converters;
+﻿using S7UaLib.Infrastructure.S7.Converters;
 
 namespace S7UaLib.Infrastructure.Tests.Unit.S7.Converters;
 

@@ -5,7 +5,6 @@ using Opc.Ua.Client;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
-using S7UaLib.Infrastructure.S7.Converters;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.TestHelpers;
 using System.Collections;
@@ -27,19 +26,6 @@ public class S7UaClientUnitTests
         _mockLogger = new Mock<ILogger<S7UaClient>>();
         _mockLoggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
 
-        /*
-        _appConfig = new ApplicationConfiguration
-        {
-            ApplicationName = "Test S7UaClient",
-            ApplicationType = ApplicationType.Client,
-            SecurityConfiguration = new SecurityConfiguration
-            {
-                ApplicationCertificate = new CertificateIdentifier(),
-                TrustedPeerCertificates = new CertificateTrustList(),
-                AutoAcceptUntrustedCertificates = true
-            },
-            ClientConfiguration = new ClientConfiguration()
-        };*/
         _appConfig = new ApplicationConfiguration()
         {
             ApplicationName = "Test S7UaClient",

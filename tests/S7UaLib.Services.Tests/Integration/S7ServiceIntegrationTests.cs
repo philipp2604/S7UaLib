@@ -3,15 +3,11 @@ using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.Ua;
 using S7UaLib.Services.S7;
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Services.Tests.Integration;
+
 [Trait("Category", "Integration")]
 public class S7ServiceIntegrationTests
 {

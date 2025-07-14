@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace S7UaLib.Core.Ua;
+﻿namespace S7UaLib.Core.Ua;
 
 /// <summary>
 /// Defines a common interface for UA elements that have a NodeId and DisplayName.

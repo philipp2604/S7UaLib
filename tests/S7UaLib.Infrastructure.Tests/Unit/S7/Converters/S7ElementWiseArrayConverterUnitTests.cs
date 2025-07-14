@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-using Moq;
+﻿using Moq;
 using Opc.Ua;
 using S7UaLib.Core.S7.Converters;
 using S7UaLib.Infrastructure.S7.Converters;

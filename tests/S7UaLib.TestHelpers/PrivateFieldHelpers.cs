@@ -22,6 +22,7 @@ public static class PrivateFieldHelpers
 
         field.SetValue(obj, value);
     }
+
     public static object? GetPrivateField(object obj, string fieldName)
     {
         var type = obj.GetType();

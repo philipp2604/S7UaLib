@@ -2,9 +2,7 @@
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.Ua;
-using S7UaLib.Services;
 using S7UaLib.Services.S7;
-using System.Collections;
 
 namespace S7UaLib.Example;
 
@@ -55,7 +53,7 @@ internal static class Program
 
                 Console.WriteLine("Subscribing to all configured variables.");
                 var result = await _service.SubscribeToAllConfiguredVariablesAsync();
-                if(result)
+                if (result)
                 {
                     Console.WriteLine("Subscribed successfully to all configured variables.");
                 }

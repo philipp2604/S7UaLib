@@ -3,12 +3,7 @@ using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.Ua.Client;
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Infrastructure.Tests.Integration.Ua.Client;
 
@@ -27,16 +22,6 @@ public class S7UaClientIntegrationTests
             ApplicationName = "Integration Test Client",
             ApplicationUri = "urn:localhost:UA:S7UaClient:Test",
             ProductUri = "uri:philipp2604:S7UaClient:Test",
-            /*
-            SecurityConfiguration = new SecurityConfiguration
-            {
-                ApplicationCertificate = new CertificateIdentifier(),
-                TrustedPeerCertificates = new CertificateTrustList(),
-                AutoAcceptUntrustedCertificates = true
-            },
-            ClientConfiguration = new ClientConfiguration(),
-            TransportQuotas = new TransportQuotas { OperationTimeout = 15000 }
-            */
             AutoAcceptUntrustedCertificates = true
         };
 

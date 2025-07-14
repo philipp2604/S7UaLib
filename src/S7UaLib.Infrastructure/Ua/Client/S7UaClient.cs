@@ -9,15 +9,11 @@ using S7UaLib.Core.Ua;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.S7.Converters;
 using S7UaLib.Infrastructure.Ua.Converters;
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Infrastructure.Ua.Client;
+
 /// <summary>
 /// Represents a client for connecting to and interacting with an S7 UA server.
 /// </summary>
@@ -90,7 +86,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
     public S7UaClient(Core.Ua.ApplicationConfiguration appConfig, Action<IList, IList> validateResponse, ILoggerFactory? loggerFactory = null)
     {
-        if(appConfig?.Validate() != true)
+        if (appConfig?.Validate() != true)
         {
             throw new ArgumentException("Invalid ApplicationConfiguration!");
         }
@@ -106,7 +102,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             },
             ClientConfiguration = new Opc.Ua.ClientConfiguration()
             {
-               DefaultSessionTimeout = (int)appConfig.DefaultSessionTimeout
+                DefaultSessionTimeout = (int)appConfig.DefaultSessionTimeout
             },
             ProductUri = appConfig.ProductUri,
             TransportQuotas = new Opc.Ua.TransportQuotas()

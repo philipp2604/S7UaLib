@@ -1,6 +1,6 @@
 ﻿using Opc.Ua;
-using System.Buffers.Binary;
 using S7UaLib.Core.S7.Converters;
+using System.Buffers.Binary;
 
 namespace S7UaLib.Infrastructure.S7.Converters;
 

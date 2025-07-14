@@ -12,15 +12,11 @@ using S7UaLib.Infrastructure.Serialization.Models;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
 using S7UaLib.TestHelpers;
-using System;
-using System.Collections.Generic;
 using System.IO.Abstractions.TestingHelpers;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Services.Tests.Unit;
+
 [Trait("Category", "Unit")]
 public class S7ServiceUnitTests
 {

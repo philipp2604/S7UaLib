@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Emit;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace S7UaLib.Core.Ua;
 
-namespace S7UaLib.Core.Ua;
 public class UserIdentity
 {
     #region Constructors
 
-    public UserIdentity() { }
+    public UserIdentity()
+    { }
 
     public UserIdentity(string username, string password)
     {
@@ -18,7 +13,7 @@ public class UserIdentity
         Password = password;
     }
 
-    #endregion
+    #endregion Constructors
 
     #region Public Properties
 
