@@ -1,5 +1,10 @@
-﻿# S7UaLib 🏭
+﻿Excellent! This is the culminating package—the one that brings everything together into a clean, public-facing API. It's the most important README to get right, as it will be the primary entry point for your users.
+
+Based on the files, `S7UaLib.Services` orchestrates the `S7UaClient` and `S7DataStore` to provide the simple, powerful `S7Service` you originally envisioned.
+# S7UaLib 🏭
 A modern, high-level .NET library designed to simplify communication with Siemens S7 PLCs (like S7-1200/1500) via their integrated OPC UA servers. It abstracts the complexities of the OPC UA protocol, providing an intuitive, object-oriented way to browse the PLC structure, read/write variables, and handle S7-specific data types.
+
+This package is the main entry point for the S7UaLib ecosystem. It combines the foundational models from `S7UaLib.Core` with the powerful implementation from `S7UaLib.Infrastructure` into a single, easy-to-use service.
 
 [![.NET 8 (LTS) Build & Test](https://github.com/philipp2604/S7UaLib/actions/workflows/dotnet-8-build-and-test.yml/badge.svg)](https://github.com/philipp2604/S7UaLib/actions/workflows/dotnet-8-build-and-test.yml)
 [![.NET 9 (Latest) Build & Test](https://github.com/philipp2604/S7UaLib/actions/workflows/dotnet-9-build-and-test.yml/badge.svg)](https://github.com/philipp2604/S7UaLib/actions/workflows/dotnet-9-build-and-test.yml)
@@ -10,37 +15,27 @@ A modern, high-level .NET library designed to simplify communication with Siemen
 
 ## ✨ Key Features
 
-- **High-Level API**: Interact with your PLC through the simple and powerful `S7Service`.
-- **🔌 Effortless Connection Management**: Handles connecting, disconnecting, and automatic reconnection with configurable keep-alive and backoff strategies.
-- **🌳 Full Structure Discovery**: Automatically browses and maps the entire S7 OPC UA server structure, including:
-  - Global Data Blocks (`DB`)
-  - Instance Data Blocks (`iDB`), including nested structures
-  - Inputs (`I`), Outputs (`Q`), and Memory (`M`)
-  - Timers (`T`) and Counters (`C`)
-- **🔄 Automatic S7 Data Type Conversion**: Seamlessly converts complex S7 data types to and from standard .NET types. No more manual byte-wrangling!
-  - `DATE_AND_TIME` ↔ `System.DateTime`
-  - `DTL` ↔ `System.DateTime` (with nanosecond precision)
-  - `TIME`, `LTIME`, `S5TIME` ↔ `System.TimeSpan`
-  - `TIME_OF_DAY`, `LTIME_OF_DAY` ↔ `System.TimeSpan`
-  - `CHAR`, `WCHAR` ↔ `System.Char`
-  - And all corresponding `ARRAY` types.
-- **💾 Structure Persistence**: Save your discovered PLC structure to a JSON file and load it on startup to bypass the time-consuming discovery process.
-- **⚡️ Type-Safe & Path-Based Access**: Read and write variables using their full symbolic path (e.g., `"DataBlocksGlobal.MyDb.MySetting"`).
-- **🔔 Event-Driven Value Changes**: React to data changes in your application through two powerful mechanisms:
-  - **Polling:** Use `ReadAllVariablesAsync()` to get a snapshot and trigger `VariableValueChanged` for any changes since the last read.
-  - **Subscriptions:** Use `SubscribeToVariableAsync()` to receive real-time updates from the PLC, which also trigger the `VariableValueChanged` event.
-- **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations ensures your application remains responsive. Built from the ground up to be thread-safe, allowing you to reliably use a single `S7Service` instance across multiple concurrent tasks.
-- **🏗️ Modern & Immutable**: Built with modern C# features, using immutable records for data structures to ensure thread safety and predictability.
-
-## 🏛️ Architecture
-
-The library is designed with a clean, modular architecture, split into several key projects. This separation of concerns makes the library more maintainable and easier to understand.
-
--   **`S7UaLib.Core`**: The foundational library. It defines all shared interfaces, enumerations, and data models (`IS7Variable`, `S7DataType`, etc.). It's the "vocabulary" of the ecosystem.
--   **`S7UaLib.Infrastructure`**: The implementation engine. This library contains the concrete logic for communicating via OPC UA, converting data types, and caching the PLC structure. It's the internal "machinery".
--   **`S7UaLib` (S7UaLib.Services)**: The high-level public API. It exposes the simple `S7Service`, which orchestrates the underlying components to provide the easy-to-use functionality you see in the features list.
-
-As an end-user, you only need to install the main `philipp2604.S7UaLib` NuGet package. The others will be included automatically as dependencies.
+-   **High-Level API**: Interact with your PLC through the simple and powerful `S7Service`.
+-   **🔌 Effortless Connection Management**: Handles connecting, disconnecting, and automatic reconnection with configurable keep-alive and backoff strategies.
+-   **🌳 Full Structure Discovery**: Automatically browses and maps the entire S7 OPC UA server structure, including:
+    -   Global Data Blocks (`DB`)
+    -   Instance Data Blocks (`iDB`), including nested structures
+    -   Inputs (`I`), Outputs (`Q`), and Memory (`M`)
+    -   Timers (`T`) and Counters (`C`)
+-   **🔄 Automatic S7 Data Type Conversion**: Seamlessly converts complex S7 data types to and from standard .NET types. No more manual byte-wrangling!
+    -   `DATE_AND_TIME` ↔ `System.DateTime`
+    -   `DTL` ↔ `System.DateTime` (with nanosecond precision)
+    -   `TIME`, `LTIME`, `S5TIME` ↔ `System.TimeSpan`
+    -   `TIME_OF_DAY`, `LTIME_OF_DAY` ↔ `System.TimeSpan`
+    -   `CHAR`, `WCHAR` ↔ `System.Char`
+    -   And all corresponding `ARRAY` types.
+-   **💾 Structure Persistence**: Save your discovered PLC structure to a JSON file and load it on startup to bypass the time-consuming discovery process.
+-   **⚡️ Path-Based Access**: Read and write variables using their full symbolic path (e.g., `"DataBlocksGlobal.MyDb.MySetting"`).
+-   **🔔 Event-Driven Value Changes**: React to data changes in your application through two powerful mechanisms:
+    -   **Polling:** Use `ReadAllVariablesAsync()` to get a snapshot and trigger `VariableValueChanged` for any changes since the last read.
+    -   **Subscriptions:** Use `SubscribeToVariableAsync()` to receive real-time updates from the PLC, which also trigger the `VariableValueChanged` event.
+-   **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations ensures your application remains responsive. Built from the ground up to be thread-safe, allowing you to reliably use a single `S7Service` instance across multiple concurrent tasks.
+-   **🏗️ Modern & Immutable**: Built with modern C# features, using immutable records from `S7UaLib.Core` for data structures to ensure thread safety and predictability.
 
 ## 🚀 Getting Started
 
@@ -51,6 +46,7 @@ S7UaLib is available on NuGet. You can install it using the .NET CLI:
 ```bash
 dotnet add package philipp2604.S7UaLib
 ```
+
 Or via the NuGet Package Manager in Visual Studio.
 
 ### Quick Start
@@ -179,11 +175,6 @@ void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
 }
 ```
 
-## 📖 Documentation
-- **[Manual](./MANUAL.md)**: A small manual on how to use this library.
-- **[IS7Service Reference](./src/S7UaLib.Services/S7/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
-- **[Integration Tests](./tests/S7UaLib.Services.Tests/Integration/S7ServiceIntegrationTests.cs)**: These tests showcase real-world usage patterns against a live S7-1500 PLC and serve as excellent, practical examples.
-
 ## 🤝 Contributing
 
 Contributions are welcome! Whether it's bug reports, feature requests, or pull requests, your help is appreciated.
@@ -200,6 +191,6 @@ Please open an issue first to discuss any major changes.
 
 This project is licensed under the **GNU General Public License v2.0 (GPL-2.0)**.
 
-This is a direct consequence of the dependency on the official `OPCFoundation.NetStandard.Opc.Ua` packages, which are licensed under GPL 2.0. Any project using S7UaLib must therefore also comply with the terms of the GPL 2.0 license, which generally means that if you distribute your application, you must also make the source code available.
+This is a direct consequence of its dependency on `OPCFoundation.NetStandard.Opc.Ua` and `S7UaLib.Infrastructure`, which are both licensed under GPL 2.0. Any project using S7UaLib must therefore also comply with the terms of the GPL 2.0 license. This generally means that if you distribute your application, you must also make its full source code available.
 
 Please review the [license terms](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html) carefully before integrating this library into your project.

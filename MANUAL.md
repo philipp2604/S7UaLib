@@ -6,7 +6,7 @@ S7UaLib is a .NET library designed to simplify communication with Siemens S7 PLC
 
 The primary goal of this library is to allow developers to interact with the PLC's data structure in a way that feels natural in C#, using symbolic tag names and strongly-typed objects, rather than dealing with raw NodeIDs and manual data conversions.
 
-The main entry point for all interactions is the `S7Service` class, which implements the `IS7Service` interface.
+The main entry point for all interactions is the `S7Service` class, located in the `S7UaLib.Services.S7` namespace.
 
 ## Key Features
 
@@ -18,9 +18,9 @@ The main entry point for all interactions is the `S7Service` class, which implem
   - Timers (T) and Counters (C)
 - **Seamless S7 Data Type Conversion:** Automatically handles the conversion between complex S7-specific data types and standard .NET types. This is a core feature that saves significant development time. Supported types include:
   - `DATE_AND_TIME` (8-byte BCD) <-> `.NET DateTime`
-  - `DTL` (12-byte struct) <-> `.NET DateTime`
+  - `DTL` (12-byte struct) <-> `.NET DateTime` (with nanosecond precision)
   - `S5TIME` (legacy timer format) <-> `.NET TimeSpan`
-  - `TIME`, `LTIME`, `TIME_OF_DAY` <-> `.NET TimeSpan`
+  - `TIME`, `LTIME`, `TIME_OF_DAY`, `LTIME_OF_DAY` <-> `.NET TimeSpan`
   - `DATE` <-> `.NET DateTime`
   - `COUNTER` (BCD format) <-> `.NET ushort`
   - And all primitive types (`BOOL`, `INT`, `REAL`, `STRING`, etc.) and their arrays.
@@ -31,18 +31,24 @@ The main entry point for all interactions is the `S7Service` class, which implem
 
 ## Core Concepts
 
-### The `S7Service`
+### Architecture
 
-All interactions with the library should be done through an instance of `S7Service`. It encapsulates an `IS7UaClient` for communication and an `IS7DataStore` for holding the PLC's structural model. You configure it, connect it, and use its methods to discover, read, write, and subscribe to data.
+The library is built on a clean, three-layer architecture to separate concerns:
+
+-   **`S7UaLib.Core`**: The foundation. It defines all shared data models, interfaces, and enumerations (like `IS7Variable`, `S7DataType`, `ApplicationConfiguration`). It is the common "language" of the ecosystem.
+-   **`S7UaLib.Infrastructure`**: The engine. It contains the concrete implementations for OPC UA communication (`S7UaClient`), data type conversion, and persistence logic. These are the internal mechanics.
+-   **`S7UaLib` (the main package)**: The public API. It provides the high-level `S7Service`, which orchestrates the underlying components into a simple and powerful interface for you to use.
+
+As a user, you only need to interact with the `S7Service` from the main `S7UaLib` package.
 
 ### S7 PLC Structure Model
 
-The library represents the PLC's memory as a hierarchical collection of C# record objects:
+The library represents the PLC's memory as a hierarchical collection of C# record objects defined in `S7UaLib.Core`:
 
-- `S7DataBlockGlobal`: Represents a global DB. Contains a list of `S7Variable`.
-- `S7DataBlockInstance`: Represents an instance DB. It is structured into sections like `Inputs`, `Outputs`, and `Static`, which in turn contain variables or even nested instances.
-- `S7Inputs`, `S7Outputs`, `S7Memory`, etc.: Represent the corresponding memory areas.
-- `S7Variable`: Represents a single tag or a member of a struct. It holds all relevant metadata, including its `NodeId`, `DisplayName`, `S7Type`, current `Value`, `StatusCode`, and any struct members if it is a `STRUCT`.
+- `IS7DataBlockGlobal`: Represents a global DB. Contains a list of `IS7Variable`.
+- `IS7DataBlockInstance`: Represents an instance DB. It is structured into sections like `Inputs`, `Outputs`, and `Static`, which in turn contain variables or even nested instances.
+- `IS7Inputs`, `IS7Outputs`, `IS7Memory`, etc.: Represent the corresponding memory areas.
+- `IS7Variable`: Represents a single tag or a member of a struct. It holds all relevant metadata, including its `NodeId`, `DisplayName`, `S7Type`, current `Value`, `StatusCode`, and any struct members if it is a `STRUCT`.
 
 ### Variable Paths
 
@@ -59,38 +65,29 @@ Once the structure is discovered or loaded, every variable can be accessed by a 
 Here is a complete example demonstrating the most common workflow.
 
 ```csharp
-using Opc.Ua;
-using S7UaLib.Services;
+using S7UaLib.Core.Ua;
+using S7UaLib.Services.S7;
+using System;
+using System.IO;
 using System.Threading.Tasks;
 
 public class Program
 {
     public static async Task Main(string[] args)
     {
-        // 1. Create a standard OPC UA ApplicationConfiguration
-        var config = new ApplicationConfiguration
+        // 1. Create the ApplicationConfiguration using the simplified model
+        var appConfig = new ApplicationConfiguration
         {
             ApplicationName = "My S7 UA Client",
-            ApplicationType = ApplicationType.Client,
-            // ... other necessary configurations
-        };
-        // Ensure the configuration is valid
-        await config.Validate(ApplicationType.Client);
-        
-        // This delegate is required by the OPC UA stack to handle certificate validation
-        config.CertificateValidator.CertificateValidation += (sender, eventArgs) => 
-        {
-            // For testing, accept all certificates. In production, implement proper validation!
-            if (ServiceResult.IsGood(eventArgs.Error))
-                eventArgs.Accept = true;
+            ApplicationUri = "urn:localhost:MyS7UaClient", // Must be unique
+            ProductUri = "uri:mycompany:mys7uaclient",
+            // For testing, accept all certificates. In production, this should be false
+            // and you should manage the certificate trust list.
+            AutoAcceptUntrustedCertificates = true
         };
 
         // 2. Instantiate the S7Service
-        // The second parameter is a response validation delegate, you can use a simple one to start.
-        var s7Service = new S7Service(config, (results, values) => { });
-
-        // Optionally, accept untrusted certificates for testing
-        s7Service.AcceptUntrustedCertificates = true;
+        var service = new S7Service(appConfig);
 
         var serverUrl = "opc.tcp://192.168.0.1:4840";
         var structureFilePath = "plc_structure.json";
@@ -99,36 +96,36 @@ public class Program
         {
             // 3. Connect to the PLC
             Console.WriteLine($"Connecting to {serverUrl}...");
-            await s7Service.ConnectAsync(serverUrl);
+            await service.ConnectAsync(serverUrl, useSecurity: false);
             Console.WriteLine("Connected successfully!");
 
             // 4. Discover structure (or load from file if it exists)
             if (File.Exists(structureFilePath))
             {
                 Console.WriteLine("Loading structure from file...");
-                await s7Service.LoadStructureAsync(structureFilePath);
+                await service.LoadStructureAsync(structureFilePath);
             }
             else
             {
                 Console.WriteLine("Discovering PLC structure...");
-                await s7Service.DiscoverStructureAsync();
+                await service.DiscoverStructureAsync();
                 Console.WriteLine("Discovery complete. Saving structure to file...");
-                await s7Service.SaveStructureAsync(structureFilePath);
+                await service.SaveStructureAsync(structureFilePath);
             }
-            
+
             // 5. Read a variable by its full path
             var speedVarPath = "DataBlocksGlobal.MachineData.Speed";
-            var speedVariable = s7Service.GetVariable(speedVarPath);
+            var speedVariable = service.GetVariable(speedVarPath);
 
             if (speedVariable != null)
             {
                 Console.WriteLine($"Initial value of '{speedVariable.DisplayName}': {speedVariable.Value} (Status: {speedVariable.StatusCode})");
             }
-            
+
             // Refresh all values from the PLC
-            await s7Service.ReadAllVariablesAsync();
-            
-            speedVariable = s7Service.GetVariable(speedVarPath);
+            await service.ReadAllVariablesAsync();
+
+            speedVariable = service.GetVariable(speedVarPath);
             if (speedVariable != null)
             {
                 Console.WriteLine($"Refreshed value of '{speedVariable.DisplayName}': {speedVariable.Value}");
@@ -137,7 +134,7 @@ public class Program
             // 6. Write a new value to a variable
             var setpointVarPath = "DataBlocksGlobal.MachineData.Setpoint";
             Console.WriteLine($"Writing value 123.45 to '{setpointVarPath}'...");
-            bool writeSuccess = await s7Service.WriteVariableAsync(setpointVarPath, 123.45f);
+            bool writeSuccess = await service.WriteVariableAsync(setpointVarPath, 123.45f);
             Console.WriteLine(writeSuccess ? "Write successful!" : "Write failed.");
         }
         catch (Exception ex)
@@ -147,10 +144,10 @@ public class Program
         finally
         {
             // 7. Disconnect when done
-            if (s7Service.IsConnected)
+            if (service.IsConnected)
             {
                 Console.WriteLine("Disconnecting...");
-                await s7Service.DisconnectAsync();
+                await service.DisconnectAsync();
             }
         }
     }
@@ -164,10 +161,11 @@ public class Program
 S7UaLib makes it easy to monitor tags for changes.
 
 ```csharp
-// Assuming s7Service is connected and structure is loaded
+using S7UaLib.Core.Events;
+// ...assuming 'service' is a connected S7Service instance
 
 // Subscribe to the VariableValueChanged event
-s7Service.VariableValueChanged += (sender, args) =>
+service.VariableValueChanged += (object? sender, VariableValueChangedEventArgs args) =>
 {
     // This event may be raised on a background thread!
     // Ensure your handler is thread-safe.
@@ -180,7 +178,7 @@ s7Service.VariableValueChanged += (sender, args) =>
 
 // Subscribe to a specific variable with a 500ms sampling interval
 var tagToWatch = "DataBlocksGlobal.MachineData.StatusWord";
-bool subscribed = await s7Service.SubscribeToVariableAsync(tagToWatch, samplingInterval: 500);
+bool subscribed = await service.SubscribeToVariableAsync(tagToWatch, samplingInterval: 500);
 
 if (subscribed)
 {
@@ -188,7 +186,7 @@ if (subscribed)
 }
 
 // To stop receiving updates:
-// await s7Service.UnsubscribeFromVariableAsync(tagToWatch);
+// await service.UnsubscribeFromVariableAsync(tagToWatch);
 ```
 
 ### Correcting Data Types
@@ -196,25 +194,28 @@ if (subscribed)
 Sometimes, a PLC tag might be represented as a generic type like `WORD` but actually contains a specific data format like `S5TIME`. You can correct this in the data store.
 
 ```csharp
+using S7UaLib.Core.Enums;
+// ...assuming 'service' is a connected S7Service instance
+
 var timerPath = "DataBlocksGlobal.Timers.T1_Preset";
 
 // Let's say discovery identified it as WORD
-var timerVar = s7Service.GetVariable(timerPath);
+var timerVar = service.GetVariable(timerPath);
 Console.WriteLine($"Type before update: {timerVar.S7Type}, Value: {timerVar.Value}");
 // Output might be: Type before update: WORD, Value: 8212
 
-// Update the type to S5TIME
-await s7Service.UpdateVariableTypeAsync(timerPath, S7UaLib.S7.Types.S7DataType.S5TIME);
+// Update the type to S5TIME using the enum from S7UaLib.Core
+await service.UpdateVariableTypeAsync(timerPath, S7DataType.S5TIME);
 
 // The service automatically reconverts the raw value
-timerVar = s7Service.GetVariable(timerPath);
+timerVar = service.GetVariable(timerPath);
 Console.WriteLine($"Type after update: {timerVar.S7Type}, Value: {timerVar.Value}");
 // Output should be: Type after update: S5TIME, Value: 00:00:12.3400000 (as a TimeSpan)
 ```
 
 ## `IS7Service` API Reference
 
-This section provides a complete reference for the public `IS7Service` interface.
+This section provides a complete reference for the public `IS7Service` interface. The event arguments and data models (`ConnectionEventArgs`, `IS7Variable`, `S7DataType`, etc.) are defined in the `S7UaLib.Core` library.
 
 ### Events
 
@@ -247,7 +248,7 @@ This section provides a complete reference for the public `IS7Service` interface
 - `uint SessionTimeout { get; set; }`
   > Gets or sets the session timeout in milliseconds after which the session is considered invalid after the last communication.
 - `bool AcceptUntrustedCertificates { get; set; }`
-  > Gets or sets a value indicating whether untrusted SSL/TLS certificates are accepted. Use with caution.
+  > Gets or sets a value indicating whether untrusted SSL/TLS certificates are accepted. This is now managed via the `ApplicationConfiguration` object passed to the constructor.
 - `UserIdentity UserIdentity { get; set; }`
   > Gets or sets the identity information of the user for authentication (e.g., username/password).
 
@@ -263,15 +264,15 @@ This section provides a complete reference for the public `IS7Service` interface
 #### Structure Discovery Methods
 
 - `Task DiscoverStructureAsync(CancellationToken cancellationToken = default)`
-  > Discovers the entire structure of the OPC UA server and populates the internal data store. This includes all data blocks, I/O areas, and their variables. Throws an `InvalidOperationException` if not connected.
+  > Discovers the entire structure of the OPC UA server and populates the internal data store. Throws an `InvalidOperationException` if not connected.
 
 #### Variables Access and Manipulation Methods
 
-- `Task ReadAllVariablesAsync(CancellationToken cancellationToken)`
+- `Task ReadAllVariablesAsync(CancellationToken cancellationToken = default)`
   > Reads the values of all discovered variables from the PLC. Raises the `VariableValueChanged` event for any variable whose value has changed.
 - `Task<bool> WriteVariableAsync(string fullPath, object value)`
   > Writes a value to a variable specified by its full symbolic path. The library handles the necessary type conversion. Returns `true` on success.
-- `Task<bool> UpdateVariableTypeAsync(string fullPath, S7DataType newType, CancellationToken cancellationToken)`
+- `Task<bool> UpdateVariableTypeAsync(string fullPath, S7DataType newType, CancellationToken cancellationToken = default)`
   > Updates the S7 data type of a variable in the data store and attempts to reconvert its current raw value. Returns `true` if the variable was found and updated.
 - `IS7Variable? GetVariable(string fullPath)`
   > Retrieves a variable from the data store by its full symbolic path. Returns the `IS7Variable` if found; otherwise, `null`.
