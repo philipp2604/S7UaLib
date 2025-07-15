@@ -90,7 +90,7 @@ public class S7UaClientUnitTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            client.Configure("TestApp", "urn:test", "urn:test:prod", securityConfig));
+            client.ConfigureAsync("TestApp", "urn:test", "urn:test:prod", securityConfig));
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class S7UaClientUnitTests
         const string productUri = "urn:mycompany:mytestapp";
 
         // Act
-        await client.Configure(appName, appUri, productUri, securityConfig);
+        await client.ConfigureAsync(appName, appUri, productUri, securityConfig);
 
         // Assert
         var appInst = PrivateFieldHelpers.GetPrivateField(client, "_appInst") as ApplicationInstance;
@@ -146,7 +146,7 @@ public class S7UaClientUnitTests
         };
 
         // Act
-        await client.Configure("FullApp", "urn:full", "urn:prod:full", securityConfig, clientConfig, transportQuotas, opLimits);
+        await client.ConfigureAsync("FullApp", "urn:full", "urn:prod:full", securityConfig, clientConfig, transportQuotas, opLimits);
 
         // Assert
         var appInst = PrivateFieldHelpers.GetPrivateField(client, "_appInst") as ApplicationInstance;
@@ -184,7 +184,7 @@ public class S7UaClientUnitTests
         var client = new S7UaClient();
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfiguration("test.xml"));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfigurationAsync("test.xml"));
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.Configure("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
 
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => client.SaveConfiguration(null!));
@@ -207,7 +207,7 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.Configure("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
 
         // Act & Assert
         Assert.Throws<ArgumentException>(() => client.SaveConfiguration(filePath!));
@@ -219,10 +219,10 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.Configure("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfiguration(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfigurationAsync(null!));
     }
 
     [Theory]
@@ -233,10 +233,10 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.Configure("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => client.LoadConfiguration(filePath));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.LoadConfigurationAsync(filePath));
     }
 
     [Fact]
@@ -248,7 +248,7 @@ public class S7UaClientUnitTests
         // --- Arrange: Create and save a configuration ---
         var saveClient = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
         var securityConfig = CreateTestSecurityConfig(tempDir.Path);
-        await saveClient.Configure("SavedApp", "urn:saved", "urn:prod:saved", securityConfig, new Core.Ua.ClientConfiguration { SessionTimeout = 99000 });
+        await saveClient.ConfigureAsync("SavedApp", "urn:saved", "urn:prod:saved", securityConfig, new Core.Ua.ClientConfiguration { SessionTimeout = 99000 });
 
         // --- Act 1: Save the configuration ---
         saveClient.SaveConfiguration(configFilePath);
@@ -261,10 +261,10 @@ public class S7UaClientUnitTests
 
         // --- Arrange 2: Create a new client with a different initial config ---
         var loadClient = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
-        await loadClient.Configure("InitialApp", "urn:initial", "urn:prod:initial", CreateTestSecurityConfig(tempDir.Path));
+        await loadClient.ConfigureAsync("InitialApp", "urn:initial", "urn:prod:initial", CreateTestSecurityConfig(tempDir.Path));
 
         // --- Act 2: Load the previously saved configuration ---
-        await loadClient.LoadConfiguration(configFilePath);
+        await loadClient.LoadConfigurationAsync(configFilePath);
 
         // --- Assert 2: The client's configuration is now updated ---
         var appInst = PrivateFieldHelpers.GetPrivateField(loadClient, "_appInst") as ApplicationInstance;

@@ -237,14 +237,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Configuration Methods
 
-    /// <inheritdoc cref="IS7UaClient.Configure(string, string, string, Core.Ua.SecurityConfiguration, Core.Ua.ClientConfiguration?, Core.Ua.TransportQuotas?, Core.Ua.OperationLimits?)"/>
-    public async Task Configure(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
+    /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.SecurityConfiguration, Core.Ua.ClientConfiguration?, Core.Ua.TransportQuotas?, Core.Ua.OperationLimits?)"/>
+    public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
     {
         ThrowIfDisposed();
-        await BuildClient(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+        await BuildClientAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
     }
 
-    /// <inheritdoc cref="IS7UaClient.LoadConfiguration(string)"/>
+    /// <inheritdoc cref="IS7UaClient.SaveConfiguration(string)"/>
     public void SaveConfiguration(string filePath)
     {
         ThrowIfDisposed();
@@ -253,8 +253,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         _appInst?.ApplicationConfiguration.SaveToFile(filePath);
     }
 
-    /// <inheritdoc cref="IS7UaClient.SaveConfiguration(string)"/>
-    public async Task LoadConfiguration(string filePath)
+    /// <inheritdoc cref="IS7UaClient.LoadConfigurationAsync(string)"/>
+    public async Task LoadConfigurationAsync(string filePath)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath, nameof(filePath));
@@ -263,7 +263,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         await _appInst.LoadApplicationConfiguration(filePath, false);
     }
 
-    internal async Task BuildClient(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
+    internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
     {
         _appInst = new()
         {

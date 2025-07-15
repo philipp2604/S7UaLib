@@ -189,14 +189,14 @@ public class S7Service : IS7Service
         _client.SaveConfiguration(filePath);
     }
 
-    /// <inheritdoc cref="IS7Service.LoadConfiguration(string)"/>
-    public async Task LoadConfiguration(string filePath)
+    /// <inheritdoc cref="IS7Service.LoadConfigurationAsync(string)"/>
+    public async Task LoadConfigurationAsync(string filePath)
     {
-        await _client.LoadConfiguration(filePath);
+        await _client.LoadConfigurationAsync(filePath);
     }
 
-    /// <inheritdoc cref="IS7Service.Configure(string, string, string, SecurityConfiguration, ClientConfiguration?, TransportQuotas?, OperationLimits?)"/>
-    public async Task Configure(string appName,
+    /// <inheritdoc cref="IS7Service.ConfigureAsync(string, string, string, SecurityConfiguration, ClientConfiguration?, TransportQuotas?, OperationLimits?)"/>
+    public async Task ConfigureAsync(string appName,
         string appUri,
         string productUri,
         SecurityConfiguration
@@ -205,7 +205,7 @@ public class S7Service : IS7Service
         TransportQuotas? transportQuotas = null,
         OperationLimits? opLimits = null)
     {
-        await _client.Configure(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+        await _client.ConfigureAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
     }
 
     #endregion Configuration Methods

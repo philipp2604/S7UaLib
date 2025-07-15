@@ -119,7 +119,7 @@ internal interface IS7UaClient : IDisposable
     /// <param name="transportQuotas">The <see cref="Core.Ua.TransportQuotas"/>, optionally used for configuring transport quotas.</param>
     /// <param name="opLimits">The <see cref="Core.Ua.OperationLimits"/>, optionally used for configuring operation limits.</param>
     /// <returns>A task indicating the state of the async function.</returns>
-    public Task Configure(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null);
+    public Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null);
 
     /// <summary>
     /// Saves the client's currently used configuration to a file.
@@ -132,7 +132,7 @@ internal interface IS7UaClient : IDisposable
     /// </summary>
     /// <param name="filePath">The file path used to load the configuration from.</param>
     /// <returns>A task indicating the state of the async function.</returns>
-    public Task LoadConfiguration(string filePath);
+    public Task LoadConfigurationAsync(string filePath);
 
     #endregion Configuration Methods
 

@@ -74,7 +74,7 @@ public class S7ServiceIntegrationTests : IDisposable
         _servicesToDispose.Add(service);
 
         var securityConfig = CreateTestSecurityConfig();
-        await service.Configure(_appName, _appUri, _productUri, securityConfig);
+        await service.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
 
         try
         {
@@ -114,7 +114,7 @@ public class S7ServiceIntegrationTests : IDisposable
         var saveService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
         _servicesToDispose.Add(saveService);
 
-        await saveService.Configure(
+        await saveService.ConfigureAsync(
             "SaveLoadTestApp",
             "urn:saveload",
             "urn:saveload:prod",
@@ -128,10 +128,10 @@ public class S7ServiceIntegrationTests : IDisposable
         // 3. Create a new service instance with a *different* initial configuration.
         var loadService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
         _servicesToDispose.Add(loadService);
-        await loadService.Configure("InitialApp", "urn:initial", "urn:initial:prod", CreateTestSecurityConfig());
+        await loadService.ConfigureAsync("InitialApp", "urn:initial", "urn:initial:prod", CreateTestSecurityConfig());
 
         // Act: Load the previously saved configuration into the new service.
-        await loadService.LoadConfiguration(configFilePath);
+        await loadService.LoadConfigurationAsync(configFilePath);
 
         // Assert: Verify that the configuration of the loading client was updated.
         // We need to use reflection to inspect the private internal state.
@@ -154,7 +154,7 @@ public class S7ServiceIntegrationTests : IDisposable
     {
         // Arrange
         var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-        await service.Configure(_appName, _appUri, _productUri, _securityConfig);
+        await service.ConfigureAsync(_appName, _appUri, _productUri, _securityConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -380,7 +380,7 @@ public class S7ServiceIntegrationTests : IDisposable
 
             // Act: Create new service and load
             service2 = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-            await service2.Configure(_appName, _appUri, _productUri, _securityConfig);
+            await service2.ConfigureAsync(_appName, _appUri, _productUri, _securityConfig);
             await service2.LoadStructureAsync(tempFile);
 
             // Assert: Structure is loaded before connection

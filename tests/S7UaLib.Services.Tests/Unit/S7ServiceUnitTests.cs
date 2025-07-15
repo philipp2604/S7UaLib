@@ -58,7 +58,7 @@ public class S7ServiceUnitTests
         var transportQuotas = new Core.Ua.TransportQuotas();
         var opLimits = new Core.Ua.OperationLimits();
 
-        _mockClient.Setup(c => c.Configure(
+        _mockClient.Setup(c => c.ConfigureAsync(
                 appName,
                 appUri,
                 productUri,
@@ -70,7 +70,7 @@ public class S7ServiceUnitTests
             .Verifiable();
 
         // Act
-        await sut.Configure(appName, appUri, productUri, securityConfig, clientConfig, transportQuotas, opLimits);
+        await sut.ConfigureAsync(appName, appUri, productUri, securityConfig, clientConfig, transportQuotas, opLimits);
 
         // Assert
         // Verify that the client's Configure method was called with the exact same parameters.
@@ -101,12 +101,12 @@ public class S7ServiceUnitTests
         var sut = CreateSut();
         const string filePath = "C:\\temp\\my-config.xml";
 
-        _mockClient.Setup(c => c.LoadConfiguration(filePath))
+        _mockClient.Setup(c => c.LoadConfigurationAsync(filePath))
             .Returns(Task.CompletedTask)
             .Verifiable();
 
         // Act
-        await sut.LoadConfiguration(filePath);
+        await sut.LoadConfigurationAsync(filePath);
 
         // Assert
         // Verify that the client's LoadConfiguration method was called with the exact same file path.

@@ -42,7 +42,7 @@ public class S7UaClientIntegrationTests : IDisposable
         var saveClient = new S7UaClient(null, _validateResponse);
         _clientsToDispose.Add(saveClient);
 
-        await saveClient.Configure(
+        await saveClient.ConfigureAsync(
             "SaveLoadTestApp",
             "urn:saveload",
             "urn:saveload:prod",
@@ -54,10 +54,10 @@ public class S7UaClientIntegrationTests : IDisposable
 
         var loadClient = new S7UaClient(null, _validateResponse);
         _clientsToDispose.Add(loadClient);
-        await loadClient.Configure("InitialApp", "urn:initial", "urn:initial:prod", securityConfig);
+        await loadClient.ConfigureAsync("InitialApp", "urn:initial", "urn:initial:prod", securityConfig);
 
         // Act
-        await loadClient.LoadConfiguration(configFilePath);
+        await loadClient.LoadConfigurationAsync(configFilePath);
 
         // Assert
         var appInst = PrivateFieldHelpers.GetPrivateField(loadClient, "_appInst") as Opc.Ua.Configuration.ApplicationInstance;
@@ -81,7 +81,7 @@ public class S7UaClientIntegrationTests : IDisposable
         _clientsToDispose.Add(client);
 
         var securityConfig = CreateTestSecurityConfig();
-        await client.Configure(_appName, _appUri, _productUri, securityConfig);
+        await client.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -168,7 +168,7 @@ public class S7UaClientIntegrationTests : IDisposable
     private async Task<S7UaClient> CreateAndConnectClientAsync()
     {
         var client = new S7UaClient(_userIdentity, _validateResponse, null);
-        await client.Configure(_appName, _appUri, _productUri, _securityConfiguration);
+        await client.ConfigureAsync(_appName, _appUri, _productUri, _securityConfiguration);
 
         try
         {
