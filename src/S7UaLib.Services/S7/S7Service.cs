@@ -62,11 +62,13 @@ public class S7Service : IS7Service
     /// <param name="appConfig">The OPC UA application configuration used to initialize the client. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    public S7Service(ApplicationConfiguration appConfig, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
+    public S7Service(string configFilePath, UserIdentity userIdentity, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(configFilePath, nameof(configFilePath));
+
         _client = validateResponse != null
-            ? new S7UaClient(appConfig, validateResponse, loggerFactory)
-            : new S7UaClient(appConfig, loggerFactory);
+            ? new S7UaClient(configFilePath, userIdentity, validateResponse, loggerFactory)
+            : new S7UaClient(configFilePath, userIdentity, loggerFactory);
         _dataStore = new S7DataStore(loggerFactory);
         _fileSystem = new FileSystem();
 
@@ -178,7 +180,7 @@ public class S7Service : IS7Service
     public bool AcceptUntrustedCertificates { get => _client.AcceptUntrustedCertificates; set => _client.AcceptUntrustedCertificates = value; }
 
     /// <inheritdoc cref="IS7Service.UserIdentity"/>
-    public UserIdentity UserIdentity { get => _client.UserIdentity; set => _client.UserIdentity = value; }
+    public UserIdentity UserIdentity { get => _client.UserIdentity; }
 
     /// <inheritdoc cref="IS7Service.IsConnected"/>
     public bool IsConnected => _client.IsConnected;
