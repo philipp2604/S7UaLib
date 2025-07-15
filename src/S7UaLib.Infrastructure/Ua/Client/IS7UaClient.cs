@@ -1,5 +1,4 @@
-﻿using Opc.Ua;
-using S7UaLib.Core.Enums;
+﻿using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
@@ -94,22 +93,9 @@ internal interface IS7UaClient : IDisposable
     public int ReconnectPeriodExponentialBackoff { get; set; }
 
     /// <summary>
-    /// Gets or sets the session timeout in milliseconds after which the session is considered invalid after the last communication.
+    /// Gets the identity information of the user.
     /// </summary>
-    public uint SessionTimeout { get; set; }
-
-    /// <summary>
-    /// Gets or sets a value indicating whether untrusted SSL/TLS certificates are accepted.
-    /// </summary>
-    /// <remarks>Use this property with caution, as accepting untrusted certificates can expose the
-    /// application to security risks. This setting is typically used for testing or development purposes and should not
-    /// be enabled in production environments.</remarks>
-    public bool AcceptUntrustedCertificates { get; set; }
-
-    /// <summary>
-    /// Gets or sets the identity information of the user.
-    /// </summary>
-    public Core.Ua.UserIdentity UserIdentity { get; set; }
+    public UserIdentity UserIdentity { get; }
 
     /// <summary>
     /// Gets a value indicating whether the connection is currently active and valid.
@@ -119,6 +105,36 @@ internal interface IS7UaClient : IDisposable
     #endregion Public Properties
 
     #region Public Methods
+
+    #region Configuration Methods
+
+    /// <summary>
+    /// Configures the client for first use.
+    /// </summary>
+    /// <param name="appName">The OPC-UA application name.</param>
+    /// <param name="appUri">The OPC UA application uri.</param>
+    /// <param name="productUri">The OPC UA product uri.</param>
+    /// <param name="securityConfiguration">The <see cref="Core.Ua.SecurityConfiguration"/> used for configuring security settings.</param>
+    /// <param name="clientConfig">The <see cref="Core.Ua.ClientConfiguration"/>, optionally used for configuring client related settings.</param>
+    /// <param name="transportQuotas">The <see cref="Core.Ua.TransportQuotas"/>, optionally used for configuring transport quotas.</param>
+    /// <param name="opLimits">The <see cref="Core.Ua.OperationLimits"/>, optionally used for configuring operation limits.</param>
+    /// <returns>A task indicating the state of the async function.</returns>
+    public Task Configure(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null);
+
+    /// <summary>
+    /// Saves the client's currently used configuration to a file.
+    /// </summary>
+    /// <param name="filePath">The file path to save the configuration to.</param>
+    public void SaveConfiguration(string filePath);
+
+    /// <summary>
+    /// Loads the client's configuration from a file.
+    /// </summary>
+    /// <param name="filePath">The file path used to load the configuration from.</param>
+    /// <returns>A task indicating the state of the async function.</returns>
+    public Task LoadConfiguration(string filePath);
+
+    #endregion Configuration Methods
 
     #region Connection Methods
 
@@ -271,7 +287,7 @@ internal interface IS7UaClient : IDisposable
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if nodeId or value is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown if the value conversion fails or the session is not connected.</exception>
-    public Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default);
+    public Task<bool> WriteVariableAsync(string nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a value to a variable, performing S7-specific type conversion before sending.
@@ -292,7 +308,7 @@ internal interface IS7UaClient : IDisposable
     /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if nodeId or rawValue is null.</exception>
-    public Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue, CancellationToken cancellationToken = default);
+    public Task<bool> WriteRawVariableAsync(string nodeId, object rawValue, CancellationToken cancellationToken = default);
 
     #endregion Writing Methods
 

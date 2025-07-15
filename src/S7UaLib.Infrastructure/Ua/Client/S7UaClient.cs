@@ -28,7 +28,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private readonly ILoggerFactory? _loggerFactory;
     private SessionReconnectHandler? _reconnectHandler;
     private ISession? _session;
-    private readonly Opc.Ua.ApplicationConfiguration _appConfig;
+    private Opc.Ua.Configuration.ApplicationInstance? _appInst;
     private readonly Action<IList, IList> _validateResponse;
     private bool _disposed;
     private readonly SemaphoreSlim _sessionSemaphore = new(1, 1);
@@ -70,52 +70,23 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// Initializes a new instance of the <see cref="S7UaClient"/> class with the specified application configuration,
     /// response validation action, and optional logger factory.
     /// </summary>
-    /// <param name="appConfig">The OPC UA application configuration used to initialize the client. This parameter cannot be <see langword="null"/>.</param>
+    /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
-    public S7UaClient(Core.Ua.ApplicationConfiguration appConfig, ILoggerFactory? loggerFactory = null) : this(appConfig, ClientBase.ValidateResponse, loggerFactory)
+    public S7UaClient(Core.Ua.UserIdentity? userIdentity = null, ILoggerFactory? loggerFactory = null) : this(userIdentity, ClientBase.ValidateResponse, loggerFactory)
     { }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="S7UaClient"/> class with the specified application configuration,
     /// response validation action, and optional logger factory.
     /// </summary>
-    /// <param name="appConfig">The OPC UA application configuration used to initialize the client. This parameter cannot be <see langword="null"/>.</param>
+    /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
     /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
-    public S7UaClient(Core.Ua.ApplicationConfiguration appConfig, Action<IList, IList> validateResponse, ILoggerFactory? loggerFactory = null)
+    public S7UaClient(Core.Ua.UserIdentity? userIdentity, Action<IList, IList>? validateResponse, ILoggerFactory? loggerFactory = null)
     {
-        if (appConfig?.Validate() != true)
-        {
-            throw new ArgumentException("Invalid ApplicationConfiguration!");
-        }
-
-        _appConfig = new Opc.Ua.ApplicationConfiguration()
-        {
-            ApplicationName = appConfig.ApplicationName,
-            ApplicationType = ApplicationType.Client,
-            ApplicationUri = appConfig.ApplicationUri,
-            CertificateValidator = new CertificateValidator()
-            {
-                AutoAcceptUntrustedCertificates = appConfig.AutoAcceptUntrustedCertificates
-            },
-            ClientConfiguration = new Opc.Ua.ClientConfiguration()
-            {
-                DefaultSessionTimeout = (int)appConfig.DefaultSessionTimeout
-            },
-            ProductUri = appConfig.ProductUri,
-            TransportQuotas = new Opc.Ua.TransportQuotas()
-            {
-                ChannelLifetime = (int)appConfig.ChannelLifetime,
-                OperationTimeout = (int)appConfig.OperationTimeout,
-                SecurityTokenLifetime = (int)appConfig.SecurityTokenLifetime
-            },
-            SecurityConfiguration = new Opc.Ua.SecurityConfiguration()
-            {
-                AutoAcceptUntrustedCertificates = appConfig.AutoAcceptUntrustedCertificates
-            },
-        };
+        UserIdentity = userIdentity ?? new Core.Ua.UserIdentity();
 
         _validateResponse = validateResponse ?? throw new ArgumentNullException(nameof(validateResponse));
         _loggerFactory = loggerFactory;
@@ -254,14 +225,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.ReconnectPeriodExponentialBackoff"/>/>
     public int ReconnectPeriodExponentialBackoff { get; set; } = -1;
 
-    /// <inheritdoc cref="IS7UaClient.SessionTimeout"/>
-    public uint SessionTimeout { get; set; } = 60000;
-
-    /// <inheritdoc cref="IS7UaClient.AcceptUntrustedCertificates"/>
-    public bool AcceptUntrustedCertificates { get; set; } = false;
-
     /// <inheritdoc cref="IS7UaClient.UserIdentity"/>
-    public Core.Ua.UserIdentity UserIdentity { get; set; } = new Core.Ua.UserIdentity();
+    public Core.Ua.UserIdentity UserIdentity { get; }
 
     /// <inheritdoc cref="IS7UaClient.IsConnected"/>
     public bool IsConnected => _session?.Connected == true;
@@ -270,12 +235,116 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Public Methods
 
+    #region Configuration Methods
+
+    /// <inheritdoc cref="IS7UaClient.Configure(string, string, string, Core.Ua.SecurityConfiguration, Core.Ua.ClientConfiguration?, Core.Ua.TransportQuotas?, Core.Ua.OperationLimits?)"/>
+    public async Task Configure(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
+    {
+        ThrowIfDisposed();
+        await BuildClient(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+    }
+
+    /// <inheritdoc cref="IS7UaClient.LoadConfiguration(string)"/>
+    public void SaveConfiguration(string filePath)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotConfigured();
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath, nameof(filePath));
+        _appInst?.ApplicationConfiguration.SaveToFile(filePath);
+    }
+
+    /// <inheritdoc cref="IS7UaClient.SaveConfiguration(string)"/>
+    public async Task LoadConfiguration(string filePath)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath, nameof(filePath));
+        ArgumentNullException.ThrowIfNull(_appInst, nameof(_appInst));
+
+        await _appInst.LoadApplicationConfiguration(filePath, false);
+    }
+
+    internal async Task BuildClient(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
+    {
+        _appInst = new()
+        {
+            ApplicationName = appName,
+            ApplicationType = Opc.Ua.ApplicationType.Client
+        };
+
+        var build = _appInst.Build(appUri, productUri);
+
+        if (transportQuotas != null)
+        {
+            build.SetChannelLifetime((int)transportQuotas.ChannelLifetime)
+                .SetMaxStringLength((int)transportQuotas.MaxStringLength)
+                .SetMaxByteStringLength((int)transportQuotas.MaxByteStringLength)
+                .SetMaxArrayLength((int)transportQuotas.MaxArrayLength)
+                .SetMaxBufferSize((int)transportQuotas.MaxBufferSize)
+                .SetMaxDecoderRecoveries((int)transportQuotas.MaxDecoderRecoveries)
+                .SetMaxEncodingNestingLevels((int)transportQuotas.MaxEncodingNestingLevels)
+                .SetMaxMessageSize((int)transportQuotas.MaxMessageSize)
+                .SetOperationTimeout((int)transportQuotas.OperationTimeout)
+                .SetSecurityTokenLifetime((int)transportQuotas.SecurityTokenLifetime);
+        }
+
+        var clientBuild = build.AsClient();
+
+        clientConfig ??= new();
+        foreach (var uri in clientConfig.WellKnownDiscoveryUrls)
+        {
+            clientBuild.AddWellKnownDiscoveryUrls(uri);
+        }
+
+        if (opLimits != null)
+        {
+            clientBuild.SetClientOperationLimits(
+                new Opc.Ua.OperationLimits()
+                {
+                    MaxMonitoredItemsPerCall = opLimits.MaxMonitoredItemsPerCall,
+                    MaxNodesPerBrowse = opLimits.MaxNodesPerBrowse,
+                    MaxNodesPerHistoryReadData = opLimits.MaxNodesPerHistoryReadData,
+                    MaxNodesPerHistoryReadEvents = opLimits.MaxNodesPerHistoryReadEvents,
+                    MaxNodesPerHistoryUpdateData = opLimits.MaxNodesPerHistoryUpdateData,
+                    MaxNodesPerHistoryUpdateEvents = opLimits.MaxNodesPerHistoryUpdateEvents,
+                    MaxNodesPerMethodCall = opLimits.MaxNodesPerMethodCall,
+                    MaxNodesPerNodeManagement = opLimits.MaxNodesPerNodeManagement,
+                    MaxNodesPerRead = opLimits.MaxNodesPerRead,
+                    MaxNodesPerRegisterNodes = opLimits.MaxNodesPerRegisterNodes,
+                    MaxNodesPerTranslateBrowsePathsToNodeIds = opLimits.MaxNodesPerTranslateBrowsePathsToNodeIds,
+                    MaxNodesPerWrite = opLimits.MaxNodesPerWrite
+                });
+        }
+
+        var finalBuild = clientBuild.SetDefaultSessionTimeout((int)clientConfig.SessionTimeout)
+            .SetMinSubscriptionLifetime((int)clientConfig.MinSubscriptionLifetime)
+        .AddSecurityConfigurationStores(
+            securityConfiguration.SecurityConfigurationStores.SubjectName,
+            securityConfiguration.SecurityConfigurationStores.AppRoot,
+            securityConfiguration.SecurityConfigurationStores.TrustedRoot,
+            securityConfiguration.SecurityConfigurationStores.IssuerRoot,
+            securityConfiguration.SecurityConfigurationStores.RejectedRoot)
+        .SetSendCertificateChain(securityConfiguration.SendCertificateChain)
+        .SetAddAppCertToTrustedStore(securityConfiguration.AddAppCertToTrustedStore)
+        .SetAutoAcceptUntrustedCertificates(securityConfiguration.AutoAcceptUntrustedCertificates)
+        .SetMaxRejectedCertificates((int)securityConfiguration.MaxRejectedCertificates)
+        .SetMinimumCertificateKeySize((ushort)securityConfiguration.MinCertificateKeySize)
+        .SetRejectSHA1SignedCertificates(securityConfiguration.RejectSHA1SignedCertificates)
+        .SetRejectUnknownRevocationStatus(securityConfiguration.RejectUnknownRevocationStatus)
+        .SetSuppressNonceValidationErrors(securityConfiguration.SuppressNonceValidationErrors)
+        .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates);
+
+        await finalBuild.Create();
+    }
+
+    #endregion Configuration Methods
+
     #region Connection Methods
 
     /// <inheritdoc cref="IS7UaClient.ConnectAsync(string, bool, CancellationToken)"/>
     public async Task ConnectAsync(string serverUrl, bool useSecurity = true, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ThrowIfNotConfigured();
         ArgumentException.ThrowIfNullOrEmpty(serverUrl, nameof(serverUrl));
 
         await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -289,8 +358,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
             OnConnecting(ConnectionEventArgs.Empty);
 
-            var endpointDescription = CoreClientUtils.SelectEndpoint(_appConfig, serverUrl, useSecurity);
-            var endpointConfig = EndpointConfiguration.Create(_appConfig);
+            var endpointDescription = CoreClientUtils.SelectEndpoint(_appInst!.ApplicationConfiguration, serverUrl, useSecurity);
+            var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
             var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
 
             Opc.Ua.UserIdentity identity = UserIdentity.Username == null && UserIdentity.Password == null
@@ -299,12 +368,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
             var sessionFactory = TraceableSessionFactory.Instance;
             var session = await sessionFactory.CreateAsync(
-                _appConfig,
+                _appInst!.ApplicationConfiguration,
                 endpoint,
                 true,
                 false,
-                _appConfig.ApplicationName,
-                SessionTimeout,
+                _appInst!.ApplicationConfiguration.ApplicationName,
+                (uint)_appInst!.ApplicationConfiguration.ClientConfiguration.DefaultSessionTimeout,
                 identity,
                 null,
                 cancellationToken
@@ -841,12 +910,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Writing Methods
 
-    /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(NodeId, object, S7DataType, CancellationToken)"/>
-    public async Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default)
+    /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(string, object, S7DataType, CancellationToken)"/>
+    public async Task<bool> WriteVariableAsync(string nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        ArgumentNullException.ThrowIfNull(nodeId);
+        ArgumentNullException.ThrowIfNullOrWhiteSpace(nodeId);
         ArgumentNullException.ThrowIfNull(value);
 
         var converter = this.GetConverter(s7Type, value.GetType());
@@ -866,12 +935,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
             : await WriteVariableAsync(variable.NodeId, value, variable.S7Type, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <inheritdoc cref="IS7UaClient.WriteRawVariableAsync(NodeId, object, CancellationToken)"/>
-    public async Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue, CancellationToken cancellationToken = default)
+    /// <inheritdoc cref="IS7UaClient.WriteRawVariableAsync(string, object, CancellationToken)"/>
+    public async Task<bool> WriteRawVariableAsync(string nodeId, object rawValue, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        ArgumentNullException.ThrowIfNull(nodeId);
+        ArgumentNullException.ThrowIfNullOrWhiteSpace(nodeId);
         ArgumentNullException.ThrowIfNull(rawValue);
 
         await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -879,13 +948,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
         {
             if (!IsConnected || _session is null)
             {
-                _logger?.LogError("Cannot write values for node id '{nodeId}'; session is not connected.", nodeId.ToString());
+                _logger?.LogError("Cannot write values for node id '{nodeId}'; session is not connected.", nodeId);
                 return false;
             }
 
             var writeValue = new WriteValue
             {
-                NodeId = nodeId,
+                NodeId = new NodeId(nodeId),
                 AttributeId = Attributes.Value,
                 Value = new DataValue(new Variant(rawValue))
             };
@@ -1184,8 +1253,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Subscription Helpers
 
-    #endregion Private Methods
-
     #region Event Callbacks
 
     private void Session_KeepAlive(ISession session, KeepAliveEventArgs e)
@@ -1312,4 +1379,18 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Event Dispatchers
+
+    #region Helpers
+
+    private void ThrowIfNotConfigured()
+    {
+        ArgumentNullException.ThrowIfNull(_appInst);
+        ArgumentNullException.ThrowIfNullOrWhiteSpace(_appInst.ApplicationConfiguration.ApplicationName);
+        ArgumentNullException.ThrowIfNullOrWhiteSpace(_appInst.ApplicationConfiguration.ApplicationUri);
+        ArgumentNullException.ThrowIfNullOrWhiteSpace(_appInst.ApplicationConfiguration.ProductUri);
+    }
+
+    #endregion Helpers
+
+    #endregion Private Methods
 }
