@@ -59,16 +59,14 @@ public class S7Service : IS7Service
     /// <summary>
     /// Initializes a new instance of the <see cref="S7Service"/> class.
     /// </summary>
-    /// <param name="appConfig">The OPC UA application configuration used to initialize the client. This parameter cannot be <see langword="null"/>.</param>
+    /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
     /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    public S7Service(string configFilePath, UserIdentity userIdentity, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
+    public S7Service(UserIdentity? userIdentity, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(configFilePath, nameof(configFilePath));
-
         _client = validateResponse != null
-            ? new S7UaClient(configFilePath, userIdentity, validateResponse, loggerFactory)
-            : new S7UaClient(configFilePath, userIdentity, loggerFactory);
+            ? new S7UaClient(userIdentity, validateResponse, loggerFactory)
+            : new S7UaClient(userIdentity, loggerFactory);
         _dataStore = new S7DataStore(loggerFactory);
         _fileSystem = new FileSystem();
 
@@ -173,12 +171,6 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.ReconnectPeriodExponentialBackoff"/>/>
     public int ReconnectPeriodExponentialBackoff { get => _client.ReconnectPeriodExponentialBackoff; set => _client.ReconnectPeriodExponentialBackoff = value; }
 
-    /// <inheritdoc cref="IS7Service.SessionTimeout"/>
-    public uint SessionTimeout { get => _client.SessionTimeout; set => _client.SessionTimeout = value; }
-
-    /// <inheritdoc cref="IS7Service.AcceptUntrustedCertificates"/>
-    public bool AcceptUntrustedCertificates { get => _client.AcceptUntrustedCertificates; set => _client.AcceptUntrustedCertificates = value; }
-
     /// <inheritdoc cref="IS7Service.UserIdentity"/>
     public UserIdentity UserIdentity { get => _client.UserIdentity; }
 
@@ -188,6 +180,35 @@ public class S7Service : IS7Service
     #endregion Public Properties
 
     #region Public Methods
+
+    #region Configuration Methods
+
+    /// <inheritdoc cref="IS7Service.SaveConfiguration(string)"/>
+    public void SaveConfiguration(string filePath)
+    {
+        _client.SaveConfiguration(filePath);
+    }
+
+    /// <inheritdoc cref="IS7Service.LoadConfiguration(string)"/>
+    public async Task LoadConfiguration(string filePath)
+    {
+        await _client.LoadConfiguration(filePath);
+    }
+
+    /// <inheritdoc cref="IS7Service.Configure(string, string, string, SecurityConfiguration, ClientConfiguration?, TransportQuotas?, OperationLimits?)"/>
+    public async Task Configure(string appName,
+        string appUri,
+        string productUri,
+        SecurityConfiguration
+        securityConfiguration,
+        ClientConfiguration? clientConfig = null,
+        TransportQuotas? transportQuotas = null,
+        OperationLimits? opLimits = null)
+    {
+        await _client.Configure(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+    }
+
+    #endregion Configuration Methods
 
     #region Connection Methods
 

@@ -1,44 +1,80 @@
 ﻿using Microsoft.Extensions.Logging;
+using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.Ua;
+using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
+using S7UaLib.TestHelpers;
 using System.Collections;
 using System.IO.Abstractions;
 
 namespace S7UaLib.Services.Tests.Integration;
 
 [Trait("Category", "Integration")]
-public class S7ServiceIntegrationTests
+public class S7ServiceIntegrationTests : IDisposable
 {
     private const string _serverUrl = "opc.tcp://172.168.0.1:4840";
 
-    private readonly ApplicationConfiguration _appConfig;
-    private readonly Action<IList, IList> _validateResponse;
+    private readonly Action<IList, IList> _validateResponse = Opc.Ua.ClientBase.ValidateResponse;
     private readonly FileSystem _fileSystem = new();
     private readonly ILoggerFactory? _loggerFactory = null;
+    private const string _appName = "S7UaLib Integration Tests";
+    private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
+    private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
+    private SecurityConfiguration _securityConfig = new(new SecurityConfigurationStores());
+    private UserIdentity _userIdentity = new();
 
-    public S7ServiceIntegrationTests()
+    private readonly TempDirectory _tempDir = new();
+    private readonly List<S7Service> _servicesToDispose = new();
+
+    #region Helper Methods / Classes
+
+    private class TempDirectory : IDisposable
     {
-        _appConfig = new ApplicationConfiguration
-        {
-            ApplicationName = "Integration Test Client",
-            ApplicationUri = "urn:localhost:UA:S7UaClient:Test",
-            ProductUri = "uri:philipp2604:S7UaClient:Test",
-            AutoAcceptUntrustedCertificates = true
-        };
+        public string Path { get; }
 
-        _validateResponse = Opc.Ua.ClientBase.ValidateResponse;
+        public TempDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(Path);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(Path))
+                {
+                    Directory.Delete(Path, true);
+                }
+            }
+            catch (IOException) { }
+        }
     }
 
-    #region Helper Methods
+    private SecurityConfiguration CreateTestSecurityConfig()
+    {
+        var certStores = new SecurityConfigurationStores
+        {
+            AppRoot = Path.Combine(_tempDir.Path, "pki"),
+            TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
+            IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
+            RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
+            SubjectName = $"CN={_appName},{Environment.MachineName}"
+        };
+
+        Directory.CreateDirectory(certStores.AppRoot);
+        return new SecurityConfiguration(certStores);
+    }
 
     private async Task<S7Service> CreateAndConnectServiceAsync()
     {
-        var service = new S7Service(_appConfig, _validateResponse, _loggerFactory)
-        {
-            AcceptUntrustedCertificates = true
-        };
+        var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+        _servicesToDispose.Add(service);
+
+        var securityConfig = CreateTestSecurityConfig();
+        await service.Configure(_appName, _appUri, _productUri, securityConfig);
 
         try
         {
@@ -53,7 +89,63 @@ public class S7ServiceIntegrationTests
         return service;
     }
 
-    #endregion Helper Methods
+    public void Dispose()
+    {
+        foreach (var service in _servicesToDispose)
+        {
+            service.Dispose();
+        }
+        _tempDir.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion Helper Methods / Classes
+
+    #region Configuration Workflow Tests
+
+    [Fact]
+    public async Task SaveAndLoadConfiguration_Succeeds()
+    {
+        // Arrange
+        var configFilePath = Path.Combine(_tempDir.Path, "S7Service.Config.xml");
+        var securityConfig = CreateTestSecurityConfig();
+
+        // 1. Create and configure a service with specific, non-default values.
+        var saveService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+        _servicesToDispose.Add(saveService);
+
+        await saveService.Configure(
+            "SaveLoadTestApp",
+            "urn:saveload",
+            "urn:saveload:prod",
+            securityConfig,
+            new ClientConfiguration { SessionTimeout = 98765 });
+
+        // 2. Save the configuration to a file.
+        saveService.SaveConfiguration(configFilePath);
+        Assert.True(_fileSystem.File.Exists(configFilePath), "Configuration file was not created.");
+
+        // 3. Create a new service instance with a *different* initial configuration.
+        var loadService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+        _servicesToDispose.Add(loadService);
+        await loadService.Configure("InitialApp", "urn:initial", "urn:initial:prod", CreateTestSecurityConfig());
+
+        // Act: Load the previously saved configuration into the new service.
+        await loadService.LoadConfiguration(configFilePath);
+
+        // Assert: Verify that the configuration of the loading client was updated.
+        // We need to use reflection to inspect the private internal state.
+        var internalClient = PrivateFieldHelpers.GetPrivateField(loadService, "_client") as IS7UaClient;
+        var appInst = PrivateFieldHelpers.GetPrivateField(internalClient!, "_appInst") as ApplicationInstance;
+        Assert.NotNull(appInst);
+
+        var loadedConfig = appInst.ApplicationConfiguration;
+        Assert.Equal("SaveLoadTestApp", loadedConfig.ApplicationName);
+        Assert.Equal("urn:saveload", loadedConfig.ApplicationUri);
+        Assert.Equal(98765, loadedConfig.ClientConfiguration.DefaultSessionTimeout);
+    }
+
+    #endregion Configuration Workflow Tests
 
     #region Connection Tests
 
@@ -61,10 +153,8 @@ public class S7ServiceIntegrationTests
     public async Task ConnectAndDisconnect_Successfully()
     {
         // Arrange
-        var service = new S7Service(_appConfig, _validateResponse, _loggerFactory)
-        {
-            AcceptUntrustedCertificates = true
-        };
+        var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+        await service.Configure(_appName, _appUri, _productUri, _securityConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -289,7 +379,8 @@ public class S7ServiceIntegrationTests
             await service1.DisconnectAsync();
 
             // Act: Create new service and load
-            service2 = new S7Service(_appConfig, _validateResponse, _loggerFactory);
+            service2 = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+            await service2.Configure(_appName, _appUri, _productUri, _securityConfig);
             await service2.LoadStructureAsync(tempFile);
 
             // Assert: Structure is loaded before connection

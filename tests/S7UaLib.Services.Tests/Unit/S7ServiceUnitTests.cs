@@ -42,6 +42,79 @@ public class S7ServiceUnitTests
         return new S7Service(_mockClient.Object, _realDataStore, _mockFileSystem, _mockLoggerFactory.Object);
     }
 
+    #region Configuration Tests
+
+    [Fact]
+    public async Task Configure_CallsClientConfigure_WithAllParameters()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string appName = "TestApp";
+        const string appUri = "urn:test:app";
+        const string productUri = "urn:test:prod";
+
+        var securityConfig = new Core.Ua.SecurityConfiguration(new());
+        var clientConfig = new Core.Ua.ClientConfiguration();
+        var transportQuotas = new Core.Ua.TransportQuotas();
+        var opLimits = new Core.Ua.OperationLimits();
+
+        _mockClient.Setup(c => c.Configure(
+                appName,
+                appUri,
+                productUri,
+                securityConfig,
+                clientConfig,
+                transportQuotas,
+                opLimits))
+            .Returns(Task.CompletedTask)
+            .Verifiable();
+
+        // Act
+        await sut.Configure(appName, appUri, productUri, securityConfig, clientConfig, transportQuotas, opLimits);
+
+        // Assert
+        // Verify that the client's Configure method was called with the exact same parameters.
+        _mockClient.Verify();
+    }
+
+    [Fact]
+    public void SaveConfiguration_CallsClientSaveConfiguration()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string filePath = "C:\\temp\\my-config.xml";
+
+        _mockClient.Setup(c => c.SaveConfiguration(filePath)).Verifiable();
+
+        // Act
+        sut.SaveConfiguration(filePath);
+
+        // Assert
+        // Verify that the client's SaveConfiguration method was called with the exact same file path.
+        _mockClient.Verify();
+    }
+
+    [Fact]
+    public async Task LoadConfiguration_CallsClientLoadConfiguration()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string filePath = "C:\\temp\\my-config.xml";
+
+        _mockClient.Setup(c => c.LoadConfiguration(filePath))
+            .Returns(Task.CompletedTask)
+            .Verifiable();
+
+        // Act
+        await sut.LoadConfiguration(filePath);
+
+        // Assert
+        // Verify that the client's LoadConfiguration method was called with the exact same file path.
+        _mockClient.Verify();
+    }
+
+    #endregion Configuration Tests
+
     #region DiscoverStructure Tests
 
     [Fact]
@@ -265,7 +338,7 @@ public class S7ServiceUnitTests
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(nodeId, It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(nodeId.ToString(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true)
             .Verifiable();
 
@@ -277,7 +350,7 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.True(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(nodeId, valueToWrite, S7DataType.INT, It.IsAny<CancellationToken>()), Times.Once);
+        _mockClient.Verify(c => c.WriteVariableAsync(nodeId.ToString(), valueToWrite, S7DataType.INT, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -292,7 +365,7 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.False(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<NodeId>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -305,7 +378,7 @@ public class S7ServiceUnitTests
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<NodeId>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Write failed"));
 
         // Act

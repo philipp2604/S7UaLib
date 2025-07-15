@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Opc.Ua;
 using Opc.Ua.Client;
-using Opc.Ua.Security;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Converters;
@@ -227,7 +226,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public int ReconnectPeriodExponentialBackoff { get; set; } = -1;
 
     /// <inheritdoc cref="IS7UaClient.UserIdentity"/>
-    public Core.Ua.UserIdentity UserIdentity { get; private set; }
+    public Core.Ua.UserIdentity UserIdentity { get; }
 
     /// <inheritdoc cref="IS7UaClient.IsConnected"/>
     public bool IsConnected => _session?.Connected == true;
@@ -274,7 +273,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         var build = _appInst.Build(appUri, productUri);
 
-        if(transportQuotas != null)
+        if (transportQuotas != null)
         {
             build.SetChannelLifetime((int)transportQuotas.ChannelLifetime)
                 .SetMaxStringLength((int)transportQuotas.MaxStringLength)
@@ -287,16 +286,16 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 .SetOperationTimeout((int)transportQuotas.OperationTimeout)
                 .SetSecurityTokenLifetime((int)transportQuotas.SecurityTokenLifetime);
         }
-        
+
         var clientBuild = build.AsClient();
 
         clientConfig ??= new();
-        foreach(var uri in clientConfig.WellKnownDiscoveryUrls)
+        foreach (var uri in clientConfig.WellKnownDiscoveryUrls)
         {
             clientBuild.AddWellKnownDiscoveryUrls(uri);
         }
 
-        if(opLimits != null)
+        if (opLimits != null)
         {
             clientBuild.SetClientOperationLimits(
                 new Opc.Ua.OperationLimits()
@@ -911,12 +910,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Writing Methods
 
-    /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(NodeId, object, S7DataType, CancellationToken)"/>
-    public async Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default)
+    /// <inheritdoc cref="IS7UaClient.WriteVariableAsync(string, object, S7DataType, CancellationToken)"/>
+    public async Task<bool> WriteVariableAsync(string nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        ArgumentNullException.ThrowIfNull(nodeId);
+        ArgumentNullException.ThrowIfNullOrWhiteSpace(nodeId);
         ArgumentNullException.ThrowIfNull(value);
 
         var converter = this.GetConverter(s7Type, value.GetType());
@@ -936,12 +935,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
             : await WriteVariableAsync(variable.NodeId, value, variable.S7Type, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <inheritdoc cref="IS7UaClient.WriteRawVariableAsync(NodeId, object, CancellationToken)"/>
-    public async Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue, CancellationToken cancellationToken = default)
+    /// <inheritdoc cref="IS7UaClient.WriteRawVariableAsync(string, object, CancellationToken)"/>
+    public async Task<bool> WriteRawVariableAsync(string nodeId, object rawValue, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        ArgumentNullException.ThrowIfNull(nodeId);
+        ArgumentNullException.ThrowIfNullOrWhiteSpace(nodeId);
         ArgumentNullException.ThrowIfNull(rawValue);
 
         await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -949,13 +948,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
         {
             if (!IsConnected || _session is null)
             {
-                _logger?.LogError("Cannot write values for node id '{nodeId}'; session is not connected.", nodeId.ToString());
+                _logger?.LogError("Cannot write values for node id '{nodeId}'; session is not connected.", nodeId);
                 return false;
             }
 
             var writeValue = new WriteValue
             {
-                NodeId = nodeId,
+                NodeId = new NodeId(nodeId),
                 AttributeId = Attributes.Value,
                 Value = new DataValue(new Variant(rawValue))
             };

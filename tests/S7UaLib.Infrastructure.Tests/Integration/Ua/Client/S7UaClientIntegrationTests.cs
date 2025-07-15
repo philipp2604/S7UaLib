@@ -9,7 +9,7 @@ using System.Collections;
 namespace S7UaLib.Infrastructure.Tests.Integration.Ua.Client;
 
 [Trait("Category", "Integration")]
-public class S7UaClientIntegrationTests
+public class S7UaClientIntegrationTests : IDisposable
 {
     private const string _serverUrl = "opc.tcp://172.168.0.1:4840";
 
@@ -69,7 +69,7 @@ public class S7UaClientIntegrationTests
         Assert.Equal(88888, loadedConfig.ClientConfiguration.DefaultSessionTimeout);
     }
 
-    #endregion
+    #endregion Configuration Tests
 
     #region Connection Tests
 
@@ -116,7 +116,7 @@ public class S7UaClientIntegrationTests
 
     #endregion Connection Tests
 
-    #region Helper Methods
+    #region Helper Methods / Classes
 
     private class TempDirectory : IDisposable
     {
@@ -137,8 +137,18 @@ public class S7UaClientIntegrationTests
                     Directory.Delete(Path, true);
                 }
             }
-            catch (IOException) {}
+            catch (IOException) { }
         }
+    }
+
+    public void Dispose()
+    {
+        foreach (var client in _clientsToDispose)
+        {
+            client.Dispose();
+        }
+        _tempDir.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     private SecurityConfiguration CreateTestSecurityConfig()
@@ -173,7 +183,7 @@ public class S7UaClientIntegrationTests
         return client;
     }
 
-    #endregion Helper Methods
+    #endregion Helper Methods / Classes
 
     #region Structure Discovery and Browsing Tests
 

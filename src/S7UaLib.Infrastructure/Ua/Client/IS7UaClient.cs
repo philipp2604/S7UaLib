@@ -1,5 +1,4 @@
-﻿using Opc.Ua;
-using S7UaLib.Core.Enums;
+﻿using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
@@ -96,7 +95,7 @@ internal interface IS7UaClient : IDisposable
     /// <summary>
     /// Gets the identity information of the user.
     /// </summary>
-    public Core.Ua.UserIdentity UserIdentity { get; }
+    public UserIdentity UserIdentity { get; }
 
     /// <summary>
     /// Gets a value indicating whether the connection is currently active and valid.
@@ -135,7 +134,7 @@ internal interface IS7UaClient : IDisposable
     /// <returns>A task indicating the state of the async function.</returns>
     public Task LoadConfiguration(string filePath);
 
-    #endregion
+    #endregion Configuration Methods
 
     #region Connection Methods
 
@@ -288,7 +287,7 @@ internal interface IS7UaClient : IDisposable
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if nodeId or value is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown if the value conversion fails or the session is not connected.</exception>
-    public Task<bool> WriteVariableAsync(NodeId nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default);
+    public Task<bool> WriteVariableAsync(string nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a value to a variable, performing S7-specific type conversion before sending.
@@ -309,7 +308,7 @@ internal interface IS7UaClient : IDisposable
     /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
     /// <returns>A task that returns true if the write was successful; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException">Thrown if nodeId or rawValue is null.</exception>
-    public Task<bool> WriteRawVariableAsync(NodeId nodeId, object rawValue, CancellationToken cancellationToken = default);
+    public Task<bool> WriteRawVariableAsync(string nodeId, object rawValue, CancellationToken cancellationToken = default);
 
     #endregion Writing Methods
 

@@ -187,11 +187,8 @@ public class S7UaClientUnitTests
         await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfiguration("test.xml"));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
-    public async Task SaveConfiguration_WithInvalidPath_ThrowsArgumentException(string? filePath)
+    [Fact]
+    public async Task SaveConfiguration_WithNullPath_ThrowsArgumentNullException()
     {
         // Arrange
         using var tempDir = new TempDirectory();
@@ -199,7 +196,21 @@ public class S7UaClientUnitTests
         await client.Configure("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
 
         // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => client.SaveConfiguration(filePath!));
+        Assert.Throws<ArgumentNullException>(() => client.SaveConfiguration(null!));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task SaveConfiguration_WithEmptyOrWhitespacePath_ThrowsArgumentException(string filePath)
+    {
+        // Arrange
+        using var tempDir = new TempDirectory();
+        var client = new S7UaClient();
+        await client.Configure("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => client.SaveConfiguration(filePath!));
     }
 
     [Fact]
@@ -878,7 +889,7 @@ public class S7UaClientUnitTests
         var nodeId = new Opc.Ua.NodeId("ns=3;s=\"MyVar\"");
 
         // Act
-        var result = await client.WriteRawVariableAsync(nodeId, 42);
+        var result = await client.WriteRawVariableAsync(nodeId.ToString(), 42);
 
         // Assert
         Assert.False(result);
@@ -914,7 +925,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = await client.WriteRawVariableAsync(nodeId, valueToWrite);
+        var result = await client.WriteRawVariableAsync(nodeId.ToString(), valueToWrite);
 
         // Assert
         Assert.True(result);
@@ -938,7 +949,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = await client.WriteRawVariableAsync(nodeId, "some value");
+        var result = await client.WriteRawVariableAsync(nodeId.ToString(), "some value");
 
         // Assert
         Assert.False(result);
@@ -978,7 +989,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = await client.WriteVariableAsync(nodeId, userValue, S7DataType.CHAR);
+        var result = await client.WriteVariableAsync(nodeId.ToString(), userValue, S7DataType.CHAR);
 
         // Assert
         Assert.True(result);
