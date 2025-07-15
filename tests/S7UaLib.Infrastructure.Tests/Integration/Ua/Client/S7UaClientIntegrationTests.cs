@@ -18,10 +18,10 @@ public class S7UaClientIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
-    private SecurityConfiguration _securityConfiguration = new(new SecurityConfigurationStores());
+    private readonly SecurityConfiguration _securityConfiguration = new(new SecurityConfigurationStores());
 
     private readonly TempDirectory _tempDir;
-    private readonly List<S7UaClient> _clientsToDispose = new();
+    private readonly List<S7UaClient> _clientsToDispose = [];
 
     public S7UaClientIntegrationTests()
     {

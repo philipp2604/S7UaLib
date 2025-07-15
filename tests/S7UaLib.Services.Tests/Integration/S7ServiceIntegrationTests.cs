@@ -22,11 +22,11 @@ public class S7ServiceIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
-    private SecurityConfiguration _securityConfig = new(new SecurityConfigurationStores());
-    private UserIdentity _userIdentity = new();
+    private readonly SecurityConfiguration _securityConfig = new(new SecurityConfigurationStores());
+    private readonly UserIdentity _userIdentity = new();
 
     private readonly TempDirectory _tempDir = new();
-    private readonly List<S7Service> _servicesToDispose = new();
+    private readonly List<S7Service> _servicesToDispose = [];
 
     #region Helper Methods / Classes
 
