@@ -18,7 +18,7 @@ public class S7UaClientIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
-    private readonly SecurityConfiguration _securityConfiguration = new(new SecurityConfigurationStores());
+    private readonly SecurityConfiguration _securityConfiguration = new(new SecurityConfigurationStores()) { AutoAcceptUntrustedCertificates = true };
 
     private readonly TempDirectory _tempDir;
     private readonly List<S7UaClient> _clientsToDispose = [];
@@ -43,9 +43,9 @@ public class S7UaClientIntegrationTests : IDisposable
         _clientsToDispose.Add(saveClient);
 
         await saveClient.ConfigureAsync(
-            "SaveLoadTestApp",
-            "urn:saveload",
-            "urn:saveload:prod",
+            _appName,
+            _appUri,
+            _productUri,
             securityConfig,
             new ClientConfiguration { SessionTimeout = 88888 });
 
@@ -54,7 +54,7 @@ public class S7UaClientIntegrationTests : IDisposable
 
         var loadClient = new S7UaClient(null, _validateResponse);
         _clientsToDispose.Add(loadClient);
-        await loadClient.ConfigureAsync("InitialApp", "urn:initial", "urn:initial:prod", securityConfig);
+        await loadClient.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
 
         // Act
         await loadClient.LoadConfigurationAsync(configFilePath);
@@ -64,8 +64,8 @@ public class S7UaClientIntegrationTests : IDisposable
         Assert.NotNull(appInst);
 
         var loadedConfig = appInst.ApplicationConfiguration;
-        Assert.Equal("SaveLoadTestApp", loadedConfig.ApplicationName);
-        Assert.Equal("urn:saveload", loadedConfig.ApplicationUri);
+        Assert.Equal(_appName, loadedConfig.ApplicationName);
+        Assert.Equal(_productUri, loadedConfig.ProductUri);
         Assert.Equal(88888, loadedConfig.ClientConfiguration.DefaultSessionTimeout);
     }
 
@@ -159,10 +159,10 @@ public class S7UaClientIntegrationTests : IDisposable
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
             IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
             RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
-            SubjectName = $"CN={_appName},{Environment.MachineName}"
+            SubjectName = $"CN={_appName}"
         };
         Directory.CreateDirectory(certStores.AppRoot);
-        return new Core.Ua.SecurityConfiguration(certStores);
+        return new Core.Ua.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
     }
 
     private async Task<S7UaClient> CreateAndConnectClientAsync()

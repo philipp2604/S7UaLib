@@ -23,7 +23,7 @@ public class S7ServiceIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
-    private readonly SecurityConfiguration _securityConfig = new(new SecurityConfigurationStores());
+    private readonly SecurityConfiguration _securityConfig = new(new SecurityConfigurationStores()) { AutoAcceptUntrustedCertificates = true };
     private readonly UserIdentity _userIdentity = new();
 
     private readonly TempDirectory _tempDir = new();
@@ -62,11 +62,11 @@ public class S7ServiceIntegrationTests : IDisposable
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
             IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
             RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
-            SubjectName = $"CN={_appName},{Environment.MachineName}"
+            SubjectName = $"CN={_appName}"
         };
 
         Directory.CreateDirectory(certStores.AppRoot);
-        return new SecurityConfiguration(certStores);
+        return new SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
     }
 
     private async Task<S7Service> CreateAndConnectServiceAsync()

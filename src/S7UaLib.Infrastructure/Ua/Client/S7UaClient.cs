@@ -360,7 +360,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
         {
             throw new SystemException("Application instance certificate invalid!");
         }
-        SaveConfiguration("testconfig.json");
         _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
     }
 
