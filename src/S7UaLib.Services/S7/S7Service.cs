@@ -209,7 +209,6 @@ public class S7Service : IS7Service
         await _client.ConfigureAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
     }
 
-
     /// <inheritdoc cref="IS7Service.AddTrustedCertificateAsync(X509Certificate2, CancellationToken)"/>
     public async Task AddTrustedCertificateAsync(X509Certificate2 certificate, CancellationToken cancellationToken = default)
     {

@@ -170,7 +170,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 _session.Dispose();
             }
 
-            if(_appInst != null)
+            if (_appInst != null)
             {
                 _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation -= Client_CertificateValidation;
             }
@@ -356,7 +356,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         await finalBuild.Create();
 
-        if(!await _appInst.CheckApplicationInstanceCertificates(false).ConfigureAwait(false))
+        if (!await _appInst.CheckApplicationInstanceCertificates(false).ConfigureAwait(false))
         {
             throw new SystemException("Application instance certificate invalid!");
         }
@@ -395,7 +395,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
             var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
             var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
-
 
             Opc.Ua.UserIdentity identity = UserIdentity.Username == null && UserIdentity.Password == null
                 ? new Opc.Ua.UserIdentity()
@@ -1374,15 +1373,15 @@ internal class S7UaClient : IS7UaClient, IDisposable
         Opc.Ua.ServiceResult error = e.Error;
         _logger?.LogWarning($"Certificate validation error: {error.ToLongString()}");
 
-        if(error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted)
+        if (error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted)
         {
-            if(_appInst!.ApplicationConfiguration.SecurityConfiguration.AutoAcceptUntrustedCertificates)
+            if (_appInst!.ApplicationConfiguration.SecurityConfiguration.AutoAcceptUntrustedCertificates)
             {
                 accepted = true;
             }
         }
 
-        if(accepted)
+        if (accepted)
         {
             _logger?.LogWarning($"Accepting untrusted certificate. Subject: {e.Certificate.Subject}");
             e.Accept = true;
