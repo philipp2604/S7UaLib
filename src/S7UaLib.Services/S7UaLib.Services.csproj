@@ -9,7 +9,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>philipp2604.S7UaLib</PackageId>
     <Title>S7UaLib</Title>
-    <Version>4.0.0</Version>
+    <Version>4.1.0</Version>
     <Authors>Philipp Siewert</Authors>
     <Product>$(PackageId)</Product>
     <Description>A modern, high-level .NET library designed to simplify communication with Siemens S7 PLCs via their integrated OPC UA servers.</Description>
