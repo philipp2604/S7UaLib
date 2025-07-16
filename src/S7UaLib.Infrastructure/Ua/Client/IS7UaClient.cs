@@ -121,7 +121,6 @@ internal interface IS7UaClient : IDisposable
     /// <param name="transportQuotas">The <see cref="Core.Ua.Configuration.TransportQuotas"/>, optionally used for configuring transport quotas.</param>
     /// <param name="opLimits">The <see cref="Core.Ua.Configuration.OperationLimits"/>, optionally used for configuring operation limits.</param>
     /// <returns>A task indicating the state of the async function.</returns>
-
     public Task ConfigureAsync(string appName, string appUri, string productUri, SecurityConfiguration securityConfiguration, ClientConfiguration? clientConfig = null, TransportQuotas? transportQuotas = null, OperationLimits? opLimits = null);
 
     /// <summary>

@@ -245,7 +245,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Configuration Methods
 
-
     /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.Configuration.SecurityConfiguration, S7UaLib.Core.Ua.Configuration.ClientConfiguration?, S7UaLib.Core.Ua.Configuration.TransportQuotas?, S7UaLib.Core.Ua.Configuration.OperationLimits?)"/>
     public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
     {
@@ -1372,7 +1371,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var accepted = false;
 
         Opc.Ua.ServiceResult error = e.Error;
-        _logger?.LogWarning($"Certificate validation error: {error.ToLongString()}");
+        _logger?.LogWarning("Certificate validation error: {error}", error.ToLongString());
 
         if (error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted)
         {
@@ -1384,12 +1383,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         if (accepted)
         {
-            _logger?.LogWarning($"Accepting untrusted certificate. Subject: {e.Certificate.Subject}");
+            _logger?.LogWarning("Accepting untrusted certificate. Subject: {subject}", e.Certificate.Subject);
             e.Accept = true;
         }
         else
         {
-            _logger?.LogWarning($"Rejecting untrusted certificate. Subject: {e.Certificate.Subject}");
+            _logger?.LogWarning("Rejecting untrusted certificate. Subject: {subject}", e.Certificate.Subject);
             e.Accept = false;
             _appInst!.ApplicationConfiguration.SecurityConfiguration.RejectedCertificateStore.OpenStore().Add(e.Certificate);
         }
