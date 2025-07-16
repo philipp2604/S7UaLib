@@ -2,6 +2,7 @@
 using Moq;
 using Moq.Protected;
 using Opc.Ua.Client;
+using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
@@ -16,22 +17,15 @@ public class S7UaClientUnitTests
 {
     private readonly Mock<ILoggerFactory> _mockLoggerFactory;
     private readonly Mock<ILogger<S7UaClient>> _mockLogger;
-    private readonly ApplicationConfiguration _appConfig;
     private readonly Action<IList, IList> _validateResponse;
     private readonly Mock<ISession> _mockSession;
+    private readonly UserIdentity? _userIdentity = new();
 
     public S7UaClientUnitTests()
     {
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger<S7UaClient>>();
         _mockLoggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
-
-        _appConfig = new ApplicationConfiguration()
-        {
-            ApplicationName = "Test S7UaClient",
-            ApplicationUri = "urn:localhost:UA:S7UaClient:Test",
-            ProductUri = "uri:philipp2604:S7UaClient:Test"
-        };
 
         _validateResponse = (_, _) => { };
 
@@ -41,19 +35,249 @@ public class S7UaClientUnitTests
 
     private S7UaClient CreateSut()
     {
-        return new S7UaClient(_appConfig, _validateResponse, _mockLoggerFactory.Object);
+        return new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
     }
 
-    #region Constructor Tests
+    #region Configuration Tests
+
+    // Helper class to manage temporary directories for certificate stores and config files.
+    private class TempDirectory : IDisposable
+    {
+        public string Path { get; }
+
+        public TempDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(Path);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(Path))
+                {
+                    Directory.Delete(Path, true);
+                }
+            }
+            catch (IOException)
+            {
+                // Suppress exceptions during cleanup
+            }
+        }
+    }
+
+    private static SecurityConfiguration CreateTestSecurityConfig(string rootPath)
+    {
+        var certStores = new SecurityConfigurationStores
+        {
+            AppRoot = Path.Combine(rootPath, "certs"),
+            TrustedRoot = Path.Combine(rootPath, "certs", "trusted"),
+            IssuerRoot = Path.Combine(rootPath, "certs", "issuer"),
+            RejectedRoot = Path.Combine(rootPath, "certs", "rejected"),
+            SubjectName = "CN=S7UaClient.Test"
+        };
+        return new SecurityConfiguration(certStores);
+    }
 
     [Fact]
-    public void Constructor_WithNullAppConfig_ThrowsArgumentException()
+    public async Task Configure_WhenDisposed_ThrowsObjectDisposedException()
     {
-        // Arrange, Act & Assert
-        Assert.Throws<ArgumentException>(() => new S7UaClient(null!, _validateResponse));
+        // Arrange
+        var client = new S7UaClient();
+        client.Dispose();
+        var securityConfig = CreateTestSecurityConfig(Path.GetTempPath());
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            client.ConfigureAsync("TestApp", "urn:test", "urn:test:prod", securityConfig));
     }
 
-    #endregion Constructor Tests
+    [Fact]
+    public async Task Configure_WithBasicParameters_CreatesAndSetsConfiguration()
+    {
+        // Arrange
+        using var tempDir = new TempDirectory();
+        var client = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
+        var securityConfig = CreateTestSecurityConfig(tempDir.Path);
+        const string appName = "MyTestApp";
+        const string appUri = "urn:localhost:mytestapp";
+        const string productUri = "urn:mycompany:mytestapp";
+
+        // Act
+        await client.ConfigureAsync(appName, appUri, productUri, securityConfig);
+
+        // Assert
+        var appInst = PrivateFieldHelpers.GetPrivateField(client, "_appInst") as ApplicationInstance;
+        Assert.NotNull(appInst);
+
+        var appConfig = appInst.ApplicationConfiguration;
+        Assert.NotNull(appConfig);
+        Assert.Equal(appName, appConfig.ApplicationName);
+        Assert.Equal(appUri, appConfig.ApplicationUri);
+        Assert.Equal(productUri, appConfig.ProductUri);
+        Assert.Equal("CN=S7UaClient.Test", appConfig.SecurityConfiguration.ApplicationCertificate.SubjectName);
+    }
+
+    [Fact]
+    public async Task Configure_WithAllParameters_SetsFullConfigurationCorrectly()
+    {
+        // Arrange
+        using var tempDir = new TempDirectory();
+        var client = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
+        var securityConfig = CreateTestSecurityConfig(tempDir.Path);
+
+        var clientConfig = new Core.Ua.ClientConfiguration
+        {
+            SessionTimeout = 60000,
+            WellKnownDiscoveryUrls = ["opc.tcp://localhost:4840/discovery"]
+        };
+
+        var transportQuotas = new Core.Ua.TransportQuotas
+        {
+            MaxArrayLength = 2048,
+            OperationTimeout = 120000
+        };
+
+        var opLimits = new Core.Ua.OperationLimits
+        {
+            MaxNodesPerRead = 500,
+            MaxNodesPerWrite = 500
+        };
+
+        // Act
+        await client.ConfigureAsync("FullApp", "urn:full", "urn:prod:full", securityConfig, clientConfig, transportQuotas, opLimits);
+
+        // Assert
+        var appInst = PrivateFieldHelpers.GetPrivateField(client, "_appInst") as ApplicationInstance;
+        Assert.NotNull(appInst);
+        var appConfig = appInst.ApplicationConfiguration;
+
+        // Verify Client Config
+        Assert.Equal(clientConfig.SessionTimeout, (uint)appConfig.ClientConfiguration.DefaultSessionTimeout);
+        Assert.Contains(clientConfig.WellKnownDiscoveryUrls[0], appConfig.ClientConfiguration.WellKnownDiscoveryUrls);
+
+        // Verify Transport Quotas
+        Assert.Equal(transportQuotas.MaxArrayLength, (uint)appConfig.TransportQuotas.MaxArrayLength);
+        Assert.Equal(transportQuotas.OperationTimeout, (uint)appConfig.TransportQuotas.OperationTimeout);
+
+        // Verify Operation Limits
+        Assert.Equal(opLimits.MaxNodesPerRead, appConfig.ClientConfiguration.OperationLimits.MaxNodesPerRead);
+        Assert.Equal(opLimits.MaxNodesPerWrite, appConfig.ClientConfiguration.OperationLimits.MaxNodesPerWrite);
+    }
+
+    [Fact]
+    public async Task SaveConfiguration_WhenNotConfigured_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var client = new S7UaClient();
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => client.SaveConfiguration("test.xml"));
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task LoadConfiguration_WhenNotConfigured_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var client = new S7UaClient();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfigurationAsync("test.xml"));
+    }
+
+    [Fact]
+    public async Task SaveConfiguration_WithNullPath_ThrowsArgumentNullException()
+    {
+        // Arrange
+        using var tempDir = new TempDirectory();
+        var client = new S7UaClient();
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => client.SaveConfiguration(null!));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task SaveConfiguration_WithEmptyOrWhitespacePath_ThrowsArgumentException(string filePath)
+    {
+        // Arrange
+        using var tempDir = new TempDirectory();
+        var client = new S7UaClient();
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => client.SaveConfiguration(filePath!));
+    }
+
+    [Fact]
+    public async Task LoadConfiguration_WithNullPath_ThrowsArgumentNullException()
+    {
+        // Arrange
+        using var tempDir = new TempDirectory();
+        var client = new S7UaClient();
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfigurationAsync(null!));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task LoadConfiguration_WithEmptyOrWhitespacePath_ThrowsArgumentException(string filePath)
+    {
+        // Arrange
+        using var tempDir = new TempDirectory();
+        var client = new S7UaClient();
+        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => client.LoadConfigurationAsync(filePath));
+    }
+
+    [Fact]
+    public async Task SaveAndLoadConfiguration_Integration_WorksCorrectly()
+    {
+        using var tempDir = new TempDirectory();
+        var configFilePath = Path.Combine(tempDir.Path, "config.xml");
+
+        // --- Arrange: Create and save a configuration ---
+        var saveClient = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
+        var securityConfig = CreateTestSecurityConfig(tempDir.Path);
+        await saveClient.ConfigureAsync("SavedApp", "urn:saved", "urn:prod:saved", securityConfig, new Core.Ua.ClientConfiguration { SessionTimeout = 99000 });
+
+        // --- Act 1: Save the configuration ---
+        saveClient.SaveConfiguration(configFilePath);
+
+        // Assert 1: File was created
+        Assert.True(File.Exists(configFilePath));
+        var fileContent = await File.ReadAllTextAsync(configFilePath);
+        Assert.Contains("<ApplicationName>SavedApp</ApplicationName>", fileContent);
+        Assert.Contains("<DefaultSessionTimeout>99000</DefaultSessionTimeout>", fileContent);
+
+        // --- Arrange 2: Create a new client with a different initial config ---
+        var loadClient = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
+        await loadClient.ConfigureAsync("InitialApp", "urn:initial", "urn:prod:initial", CreateTestSecurityConfig(tempDir.Path));
+
+        // --- Act 2: Load the previously saved configuration ---
+        await loadClient.LoadConfigurationAsync(configFilePath);
+
+        // --- Assert 2: The client's configuration is now updated ---
+        var appInst = PrivateFieldHelpers.GetPrivateField(loadClient, "_appInst") as ApplicationInstance;
+        Assert.NotNull(appInst);
+
+        var loadedConfig = appInst.ApplicationConfiguration;
+        Assert.Equal("SavedApp", loadedConfig.ApplicationName);
+        Assert.Equal("urn:saved", loadedConfig.ApplicationUri);
+        Assert.Equal("urn:prod:saved", loadedConfig.ProductUri);
+        Assert.Equal(99000, loadedConfig.ClientConfiguration.DefaultSessionTimeout);
+    }
+
+    #endregion Configuration Tests
 
     #region Connection Tests
 
@@ -548,7 +772,7 @@ public class S7UaClientUnitTests
     public async Task CreateSubscriptionAsync_WhenCalledFirstTime_CreatesAndRegistersSubscription()
     {
         // Arrange
-        var mockClient = new Mock<S7UaClient>(_appConfig, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
+        var mockClient = new Mock<S7UaClient>(_userIdentity!, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
         var client = mockClient.Object;
 
         _mockSession.Setup(s => s.DefaultSubscription).Returns(new Subscription());
@@ -591,7 +815,7 @@ public class S7UaClientUnitTests
     public async Task SubscribeToVariableAsync_WithValidSubscription_AddsItemAndAppliesChanges()
     {
         // Arrange
-        var mockClient = new Mock<S7UaClient>(_appConfig, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
+        var mockClient = new Mock<S7UaClient>(_userIdentity!, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
         var client = mockClient.Object;
         var variable = new S7Variable { NodeId = new Opc.Ua.NodeId("ns=2;s=Var1").ToString(), DisplayName = "Var1" };
 
@@ -619,7 +843,7 @@ public class S7UaClientUnitTests
     public async Task UnsubscribeFromVariableAsync_WhenSubscribed_RemovesItemAndAppliesChanges()
     {
         // Arrange
-        var mockClient = new Mock<S7UaClient>(_appConfig, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
+        var mockClient = new Mock<S7UaClient>(_userIdentity!, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
         var client = mockClient.Object;
 
         var variable = new S7Variable { NodeId = new Opc.Ua.NodeId("ns=2;s=Var1").ToString(), DisplayName = "Var1" };
@@ -665,7 +889,7 @@ public class S7UaClientUnitTests
         var nodeId = new Opc.Ua.NodeId("ns=3;s=\"MyVar\"");
 
         // Act
-        var result = await client.WriteRawVariableAsync(nodeId, 42);
+        var result = await client.WriteRawVariableAsync(nodeId.ToString(), 42);
 
         // Assert
         Assert.False(result);
@@ -701,7 +925,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = await client.WriteRawVariableAsync(nodeId, valueToWrite);
+        var result = await client.WriteRawVariableAsync(nodeId.ToString(), valueToWrite);
 
         // Assert
         Assert.True(result);
@@ -725,7 +949,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = await client.WriteRawVariableAsync(nodeId, "some value");
+        var result = await client.WriteRawVariableAsync(nodeId.ToString(), "some value");
 
         // Assert
         Assert.False(result);
@@ -765,7 +989,7 @@ public class S7UaClientUnitTests
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
 
         // Act
-        var result = await client.WriteVariableAsync(nodeId, userValue, S7DataType.CHAR);
+        var result = await client.WriteVariableAsync(nodeId.ToString(), userValue, S7DataType.CHAR);
 
         // Assert
         Assert.True(result);
@@ -832,7 +1056,7 @@ public class S7UaClientUnitTests
     public void GetConverter_WhenSpecificConverterExists_ReturnsInstance()
     {
         // Arrange
-        var client = new S7UaClient(_appConfig, _validateResponse, _mockLoggerFactory.Object); // Recreate to pass factory
+        var client = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object); // Recreate to pass factory
 
         // Act
         var converter = client.GetConverter(S7DataType.CHAR, typeof(object));
@@ -846,7 +1070,7 @@ public class S7UaClientUnitTests
     public void GetConverter_WhenSpecificConverterDoesNotExist_ReturnsDefaultConverter()
     {
         // Arrange
-        var client = new S7UaClient(_appConfig, _validateResponse, _mockLoggerFactory.Object); // Recreate to pass factory
+        var client = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object); // Recreate to pass factory
 
         // Act
         var converter = client.GetConverter(S7DataType.UNKNOWN, typeof(int)); // UNKNOWN type will use DefaultConverter
@@ -861,7 +1085,7 @@ public class S7UaClientUnitTests
     public void GetConverter_WhenLoggerFactoryIsNull_ConvertersAreCreatedWithoutLoggers()
     {
         // Arrange
-        var client = new S7UaClient(_appConfig, _validateResponse, null); // No logger factory
+        var client = new S7UaClient(_userIdentity, _validateResponse, null); // No logger factory
 
         // Act
         var charConverter = client.GetConverter(S7DataType.CHAR, typeof(object));

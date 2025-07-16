@@ -1,4 +1,4 @@
-# S7UaLib API Description
+S7UaLib API Description
 
 ## Overview
 
@@ -10,7 +10,7 @@ The main entry point for all interactions is the `S7Service` class, located in t
 
 ## Key Features
 
-- **High-Level Service (`S7Service`):** A single, easy-to-use service class that manages the connection, data storage, and communication.
+- **High-Level Service (`S7Service`):** A single, easy-to-use service class that manages the client configuration, connection, data storage, and communication.
 - **Automatic Structure Discovery:** The library can browse the entire OPC UA address space of the S7 PLC and build a complete, hierarchical in-memory model of all available data, including:
   - Global Data Blocks (DBs)
   - Instance Data Blocks (for FBs)
@@ -25,6 +25,7 @@ The main entry point for all interactions is the `S7Service` class, located in t
   - `COUNTER` (BCD format) <-> `.NET ushort`
   - And all primitive types (`BOOL`, `INT`, `REAL`, `STRING`, etc.) and their arrays.
 - **Data Persistence:** The discovered PLC structure can be saved to a JSON file and loaded back later. This eliminates the need for a time-consuming discovery process on every application startup.
+- **OPC UA Client Configuration Management:** The underlying OPC UA client configuration can be saved and loaded, preserving security settings across application runs.
 - **Data Access by Path:** Read and write variable values using their full symbolic path (e.g., `"DataBlocksGlobal.SettingsDB.MotorSpeed"`), without needing to know the underlying OPC UA `NodeId`.
 - **Data Subscriptions:** Subscribe to individual variables to receive notifications when their values change on the PLC. The library manages the underlying `MonitoredItem`s and raises a simple `VariableValueChanged` event.
 - **Dynamic Type Correction:** The data type (`S7DataType`) of a variable can be changed at runtime if the initial discovery was ambiguous (e.g., a `WORD` that should be treated as an `S5TIME`).
@@ -39,7 +40,7 @@ The library is built on a clean, three-layer architecture to separate concerns:
 -   **`S7UaLib.Infrastructure`**: The engine. It contains the concrete implementations for OPC UA communication (`S7UaClient`), data type conversion, and persistence logic. These are the internal mechanics.
 -   **`S7UaLib` (the main package)**: The public API. It provides the high-level `S7Service`, which orchestrates the underlying components into a simple and powerful interface for you to use.
 
-As a user, you only need to interact with the `S7Service` from the main `S7UaLib` package.
+As a user, you only need to interact with the `S7Service` from the main `S7UaLib` package and the data models from `S7UaLib.Core`.
 
 ### S7 PLC Structure Model
 
@@ -75,19 +76,26 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        // 1. Create the ApplicationConfiguration using the simplified model
-        var appConfig = new ApplicationConfiguration
+        // 1. Instantiate the S7Service.
+        // For anonymous login, pass null or a new UserIdentity().
+        // For username/password, use: new S7Service(new UserIdentity("user", "pass"))
+        var service = new S7Service(null);
+
+        // 2. Configure the OPC UA client application identity and security.
+        // This is a mandatory step before connecting.
+        var securityConfig = new SecurityConfiguration(new SecurityConfigurationStores())
         {
-            ApplicationName = "My S7 UA Client",
-            ApplicationUri = "urn:localhost:MyS7UaClient", // Must be unique
-            ProductUri = "uri:mycompany:mys7uaclient",
             // For testing, accept all certificates. In production, this should be false
             // and you should manage the certificate trust list.
             AutoAcceptUntrustedCertificates = true
         };
 
-        // 2. Instantiate the S7Service
-        var service = new S7Service(appConfig);
+        await service.ConfigureAsync(
+            appName: "My S7 UA Client",
+            appUri: "urn:localhost:MyS7UaClient", // Must be unique
+            productUri: "uri:mycompany:mys7uaclient",
+            securityConfiguration: securityConfig
+        );
 
         var serverUrl = "opc.tcp://192.168.0.1:4840";
         var structureFilePath = "plc_structure.json";
@@ -191,7 +199,7 @@ if (subscribed)
 
 ### Correcting Data Types
 
-Sometimes, a PLC tag might be represented as a generic type like `WORD` but actually contains a specific data format like `S5TIME`. You can correct this in the data store.
+By default, a PLC tag is assigned S7DataType.UNKNOWN which means no value conversation takes place. If, for example, you want to use `S5TIME`. You can correct this in the data store. Changes can be made persistent by saving / loading the structure using `SaveStructureAsync` and `LoadStructureAsync`.
 
 ```csharp
 using S7UaLib.Core.Enums;
@@ -213,9 +221,9 @@ Console.WriteLine($"Type after update: {timerVar.S7Type}, Value: {timerVar.Value
 // Output should be: Type after update: S5TIME, Value: 00:00:12.3400000 (as a TimeSpan)
 ```
 
-## `IS7Service` API Reference
+## `S7Service` API Reference
 
-This section provides a complete reference for the public `IS7Service` interface. The event arguments and data models (`ConnectionEventArgs`, `IS7Variable`, `S7DataType`, etc.) are defined in the `S7UaLib.Core` library.
+This section provides a complete reference for the public `S7Service` class. The event arguments and data models (`ConnectionEventArgs`, `IS7Variable`, `S7DataType`, etc.) are defined in the `S7UaLib.Core` library.
 
 ### Events
 
@@ -245,14 +253,21 @@ This section provides a complete reference for the public `IS7Service` interface
   > Gets or sets the time interval, in milliseconds, between automatic reconnection attempts. A value of -1 disables automatic reconnection.
 - `int ReconnectPeriodExponentialBackoff { get; set; }`
   > Gets or sets the maximum reconnect period for exponential backoff, in milliseconds. A value of -1 disables exponential backoff.
-- `uint SessionTimeout { get; set; }`
-  > Gets or sets the session timeout in milliseconds after which the session is considered invalid after the last communication.
-- `bool AcceptUntrustedCertificates { get; set; }`
-  > Gets or sets a value indicating whether untrusted SSL/TLS certificates are accepted. This is now managed via the `ApplicationConfiguration` object passed to the constructor.
-- `UserIdentity UserIdentity { get; set; }`
-  > Gets or sets the identity information of the user for authentication (e.g., username/password).
+- `UserIdentity UserIdentity { get; }`
+  > Gets the identity information of the user for authentication (e.g., username/password).
 
 ### Methods
+
+#### Configuration Methods
+
+- `Task ConfigureAsync(string appName, string appUri, string productUri, SecurityConfiguration securityConfiguration, ClientConfiguration? clientConfig = null, TransportQuotas? transportQuotas = null, OperationLimits? opLimits = null)`
+  > Configures the underlying OPC UA client application. This must be called before connecting.
+- `void SaveConfiguration(string filePath)`
+  > Saves the client's current OPC UA configuration to a file.
+- `Task LoadConfigurationAsync(string filePath)`
+  > Loads the client's OPC UA configuration from a file.
+- `Task AddTrustedCertificateAsync(X509Certificate2 certificate, CancellationToken cancellationToken = default)`
+  > Adds a certificate to the trusted certificate store.
 
 #### Connection Methods
 

@@ -11,6 +11,7 @@ using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Infrastructure.Ua.Converters;
 using System.Collections;
 using System.IO.Abstractions;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 
 namespace S7UaLib.Services.S7;
@@ -59,14 +60,14 @@ public class S7Service : IS7Service
     /// <summary>
     /// Initializes a new instance of the <see cref="S7Service"/> class.
     /// </summary>
-    /// <param name="appConfig">The OPC UA application configuration used to initialize the client. This parameter cannot be <see langword="null"/>.</param>
+    /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
     /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    public S7Service(ApplicationConfiguration appConfig, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
+    public S7Service(UserIdentity? userIdentity, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
     {
         _client = validateResponse != null
-            ? new S7UaClient(appConfig, validateResponse, loggerFactory)
-            : new S7UaClient(appConfig, loggerFactory);
+            ? new S7UaClient(userIdentity, validateResponse, loggerFactory)
+            : new S7UaClient(userIdentity, loggerFactory);
         _dataStore = new S7DataStore(loggerFactory);
         _fileSystem = new FileSystem();
 
@@ -171,14 +172,8 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.ReconnectPeriodExponentialBackoff"/>/>
     public int ReconnectPeriodExponentialBackoff { get => _client.ReconnectPeriodExponentialBackoff; set => _client.ReconnectPeriodExponentialBackoff = value; }
 
-    /// <inheritdoc cref="IS7Service.SessionTimeout"/>
-    public uint SessionTimeout { get => _client.SessionTimeout; set => _client.SessionTimeout = value; }
-
-    /// <inheritdoc cref="IS7Service.AcceptUntrustedCertificates"/>
-    public bool AcceptUntrustedCertificates { get => _client.AcceptUntrustedCertificates; set => _client.AcceptUntrustedCertificates = value; }
-
     /// <inheritdoc cref="IS7Service.UserIdentity"/>
-    public UserIdentity UserIdentity { get => _client.UserIdentity; set => _client.UserIdentity = value; }
+    public UserIdentity UserIdentity { get => _client.UserIdentity; }
 
     /// <inheritdoc cref="IS7Service.IsConnected"/>
     public bool IsConnected => _client.IsConnected;
@@ -186,6 +181,41 @@ public class S7Service : IS7Service
     #endregion Public Properties
 
     #region Public Methods
+
+    #region Configuration Methods
+
+    /// <inheritdoc cref="IS7Service.SaveConfiguration(string)"/>
+    public void SaveConfiguration(string filePath)
+    {
+        _client.SaveConfiguration(filePath);
+    }
+
+    /// <inheritdoc cref="IS7Service.LoadConfigurationAsync(string)"/>
+    public async Task LoadConfigurationAsync(string filePath)
+    {
+        await _client.LoadConfigurationAsync(filePath);
+    }
+
+    /// <inheritdoc cref="IS7Service.ConfigureAsync(string, string, string, SecurityConfiguration, ClientConfiguration?, TransportQuotas?, OperationLimits?)"/>
+    public async Task ConfigureAsync(string appName,
+        string appUri,
+        string productUri,
+        SecurityConfiguration
+        securityConfiguration,
+        ClientConfiguration? clientConfig = null,
+        TransportQuotas? transportQuotas = null,
+        OperationLimits? opLimits = null)
+    {
+        await _client.ConfigureAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+    }
+
+    /// <inheritdoc cref="IS7Service.AddTrustedCertificateAsync(X509Certificate2, CancellationToken)"/>
+    public async Task AddTrustedCertificateAsync(X509Certificate2 certificate, CancellationToken cancellationToken = default)
+    {
+        await _client.AddTrustedCertificateAsync(certificate, cancellationToken);
+    }
+
+    #endregion Configuration Methods
 
     #region Connection Methods
 

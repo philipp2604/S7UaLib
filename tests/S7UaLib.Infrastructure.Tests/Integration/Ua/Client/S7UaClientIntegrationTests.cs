@@ -3,30 +3,73 @@ using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.Ua.Client;
+using S7UaLib.TestHelpers;
 using System.Collections;
 
 namespace S7UaLib.Infrastructure.Tests.Integration.Ua.Client;
 
 [Trait("Category", "Integration")]
-public class S7UaClientIntegrationTests
+public class S7UaClientIntegrationTests : IDisposable
 {
     private const string _serverUrl = "opc.tcp://172.168.0.1:4840";
 
-    private readonly ApplicationConfiguration _appConfig;
     private readonly Action<IList, IList> _validateResponse;
+    private readonly UserIdentity _userIdentity;
+    private const string _appName = "S7UaLib Integration Tests";
+    private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
+    private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
+    private readonly SecurityConfiguration _securityConfiguration = new(new SecurityConfigurationStores()) { AutoAcceptUntrustedCertificates = true };
+
+    private readonly TempDirectory _tempDir;
+    private readonly List<S7UaClient> _clientsToDispose = [];
 
     public S7UaClientIntegrationTests()
     {
-        _appConfig = new ApplicationConfiguration
-        {
-            ApplicationName = "Integration Test Client",
-            ApplicationUri = "urn:localhost:UA:S7UaClient:Test",
-            ProductUri = "uri:philipp2604:S7UaClient:Test",
-            AutoAcceptUntrustedCertificates = true
-        };
-
         _validateResponse = Opc.Ua.ClientBase.ValidateResponse;
+        _userIdentity = new UserIdentity();
+        _tempDir = new TempDirectory();
     }
+
+    #region Configuration Tests
+
+    [Fact]
+    public async Task SaveAndLoadConfiguration_Succeeds()
+    {
+        // Arrange
+        var configFilePath = Path.Combine(_tempDir.Path, "S7UaClient.Config.xml");
+        var securityConfig = CreateTestSecurityConfig();
+
+        var saveClient = new S7UaClient(null, _validateResponse);
+        _clientsToDispose.Add(saveClient);
+
+        await saveClient.ConfigureAsync(
+            _appName,
+            _appUri,
+            _productUri,
+            securityConfig,
+            new ClientConfiguration { SessionTimeout = 88888 });
+
+        saveClient.SaveConfiguration(configFilePath);
+        Assert.True(File.Exists(configFilePath));
+
+        var loadClient = new S7UaClient(null, _validateResponse);
+        _clientsToDispose.Add(loadClient);
+        await loadClient.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+
+        // Act
+        await loadClient.LoadConfigurationAsync(configFilePath);
+
+        // Assert
+        var appInst = PrivateFieldHelpers.GetPrivateField(loadClient, "_appInst") as Opc.Ua.Configuration.ApplicationInstance;
+        Assert.NotNull(appInst);
+
+        var loadedConfig = appInst.ApplicationConfiguration;
+        Assert.Equal(_appName, loadedConfig.ApplicationName);
+        Assert.Equal(_productUri, loadedConfig.ProductUri);
+        Assert.Equal(88888, loadedConfig.ClientConfiguration.DefaultSessionTimeout);
+    }
+
+    #endregion Configuration Tests
 
     #region Connection Tests
 
@@ -34,10 +77,11 @@ public class S7UaClientIntegrationTests
     public async Task ConnectAndDisconnect_Successfully()
     {
         // Arrange
-        var client = new S7UaClient(_appConfig, _validateResponse)
-        {
-            AcceptUntrustedCertificates = true
-        };
+        var client = new S7UaClient(_userIdentity, _validateResponse);
+        _clientsToDispose.Add(client);
+
+        var securityConfig = CreateTestSecurityConfig();
+        await client.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -45,58 +89,86 @@ public class S7UaClientIntegrationTests
         var connectedEvent = new ManualResetEventSlim();
         var disconnectedEvent = new ManualResetEventSlim();
 
-        client.Connected += (s, e) =>
-        {
-            connectedFired = true;
-            connectedEvent.Set();
-        };
-        client.Disconnected += (s, e) =>
-        {
-            disconnectedFired = true;
-            disconnectedEvent.Set();
-        };
+        client.Connected += (s, e) => { connectedFired = true; connectedEvent.Set(); };
+        client.Disconnected += (s, e) => { disconnectedFired = true; disconnectedEvent.Set(); };
 
         // Act & Assert: Connect
         try
         {
             await client.ConnectAsync(_serverUrl, useSecurity: false);
-
             bool connectedInTime = connectedEvent.Wait(TimeSpan.FromSeconds(10));
-
             Assert.True(connectedInTime, "The 'Connected' event was not fired within the timeout.");
             Assert.True(client.IsConnected, "Client should be connected after ConnectAsync.");
             Assert.True(connectedFired, "Connected event flag should be true.");
 
             // Act & Assert: Disconnect
             await client.DisconnectAsync();
-
             bool disconnectedInTime = disconnectedEvent.Wait(TimeSpan.FromSeconds(5));
-
             Assert.True(disconnectedInTime, "The 'Disconnected' event was not fired within the timeout.");
             Assert.False(client.IsConnected, "Client should be disconnected after Disconnect.");
             Assert.True(disconnectedFired, "Disconnected event flag should be true.");
         }
         catch (Opc.Ua.ServiceResultException ex)
         {
-            Assert.Fail($"Failed to connect to the server at '{_serverUrl}'. Ensure the server is running. Error: {ex.Message}");
-        }
-        finally
-        {
-            // Cleanup
-            client.Dispose();
+            Assert.Fail($"Connection to the server at '{_serverUrl}' failed. Ensure the server is running. Error: {ex.Message}");
         }
     }
 
     #endregion Connection Tests
 
-    #region Helper Methods
+    #region Helper Methods / Classes
+
+    private class TempDirectory : IDisposable
+    {
+        public string Path { get; }
+
+        public TempDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+            Directory.CreateDirectory(Path);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(Path))
+                {
+                    Directory.Delete(Path, true);
+                }
+            }
+            catch (IOException) { }
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var client in _clientsToDispose)
+        {
+            client.Dispose();
+        }
+        _tempDir.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    private SecurityConfiguration CreateTestSecurityConfig()
+    {
+        var certStores = new Core.Ua.SecurityConfigurationStores
+        {
+            AppRoot = Path.Combine(_tempDir.Path, "pki"),
+            TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
+            IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
+            RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
+            SubjectName = $"CN={_appName}"
+        };
+        Directory.CreateDirectory(certStores.AppRoot);
+        return new Core.Ua.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
+    }
 
     private async Task<S7UaClient> CreateAndConnectClientAsync()
     {
-        var client = new S7UaClient(_appConfig, _validateResponse)
-        {
-            AcceptUntrustedCertificates = true
-        };
+        var client = new S7UaClient(_userIdentity, _validateResponse, null);
+        await client.ConfigureAsync(_appName, _appUri, _productUri, _securityConfiguration);
 
         try
         {
@@ -111,7 +183,7 @@ public class S7UaClientIntegrationTests
         return client;
     }
 
-    #endregion Helper Methods
+    #endregion Helper Methods / Classes
 
     #region Structure Discovery and Browsing Tests
 

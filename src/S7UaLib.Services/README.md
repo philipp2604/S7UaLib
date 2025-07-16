@@ -66,17 +66,17 @@ const string configFile = "my_plc_structure.json";
 const string myIntVarPath = "DataBlocksGlobal.Datablock.TestInt";
 const string myStringVarPath = "DataBlocksGlobal.Datablock.TestString";
 
-// 1. Configure the OPC UA Application
-var appConfig = new ApplicationConfiguration
-{
-    ApplicationName = "S7UaLib Console Example Client",
-    ApplicationUri = "urn:localhost:UA:S7UaLib:ConsoleExampleClient",
-    ProductUri = "uri:philipp2604:S7UaLib:ConsoleExampleClient",
-    AutoAcceptUntrustedCertificates = true
-};
+const string appName = "S7UaLib Example";
+const string appUri = "urn:localhost:UA:S7UaLib:Example";
+const string productUri = "uri:philipp2604:S7UaLib:Example";
 
-// 2. Initialize the S7Service
-var service = new S7Service(appConfig);
+const UserIdentity userIdentity = new UserIdentity(); // Anonymous user
+
+// 1. Initialize S7Service
+var service = new S7Service(userIdentity);
+
+// 2. Configure Service / Client
+await service.Configure(appName, appUri, productUri, new SecurityConfiguration(new SecurityConfigurationStores()));
 
 // Optional: Subscribe to value changes
 service.VariableValueChanged += OnVariableValueChanged;
