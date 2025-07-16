@@ -12,6 +12,7 @@ using S7UaLib.Infrastructure.Ua.Converters;
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography.X509Certificates;
+using System.Xml;
 
 namespace S7UaLib.Infrastructure.Ua.Client;
 
@@ -245,8 +246,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Configuration Methods
 
-    /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.SecurityConfiguration, Core.Ua.ClientConfiguration?, Core.Ua.TransportQuotas?, Core.Ua.OperationLimits?)"/>
-    public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
+    /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.Configuration.SecurityConfiguration, S7UaLib.Core.Ua.Configuration.ClientConfiguration?, S7UaLib.Core.Ua.Configuration.TransportQuotas?, S7UaLib.Core.Ua.Configuration.OperationLimits?)"/>
+    public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
     {
         ThrowIfDisposed();
         await BuildClientAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
@@ -284,7 +285,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         await _appInst.ApplicationConfiguration.CertificateValidator.UpdateAsync(_appInst.ApplicationConfiguration.SecurityConfiguration);
     }
 
-    internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
+    internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
     {
         _appInst = new()
         {
@@ -352,7 +353,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         .SetRejectSHA1SignedCertificates(securityConfiguration.RejectSHA1SignedCertificates)
         .SetRejectUnknownRevocationStatus(securityConfiguration.RejectUnknownRevocationStatus)
         .SetSuppressNonceValidationErrors(securityConfiguration.SuppressNonceValidationErrors)
-        .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates);
+        .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates)
+        .AddExtension<Core.Ua.Configuration.DomainValidation>(new XmlQualifiedName("SkipDomainValidation"), securityConfiguration.SkipDomainValidation);
 
         await finalBuild.Create();
 
@@ -391,10 +393,36 @@ internal class S7UaClient : IS7UaClient, IDisposable
             // Validate server certificate
             var serverCert = endpointDescription.ServerCertificate;
             var serverCertId = new CertificateIdentifier(serverCert);
-            _appInst.ApplicationConfiguration.CertificateValidator.Validate(serverCertId.Certificate);
+            await _appInst.ApplicationConfiguration.CertificateValidator.ValidateAsync(serverCertId.Certificate, cancellationToken).ConfigureAwait(false);
 
             var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
             var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
+
+            // Optionally validate server domain
+            if (_appInst.ApplicationConfiguration.Extensions.Find(x => x.Name == "DomainValidation") is XmlElement xmlElement)
+            {
+                if(xmlElement.FirstChild is XmlNode skipNode)
+                {
+                    if (bool.TryParse(skipNode.InnerText, out var skipDomainValidation))
+                    {
+                        if (!skipDomainValidation)
+                        {
+                            try
+                            {
+                                _appInst.ApplicationConfiguration.CertificateValidator.ValidateDomains(serverCertId.Certificate, endpoint);
+                            }
+                            catch (ServiceResultException ex)
+                            {
+                                if (ex.StatusCode == Opc.Ua.StatusCodes.BadCertificateHostNameInvalid)
+                                {
+                                    _logger?.LogError("Bad certificate, host name invalid.");
+                                    throw;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             Opc.Ua.UserIdentity identity = UserIdentity.Username == null && UserIdentity.Password == null
                 ? new Opc.Ua.UserIdentity()
@@ -1371,7 +1399,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var accepted = false;
 
         Opc.Ua.ServiceResult error = e.Error;
-        _logger?.LogWarning($"Certificate validation error: {error.ToLongString()}");
+        _logger?.LogWarning("Certificate validation error: {error}", error.ToLongString());
 
         if (error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted)
         {
@@ -1383,12 +1411,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         if (accepted)
         {
-            _logger?.LogWarning($"Accepting untrusted certificate. Subject: {e.Certificate.Subject}");
+            _logger?.LogWarning("Accepting untrusted certificate. Subject: {subject}", e.Certificate.Subject);
             e.Accept = true;
         }
         else
         {
-            _logger?.LogWarning($"Rejecting untrusted certificate. Subject: {e.Certificate.Subject}");
+            _logger?.LogWarning("Rejecting untrusted certificate. Subject: {subject}", e.Certificate.Subject);
             e.Accept = false;
             _appInst!.ApplicationConfiguration.SecurityConfiguration.RejectedCertificateStore.OpenStore().Add(e.Certificate);
         }

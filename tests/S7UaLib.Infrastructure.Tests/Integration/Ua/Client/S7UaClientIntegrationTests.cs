@@ -1,6 +1,7 @@
 ﻿using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.TestHelpers;
@@ -18,7 +19,6 @@ public class S7UaClientIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
-    private readonly SecurityConfiguration _securityConfiguration = new(new SecurityConfigurationStores()) { AutoAcceptUntrustedCertificates = true };
 
     private readonly TempDirectory _tempDir;
     private readonly List<S7UaClient> _clientsToDispose = [];
@@ -153,7 +153,7 @@ public class S7UaClientIntegrationTests : IDisposable
 
     private SecurityConfiguration CreateTestSecurityConfig()
     {
-        var certStores = new Core.Ua.SecurityConfigurationStores
+        var certStores = new Core.Ua.Configuration.SecurityConfigurationStores
         {
             AppRoot = Path.Combine(_tempDir.Path, "pki"),
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
@@ -162,13 +162,13 @@ public class S7UaClientIntegrationTests : IDisposable
             SubjectName = $"CN={_appName}"
         };
         Directory.CreateDirectory(certStores.AppRoot);
-        return new Core.Ua.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
+        return new Core.Ua.Configuration.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true } };
     }
 
     private async Task<S7UaClient> CreateAndConnectClientAsync()
     {
         var client = new S7UaClient(_userIdentity, _validateResponse, null);
-        await client.ConfigureAsync(_appName, _appUri, _productUri, _securityConfiguration);
+        await client.ConfigureAsync(_appName, _appUri, _productUri, CreateTestSecurityConfig());
 
         try
         {

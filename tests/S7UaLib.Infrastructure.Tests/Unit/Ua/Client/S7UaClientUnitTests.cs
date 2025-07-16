@@ -6,6 +6,7 @@ using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.TestHelpers;
 using System.Collections;
@@ -127,19 +128,19 @@ public class S7UaClientUnitTests
         var client = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
         var securityConfig = CreateTestSecurityConfig(tempDir.Path);
 
-        var clientConfig = new Core.Ua.ClientConfiguration
+        var clientConfig = new Core.Ua.Configuration.ClientConfiguration
         {
             SessionTimeout = 60000,
             WellKnownDiscoveryUrls = ["opc.tcp://localhost:4840/discovery"]
         };
 
-        var transportQuotas = new Core.Ua.TransportQuotas
+        var transportQuotas = new Core.Ua.Configuration.TransportQuotas
         {
             MaxArrayLength = 2048,
             OperationTimeout = 120000
         };
 
-        var opLimits = new Core.Ua.OperationLimits
+        var opLimits = new Core.Ua.Configuration.OperationLimits
         {
             MaxNodesPerRead = 500,
             MaxNodesPerWrite = 500
@@ -248,7 +249,7 @@ public class S7UaClientUnitTests
         // --- Arrange: Create and save a configuration ---
         var saveClient = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
         var securityConfig = CreateTestSecurityConfig(tempDir.Path);
-        await saveClient.ConfigureAsync("SavedApp", "urn:saved", "urn:prod:saved", securityConfig, new Core.Ua.ClientConfiguration { SessionTimeout = 99000 });
+        await saveClient.ConfigureAsync("SavedApp", "urn:saved", "urn:prod:saved", securityConfig, new Core.Ua.Configuration.ClientConfiguration { SessionTimeout = 99000 });
 
         // --- Act 1: Save the configuration ---
         saveClient.SaveConfiguration(configFilePath);
