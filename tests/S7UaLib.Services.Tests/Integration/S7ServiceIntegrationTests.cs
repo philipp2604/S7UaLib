@@ -3,6 +3,7 @@ using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
 using S7UaLib.TestHelpers;

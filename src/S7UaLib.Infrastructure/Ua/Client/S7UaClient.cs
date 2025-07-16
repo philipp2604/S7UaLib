@@ -245,8 +245,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Configuration Methods
 
-    /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.SecurityConfiguration, Core.Ua.ClientConfiguration?, Core.Ua.TransportQuotas?, S7UaLib.Core.Ua.Configuration.OperationLimits?)"/>
-    public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
+
+    /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.Configuration.SecurityConfiguration, S7UaLib.Core.Ua.Configuration.ClientConfiguration?, S7UaLib.Core.Ua.Configuration.TransportQuotas?, S7UaLib.Core.Ua.Configuration.OperationLimits?)"/>
+    public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
     {
         ThrowIfDisposed();
         await BuildClientAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
@@ -284,7 +285,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         await _appInst.ApplicationConfiguration.CertificateValidator.UpdateAsync(_appInst.ApplicationConfiguration.SecurityConfiguration);
     }
 
-    internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
+    internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
     {
         _appInst = new()
         {

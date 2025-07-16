@@ -1,6 +1,7 @@
 ﻿using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.TestHelpers;
@@ -153,7 +154,7 @@ public class S7UaClientIntegrationTests : IDisposable
 
     private SecurityConfiguration CreateTestSecurityConfig()
     {
-        var certStores = new Core.Ua.SecurityConfigurationStores
+        var certStores = new Core.Ua.Configuration.SecurityConfigurationStores
         {
             AppRoot = Path.Combine(_tempDir.Path, "pki"),
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
@@ -162,7 +163,7 @@ public class S7UaClientIntegrationTests : IDisposable
             SubjectName = $"CN={_appName}"
         };
         Directory.CreateDirectory(certStores.AppRoot);
-        return new Core.Ua.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
+        return new Core.Ua.Configuration.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
     }
 
     private async Task<S7UaClient> CreateAndConnectClientAsync()
