@@ -1,7 +1,4 @@
-﻿Excellent! This is the culminating package—the one that brings everything together into a clean, public-facing API. It's the most important README to get right, as it will be the primary entry point for your users.
-
-Based on the files, `S7UaLib.Services` orchestrates the `S7UaClient` and `S7DataStore` to provide the simple, powerful `S7Service` you originally envisioned.
-# S7UaLib 🏭
+﻿# S7UaLib 🏭
 A modern, high-level .NET library designed to simplify communication with Siemens S7 PLCs (like S7-1200/1500) via their integrated OPC UA servers. It abstracts the complexities of the OPC UA protocol, providing an intuitive, object-oriented way to browse the PLC structure, read/write variables, and handle S7-specific data types.
 
 This package is the main entry point for the S7UaLib ecosystem. It combines the foundational models from `S7UaLib.Core` with the powerful implementation from `S7UaLib.Infrastructure` into a single, easy-to-use service.
