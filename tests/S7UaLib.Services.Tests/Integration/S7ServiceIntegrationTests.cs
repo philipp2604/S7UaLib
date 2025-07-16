@@ -3,6 +3,7 @@ using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
 using S7UaLib.TestHelpers;
@@ -23,7 +24,6 @@ public class S7ServiceIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
-    private readonly SecurityConfiguration _securityConfig = new(new SecurityConfigurationStores()) { AutoAcceptUntrustedCertificates = true };
     private readonly UserIdentity _userIdentity = new();
 
     private readonly TempDirectory _tempDir = new();
@@ -66,7 +66,7 @@ public class S7ServiceIntegrationTests : IDisposable
         };
 
         Directory.CreateDirectory(certStores.AppRoot);
-        return new SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
+        return new SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true } };
     }
 
     private async Task<S7Service> CreateAndConnectServiceAsync()
@@ -155,9 +155,8 @@ public class S7ServiceIntegrationTests : IDisposable
     {
         // Arrange
         var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-        _securityConfig.SecurityConfigurationStores = new SecurityConfigurationStores(_appName, "certs", "certs", "certs", "certs");
-        _securityConfig.AutoAcceptUntrustedCertificates = true;
-        await service.ConfigureAsync(_appName, _appUri, _productUri, _securityConfig);
+        var securityConfig = CreateTestSecurityConfig();
+        await service.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -383,7 +382,8 @@ public class S7ServiceIntegrationTests : IDisposable
 
             // Act: Create new service and load
             service2 = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-            await service2.ConfigureAsync(_appName, _appUri, _productUri, _securityConfig);
+            var securityConfig = CreateTestSecurityConfig();
+            await service2.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
             await service2.LoadStructureAsync(tempFile);
 
             // Assert: Structure is loaded before connection

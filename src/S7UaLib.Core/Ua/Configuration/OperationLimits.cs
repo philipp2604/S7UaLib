@@ -1,4 +1,4 @@
-﻿namespace S7UaLib.Core.Ua;
+﻿namespace S7UaLib.Core.Ua.Configuration;
 
 public class OperationLimits
 {

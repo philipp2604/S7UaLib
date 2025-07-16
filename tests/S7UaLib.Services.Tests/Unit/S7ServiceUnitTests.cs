@@ -53,10 +53,10 @@ public class S7ServiceUnitTests
         const string appUri = "urn:test:app";
         const string productUri = "urn:test:prod";
 
-        var securityConfig = new Core.Ua.SecurityConfiguration(new());
-        var clientConfig = new Core.Ua.ClientConfiguration();
-        var transportQuotas = new Core.Ua.TransportQuotas();
-        var opLimits = new Core.Ua.OperationLimits();
+        var securityConfig = new Core.Ua.Configuration.SecurityConfiguration(new());
+        var clientConfig = new Core.Ua.Configuration.ClientConfiguration();
+        var transportQuotas = new Core.Ua.Configuration.TransportQuotas();
+        var opLimits = new Core.Ua.Configuration.OperationLimits();
 
         _mockClient.Setup(c => c.ConfigureAsync(
                 appName,

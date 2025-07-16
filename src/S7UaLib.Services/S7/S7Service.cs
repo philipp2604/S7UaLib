@@ -3,6 +3,7 @@ using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.DataStore;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.Serialization.Json;
