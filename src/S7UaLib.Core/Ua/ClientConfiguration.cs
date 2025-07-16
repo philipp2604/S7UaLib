@@ -1,4 +1,6 @@
-﻿namespace S7UaLib.Core.Ua;
+﻿using S7UaLib.Core.Ua.Configuration;
+
+namespace S7UaLib.Core.Ua;
 
 public class ClientConfiguration
 {
