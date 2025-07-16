@@ -12,6 +12,7 @@ using S7UaLib.Infrastructure.Ua.Converters;
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography.X509Certificates;
+using System.Xml;
 
 namespace S7UaLib.Infrastructure.Ua.Client;
 
@@ -352,7 +353,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         .SetRejectSHA1SignedCertificates(securityConfiguration.RejectSHA1SignedCertificates)
         .SetRejectUnknownRevocationStatus(securityConfiguration.RejectUnknownRevocationStatus)
         .SetSuppressNonceValidationErrors(securityConfiguration.SuppressNonceValidationErrors)
-        .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates);
+        .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates)
+        .AddExtension<Core.Ua.Configuration.DomainValidation>(new XmlQualifiedName("SkipDomainValidation"), securityConfiguration.SkipDomainValidation);
 
         await finalBuild.Create();
 
@@ -391,10 +393,37 @@ internal class S7UaClient : IS7UaClient, IDisposable
             // Validate server certificate
             var serverCert = endpointDescription.ServerCertificate;
             var serverCertId = new CertificateIdentifier(serverCert);
-            _appInst.ApplicationConfiguration.CertificateValidator.Validate(serverCertId.Certificate);
+            await _appInst.ApplicationConfiguration.CertificateValidator.ValidateAsync(serverCertId.Certificate, cancellationToken).ConfigureAwait(false);
+
 
             var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
             var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
+
+
+            // Optionally validate server domain
+            if (_appInst.ApplicationConfiguration.Extensions.Find(x => x.Name == "DomainValidation") is XmlElement xmlElement)
+            {
+                if(xmlElement.FirstChild is XmlNode skipNode)
+                {
+                    if (bool.TryParse(skipNode.InnerText, out var skipDomainValidation))
+                    {
+                        if (!skipDomainValidation)
+                        {
+                            try
+                            {
+                                _appInst.ApplicationConfiguration.CertificateValidator.ValidateDomains(serverCertId.Certificate, endpoint);
+                            }
+                            catch (ServiceResultException ex)
+                            {
+                                if (ex.StatusCode == Opc.Ua.StatusCodes.BadCertificateHostNameInvalid)
+                                {
+                                    _logger?.LogError("Bad certificate, host name invalid.");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             Opc.Ua.UserIdentity identity = UserIdentity.Username == null && UserIdentity.Password == null
                 ? new Opc.Ua.UserIdentity()
