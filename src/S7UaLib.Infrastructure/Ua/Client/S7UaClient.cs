@@ -11,6 +11,7 @@ using S7UaLib.Infrastructure.S7.Converters;
 using S7UaLib.Infrastructure.Ua.Converters;
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.Security.Cryptography.X509Certificates;
 
 namespace S7UaLib.Infrastructure.Ua.Client;
 
@@ -166,10 +167,17 @@ internal class S7UaClient : IS7UaClient, IDisposable
             {
                 if (_session.Connected)
                     DisconnectCore();
+                _session.Dispose();
+            }
+
+            if(_appInst != null)
+            {
+                _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation -= Client_CertificateValidation;
             }
 
             _sessionSemaphore.Dispose();
             _subscriptionSemaphore.Dispose();
+
             _disposed = true;
         }
     }
@@ -261,6 +269,19 @@ internal class S7UaClient : IS7UaClient, IDisposable
         ArgumentNullException.ThrowIfNull(_appInst, nameof(_appInst));
 
         await _appInst.LoadApplicationConfiguration(filePath, false);
+
+        _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
+    }
+
+    /// <inheritdoc cref="IS7UaClient.AddTrustedCertificateAsync(X509Certificate2, CancellationToken)"/>
+    public async Task AddTrustedCertificateAsync(X509Certificate2 certificate, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotConfigured();
+
+        await _appInst!.AddOwnCertificateToTrustedStoreAsync(certificate, cancellationToken);
+        _appInst.ApplicationConfiguration.SecurityConfiguration.AddTrustedPeer(certificate.GetRawCertData());
+        await _appInst.ApplicationConfiguration.CertificateValidator.UpdateAsync(_appInst.ApplicationConfiguration.SecurityConfiguration);
     }
 
     internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.SecurityConfiguration securityConfiguration, Core.Ua.ClientConfiguration? clientConfig = null, Core.Ua.TransportQuotas? transportQuotas = null, Core.Ua.OperationLimits? opLimits = null)
@@ -334,6 +355,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates);
 
         await finalBuild.Create();
+        _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
     }
 
     #endregion Configuration Methods
@@ -359,8 +381,15 @@ internal class S7UaClient : IS7UaClient, IDisposable
             OnConnecting(ConnectionEventArgs.Empty);
 
             var endpointDescription = CoreClientUtils.SelectEndpoint(_appInst!.ApplicationConfiguration, serverUrl, useSecurity);
+
+            // Validate server certificate
+            var serverCert = endpointDescription.ServerCertificate;
+            var serverCertId = new CertificateIdentifier(serverCert);
+            _appInst.ApplicationConfiguration.CertificateValidator.Validate(serverCertId.Certificate);
+
             var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
             var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
+
 
             Opc.Ua.UserIdentity identity = UserIdentity.Username == null && UserIdentity.Password == null
                 ? new Opc.Ua.UserIdentity()
@@ -1329,6 +1358,34 @@ internal class S7UaClient : IS7UaClient, IDisposable
         finally
         {
             _sessionSemaphore.Release();
+        }
+    }
+
+    private void Client_CertificateValidation(Opc.Ua.CertificateValidator certificateValidator, CertificateValidationEventArgs e)
+    {
+        var accepted = false;
+
+        Opc.Ua.ServiceResult error = e.Error;
+        _logger?.LogWarning($"Certificate validation error: {error.ToLongString()}");
+
+        if(error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted)
+        {
+            if(_appInst!.ApplicationConfiguration.SecurityConfiguration.AutoAcceptUntrustedCertificates)
+            {
+                accepted = true;
+            }
+        }
+
+        if(accepted)
+        {
+            _logger?.LogWarning($"Accepting untrusted certificate. Subject: {e.Certificate.Subject}");
+            e.Accept = true;
+        }
+        else
+        {
+            _logger?.LogWarning($"Rejecting untrusted certificate. Subject: {e.Certificate.Subject}");
+            e.Accept = false;
+            _appInst!.ApplicationConfiguration.SecurityConfiguration.RejectedCertificateStore.OpenStore().Add(e.Certificate);
         }
     }
 

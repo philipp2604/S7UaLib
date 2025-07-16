@@ -8,6 +8,7 @@ using S7UaLib.Services.S7;
 using S7UaLib.TestHelpers;
 using System.Collections;
 using System.IO.Abstractions;
+using System.Security.Cryptography.X509Certificates;
 
 namespace S7UaLib.Services.Tests.Integration;
 
@@ -78,7 +79,7 @@ public class S7ServiceIntegrationTests : IDisposable
 
         try
         {
-            await service.ConnectAsync(_serverUrl, useSecurity: false);
+            await service.ConnectAsync(_serverUrl, useSecurity: true);
         }
         catch (Opc.Ua.ServiceResultException ex)
         {
@@ -154,6 +155,8 @@ public class S7ServiceIntegrationTests : IDisposable
     {
         // Arrange
         var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+        _securityConfig.SecurityConfigurationStores = new SecurityConfigurationStores("_appName", "certs", "certs", "certs", "certs");
+        _securityConfig.AutoAcceptUntrustedCertificates = true;
         await service.ConfigureAsync(_appName, _appUri, _productUri, _securityConfig);
 
         bool connectedFired = false;
@@ -168,7 +171,7 @@ public class S7ServiceIntegrationTests : IDisposable
         // Act & Assert: Connect
         try
         {
-            await service.ConnectAsync(_serverUrl, useSecurity: false);
+            await service.ConnectAsync(_serverUrl, useSecurity: true);
             bool connectedInTime = connectedEvent.Wait(TimeSpan.FromSeconds(10));
 
             Assert.True(connectedInTime, "The 'Connected' event was not fired within the timeout.");
@@ -395,7 +398,7 @@ public class S7ServiceIntegrationTests : IDisposable
             Assert.Null(preConnectNestedStructVar.Value);
 
             // Act: Connect and read values
-            await service2.ConnectAsync(_serverUrl, useSecurity: false);
+            await service2.ConnectAsync(_serverUrl, useSecurity: true);
             await service2.ReadAllVariablesAsync();
 
             // Assert: Values are now populated

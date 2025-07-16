@@ -11,6 +11,7 @@ using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Infrastructure.Ua.Converters;
 using System.Collections;
 using System.IO.Abstractions;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 
 namespace S7UaLib.Services.S7;
@@ -206,6 +207,13 @@ public class S7Service : IS7Service
         OperationLimits? opLimits = null)
     {
         await _client.ConfigureAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+    }
+
+
+    /// <inheritdoc cref="IS7Service.AddTrustedCertificateAsync(X509Certificate2, CancellationToken)"/>
+    public async Task AddTrustedCertificateAsync(X509Certificate2 certificate, CancellationToken cancellationToken = default)
+    {
+        await _client.AddTrustedCertificateAsync(certificate, cancellationToken);
     }
 
     #endregion Configuration Methods

@@ -2,6 +2,7 @@
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using System.Security.Cryptography.X509Certificates;
 
 namespace S7UaLib.Services.S7;
 
@@ -145,6 +146,15 @@ internal interface IS7Service : IDisposable
     /// <param name="filePath">The file path used to load the configuration from.</param>
     /// <returns>A task indicating the state of the async function.</returns>
     public Task LoadConfigurationAsync(string filePath);
+
+
+    /// <summary>
+    /// Adds a certificate to the trusted certificate store.
+    /// </summary>
+    /// <param name="certificate">The certificate to add.</param>
+    /// <param name="cancellationToken">A <see cref="CancellationToken"/> to abort the operation.</param>
+    /// <returns>A task indicating the state of the async function.</returns>
+    public Task AddTrustedCertificateAsync(X509Certificate2 certificate, CancellationToken cancellationToken = default);
 
     #endregion Configuration Methods
 
