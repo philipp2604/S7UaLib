@@ -29,6 +29,10 @@ jobs:
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
       
     # --- Core ---
     - name: Build S7UaLib.Core
@@ -69,16 +73,21 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        dotnet-version: |
+          8.0.x
+          9.0.x
     
-    - name: Install dependencies for target framework
-      run: dotnet restore /p:TargetFramework='net8.0'
+    #- name: Install dependencies for target framework
+    #  run: dotnet restore # /p:TargetFramework='net8.0'
       
     - name: Build
-      run: dotnet build --configuration Release --no-restore --framework 'net8.0'
+      run: dotnet build --configuration Release #--no-restore # --framework 'net8.0'
     
-    - name: Test
-      run: dotnet test --no-restore --verbosity normal --framework 'net8.0' --filter "Category!=Integration"
+    - name: Test .NET 8
+      run: dotnet test --no-restore --no-build --verbosity normal --framework 'net8.0' --filter "Category!=Integration"
+    
+    - name: Test .NET 9
+      run: dotnet test --no-restore --no-build --verbosity normal --framework 'net9.0' --filter "Category!=Integration"
 
   deploy:
     runs-on: windows-latest
