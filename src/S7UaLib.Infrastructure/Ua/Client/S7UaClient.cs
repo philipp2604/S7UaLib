@@ -355,6 +355,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
         .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates);
 
         await finalBuild.Create();
+
+        if(!await _appInst.CheckApplicationInstanceCertificates(false).ConfigureAwait(false))
+        {
+            throw new SystemException("Application instance certificate invalid!");
+        }
+        SaveConfiguration("testconfig.json");
         _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
     }
 

@@ -14,10 +14,10 @@ public class SecurityConfigurationStores
     public SecurityConfigurationStores()
     {
         SubjectName = "CN=S7UaLib, DC=localhost";
-        TrustedRoot = "trusted";
-        AppRoot = "app";
-        IssuerRoot = "issuer";
-        RejectedRoot = null;
+        TrustedRoot = "certs";
+        AppRoot = "certs";
+        IssuerRoot = "certs";
+        RejectedRoot = "certs";
     }
 
     public string SubjectName { get; set; }

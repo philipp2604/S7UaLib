@@ -155,7 +155,7 @@ public class S7ServiceIntegrationTests : IDisposable
     {
         // Arrange
         var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-        _securityConfig.SecurityConfigurationStores = new SecurityConfigurationStores("_appName", "certs", "certs", "certs", "certs");
+        _securityConfig.SecurityConfigurationStores = new SecurityConfigurationStores(_appName, "certs", "certs", "certs", "certs");
         _securityConfig.AutoAcceptUntrustedCertificates = true;
         await service.ConfigureAsync(_appName, _appUri, _productUri, _securityConfig);
 
