@@ -395,10 +395,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
             var serverCertId = new CertificateIdentifier(serverCert);
             await _appInst.ApplicationConfiguration.CertificateValidator.ValidateAsync(serverCertId.Certificate, cancellationToken).ConfigureAwait(false);
 
-
             var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
             var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
-
 
             // Optionally validate server domain
             if (_appInst.ApplicationConfiguration.Extensions.Find(x => x.Name == "DomainValidation") is XmlElement xmlElement)
@@ -418,6 +416,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                                 if (ex.StatusCode == Opc.Ua.StatusCodes.BadCertificateHostNameInvalid)
                                 {
                                     _logger?.LogError("Bad certificate, host name invalid.");
+                                    throw;
                                 }
                             }
                         }

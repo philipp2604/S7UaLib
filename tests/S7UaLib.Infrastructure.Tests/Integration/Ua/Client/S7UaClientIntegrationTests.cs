@@ -19,7 +19,6 @@ public class S7UaClientIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
-    private readonly SecurityConfiguration _securityConfiguration = new(new SecurityConfigurationStores()) { AutoAcceptUntrustedCertificates = true };
 
     private readonly TempDirectory _tempDir;
     private readonly List<S7UaClient> _clientsToDispose = [];
@@ -163,13 +162,13 @@ public class S7UaClientIntegrationTests : IDisposable
             SubjectName = $"CN={_appName}"
         };
         Directory.CreateDirectory(certStores.AppRoot);
-        return new Core.Ua.Configuration.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true };
+        return new Core.Ua.Configuration.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true } };
     }
 
     private async Task<S7UaClient> CreateAndConnectClientAsync()
     {
         var client = new S7UaClient(_userIdentity, _validateResponse, null);
-        await client.ConfigureAsync(_appName, _appUri, _productUri, _securityConfiguration);
+        await client.ConfigureAsync(_appName, _appUri, _productUri, CreateTestSecurityConfig());
 
         try
         {
