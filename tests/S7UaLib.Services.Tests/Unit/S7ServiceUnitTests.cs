@@ -540,6 +540,134 @@ public class S7ServiceUnitTests
             x => Assert.Equal("Counters.TestVar2", x.FullPath));
     }
 
+    [Fact]
+    public void GetGlobalDataBlocks_WhenDataBlocksDoNotExist_ReturnsNull()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var dbs = sut.GetGlobalDataBlocks();
+
+        // Assert
+        Assert.Empty(dbs);
+    }
+
+    [Fact]
+    public void GetGlobalDataBlocks_WhenDataBlocksDoExist_ReturnsDataBlocks()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [
+                new S7DataBlockGlobal()
+                {
+                    DisplayName = "DB1",
+                    Variables = [
+                            new S7Variable() { DisplayName = "TestVar", FullPath = "DataBlocksGlobal.DB1.TestVar" }
+                    ]
+                },
+                new S7DataBlockGlobal()
+                {
+                    DisplayName = "DB2",
+                    Variables = [
+                            new S7Variable() { DisplayName = "TestVar2", FullPath = "DataBlocksGlobal.DB2.TestVar2" }
+                    ]
+                }
+            ],
+            [],
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        // Act
+        var dbs = sut.GetGlobalDataBlocks();
+
+        // Assert
+        Assert.NotEmpty(dbs);
+        Assert.Collection(dbs,
+            x =>
+            {
+                Assert.Equal("DB1", x.DisplayName);
+                Assert.Collection(x.Variables, y => Assert.Equal("DataBlocksGlobal.DB1.TestVar", y.FullPath));
+            },
+            x =>
+            {
+                Assert.Equal("DB2", x.DisplayName);
+                Assert.Collection(x.Variables, y => Assert.Equal("DataBlocksGlobal.DB2.TestVar2", y.FullPath));
+            });
+    }
+
+    [Fact]
+    public void GetInstanceDataBlocks_WhenDataBlocksDoNotExist_ReturnsNull()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var idbs = sut.GetInstanceDataBlocks();
+
+        // Assert
+        Assert.Empty(idbs);
+    }
+
+    [Fact]
+    public void GetInstanceDataBlocks_WhenDataBlocksDoExist_ReturnsDataBlocks()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [],
+            [
+                new S7DataBlockInstance()
+                {
+                    DisplayName = "IDB1",
+                    Static = new S7InstanceDbSection()
+                    {
+                        Variables = [
+                            new S7Variable() { DisplayName = "TestVar", FullPath = "DataBlocksInstance.IDB1.TestVar" }
+                        ]
+                    }
+                },
+                new S7DataBlockInstance()
+                {
+                    DisplayName = "IDB2",
+                    Static = new S7InstanceDbSection()
+                    {
+                        Variables = [
+                            new S7Variable() { DisplayName = "TestVar2", FullPath = "DataBlocksInstance.IDB2.TestVar2" }
+                        ]
+                    }
+                }
+            ],
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        // Act
+        var idbs = sut.GetInstanceDataBlocks();
+
+        // Assert
+        Assert.NotEmpty(idbs);
+        Assert.Collection(idbs,
+            x =>
+            {
+                Assert.Equal("IDB1", x.DisplayName);
+                Assert.NotNull(x.Static);
+                Assert.Collection(x.Static.Variables, y => Assert.Equal("DataBlocksInstance.IDB1.TestVar", y.FullPath));
+            },
+            x =>
+            {
+                Assert.Equal("IDB2", x.DisplayName);
+                Assert.NotNull(x.Static);
+                Assert.Collection(x.Static.Variables, y => Assert.Equal("DataBlocksInstance.IDB2.TestVar2", y.FullPath));
+            });
+    }
+
     #endregion GetVariable Tests
 
     #region UpdateVariableType Tests
