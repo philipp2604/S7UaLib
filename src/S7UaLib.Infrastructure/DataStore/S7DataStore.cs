@@ -72,6 +72,15 @@ internal class S7DataStore : IS7DataStore
         }
     }
 
+    /// <inheritdoc cref="IS7DataStore.FindVariablesWhere(Func{IS7Variable, bool})"/>
+    public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)
+    {
+        lock(_lock)
+        {
+            return [.. _variableCacheByPath.Values.Where(predicate)];
+        }
+    }
+
     /// <inheritdoc cref="IS7DataStore.TryGetVariableByPath(string, out IS7Variable)"/>
     public bool TryGetVariableByPath(string fullPath, [MaybeNullWhen(false)] out IS7Variable variable)
     {

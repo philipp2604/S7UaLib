@@ -63,6 +63,13 @@ internal interface IS7DataStore
     public void SetStructure(IReadOnlyList<IS7DataBlockGlobal> globalDbs, IReadOnlyList<IS7DataBlockInstance> instDbs, IS7Inputs? inputs, IS7Outputs? outputs, IS7Memory? memory, IS7Timers? timers, IS7Counters? counters);
 
     /// <summary>
+    /// Filters variables in cache based on a predicate.
+    /// </summary>
+    /// <param name="predicate">A function to test each variable for a condition.</param>
+    /// <returns>A list containing the variables that fulfill the condition.</returns>
+    public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate);
+
+    /// <summary>
     /// Tries to retrieve a variable by its full symbolic path.
     /// </summary>
     /// <param name="fullPath">The full path of the variable (e.g., "DataBlocksGlobal.MyDb.MyVar").</param>

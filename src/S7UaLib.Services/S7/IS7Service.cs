@@ -148,7 +148,6 @@ internal interface IS7Service : IDisposable
     /// <returns>A task indicating the state of the async function.</returns>
     public Task LoadConfigurationAsync(string filePath);
 
-
     /// <summary>
     /// Adds a certificate to the trusted certificate store.
     /// </summary>
@@ -173,6 +172,55 @@ internal interface IS7Service : IDisposable
     #endregion Structure Discovery Methods
 
     #region Variables Access and Manipulation Methods
+
+    /// <summary>
+    /// Filters variables in cache based on a predicate.
+    /// </summary>
+    /// <param name="predicate">A function to test each variable for a condition.</param>
+    /// <returns>A list containing the variables that fulfill the condition.</returns>
+    public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate);
+
+    /// <summary>
+    /// Gets the cached <see cref="IS7Inputs"./>
+    /// </summary>
+    /// <returns>The cached <see cref="IS7Inputs"/>.</returns>
+    public IS7Inputs? GetInputs();
+
+    /// <summary>
+    /// Gets the cached <see cref="IS7Outputs"./>
+    /// </summary>
+    /// <returns>The cached <see cref="IS7Outputs"/>.</returns>
+    public IS7Outputs? GetOutputs();
+
+    /// <summary>
+    /// Gets the cached <see cref="IS7Memory"./>
+    /// </summary>
+    /// <returns>The cached <see cref="IS7Memory"/>.</returns>
+    public IS7Memory? GetMemory();
+
+    /// <summary>
+    /// Gets the cached <see cref="IS7Counters"./>
+    /// </summary>
+    /// <returns>The cached <see cref="IS7Counters"/>.</returns>
+    public IS7Counters? GetCounters();
+
+    /// <summary>
+    /// Gets the cached <see cref="IS7Timers"./>
+    /// </summary>
+    /// <returns>The cached <see cref="IS7Timers"/>.</returns>
+    public IS7Timers? GetTimers();
+
+    /// <summary>
+    /// Gets all cached <see cref="IS7DataBlockInstance"/>s.
+    /// </summary>
+    /// <returns>An <see cref="IReadOnlyList{IS7DataBlockInstance}"/> containing the cached instance data blocks.</returns>
+    public IReadOnlyList<IS7DataBlockInstance> GetInstanceDataBlocks();
+
+    /// <summary>
+    /// Gets all cached <see cref="IS7DataBlockGlobal"/>s.
+    /// </summary>
+    /// <returns>An <see cref="IReadOnlyList{IS7DataBlockGlobal}"/> containing the cached global data blocks.</returns>
+    public IReadOnlyList<IS7DataBlockGlobal> GetGlobalDataBlocks();
 
     /// <summary>
     /// Reads the values of all discovered variables from the PLC.
