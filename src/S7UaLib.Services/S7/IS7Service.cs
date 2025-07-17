@@ -174,7 +174,7 @@ internal interface IS7Service : IDisposable
     #region Variables Access and Manipulation Methods
 
     /// <summary>
-    /// Filters variables in cache based on a predicate.
+    /// Filters and returns variables in cache based on a predicate.
     /// </summary>
     /// <param name="predicate">A function to test each variable for a condition.</param>
     /// <returns>A list containing the variables that fulfill the condition.</returns>
