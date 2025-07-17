@@ -282,7 +282,22 @@ This section provides a complete reference for the public `S7Service` class. The
   > Discovers the entire structure of the OPC UA server and populates the internal data store. Throws an `InvalidOperationException` if not connected.
 
 #### Variables Access and Manipulation Methods
-
+- `IS7Inputs? GetInputs()`
+  > Returns the cached inputs.
+- `IS7Outputs? GetOutputs()`
+  > Returns the cached outputs.
+- `IS7Memory? GetMemory()`
+  > Returns the cached memory.
+- `IS7Timers? GetTimers()`
+  > Returns the cached timers.
+- `IS7Counters? GetCounters()`
+  > Returns the cached counters.
+- `IReadOnlyList<IS7DataBlockInstance> GetInstanceDataBlocks()`
+  > Returns the cached instance data blocks.
+- `IReadOnlyList<IS7DataBlockGlobal> GetGlobalDataBlocks()`
+  > Returns the cached global data blocks.
+- `IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)`
+  > Filters and returns variables in cache based on a predicate
 - `Task ReadAllVariablesAsync(CancellationToken cancellationToken = default)`
   > Reads the values of all discovered variables from the PLC. Raises the `VariableValueChanged` event for any variable whose value has changed.
 - `Task<bool> WriteVariableAsync(string fullPath, object value)`
