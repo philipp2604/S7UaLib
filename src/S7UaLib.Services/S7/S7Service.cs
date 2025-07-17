@@ -307,6 +307,62 @@ public class S7Service : IS7Service
 
     #region Variables Access and Manipulation Methods
 
+    /// <inheritdoc cref="IS7Service.GetInputs"/>
+    public IS7Inputs? GetInputs()
+    {
+        ThrowIfDisposed();
+        return _dataStore.Inputs;
+    }
+
+    /// <inheritdoc cref="IS7Service.GetOutputs"/>
+    public IS7Outputs? GetOutputs()
+    {
+        ThrowIfDisposed();
+        return _dataStore.Outputs;
+    }
+
+    /// <inheritdoc cref="IS7Service.GetMemory"/>
+    public IS7Memory? GetMemory()
+    {
+        ThrowIfDisposed();
+        return _dataStore.Memory;
+    }
+
+    /// <inheritdoc cref="IS7Service.GetCounters"/>
+    public IS7Counters? GetCounters()
+    {
+        ThrowIfDisposed();
+        return _dataStore.Counters;
+    }
+
+    /// <inheritdoc cref="IS7Service.GetTimers"/>
+    public IS7Timers? GetTimers()
+    {
+        ThrowIfDisposed();
+        return _dataStore.Timers;
+    }
+
+    /// <inheritdoc cref="IS7Service.GetInstanceDataBlocks"/>
+    public IReadOnlyList<IS7DataBlockInstance> GetInstanceDataBlocks()
+    {
+        ThrowIfDisposed();
+        return _dataStore.DataBlocksInstance;
+    }
+
+    /// <inheritdoc cref="IS7Service.GetGlobalDataBlocks"/>
+    public IReadOnlyList<IS7DataBlockGlobal> GetGlobalDataBlocks()
+    {
+        ThrowIfDisposed();
+        return _dataStore.DataBlocksGlobal;
+    }
+
+    /// <inheritdoc cref="IS7Service.FindVariablesWhere(Func{IS7Variable, bool})"/>
+    public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)
+    {
+        ThrowIfDisposed();
+        return _dataStore.FindVariablesWhere(predicate);
+    }
+
     /// <inheritdoc cref="IS7Service.ReadAllVariablesAsync(CancellationToken)"/>
     public async Task ReadAllVariablesAsync(CancellationToken cancellationToken = default)
     {

@@ -269,6 +269,277 @@ public class S7ServiceUnitTests
         Assert.Null(result);
     }
 
+    [Fact]
+    public void FindVariables_WhenVarExists_ReturnsCorrectList()
+    {
+        // Arrange
+        const string firstVar = "ThisVarShouldBeFound";
+        const string secondVar = "ThisVarShouldBeFoundToo";
+        const string thirdVar = "ButThisOneShouldNot";
+
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [
+                new S7DataBlockGlobal
+                {
+                    DisplayName = "DB1",
+                    Variables =
+                    [
+                        new S7Variable { DisplayName = firstVar },
+                        new S7Variable { DisplayName = secondVar },
+                        new S7Variable { DisplayName = thirdVar }
+                    ]
+                }
+            ],
+            [],
+            null, null, null, null, null);
+
+        _realDataStore.BuildCache();
+
+        // Act
+        var foundVars = sut.FindVariablesWhere(x => x.DisplayName!.Contains("Found"));
+        var notFoundVars = sut.FindVariablesWhere(x => x.S7Type == S7DataType.TIME);
+
+        // Assert
+        Assert.Collection(foundVars,
+            x => Assert.Equal(firstVar, x.DisplayName),
+            x => Assert.Equal(secondVar, x.DisplayName));
+        Assert.Empty(notFoundVars);
+    }
+
+    [Fact]
+    public void FindVariables_WhenVarDoesNotExist_ReturnsEmptyList()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.BuildCache();
+
+        // Act
+        var foundVars = sut.FindVariablesWhere(x => x.DisplayName!.Contains("VariableName"));
+
+        // Assert
+        Assert.Empty(foundVars);
+    }
+
+    [Fact]
+    public void GetInputs_WhenInputsDoNotExist_ReturnsNull()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var inputs = sut.GetInputs();
+
+        // Assert
+        Assert.Null(inputs);
+    }
+
+    [Fact]
+    public void GetInputs_WhenInputsDoExist_ReturnsInputs()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [],
+            [],
+            new S7Inputs()
+            {
+                DisplayName = "Inputs",
+                Variables = [
+                    new S7Variable() { DisplayName = "TestInput", FullPath = "Inputs.TestInput" },
+                    new S7Variable() { DisplayName = "TestInput2", FullPath = "Inputs.TestInput2" }
+                ]
+            },
+            null, null, null, null);
+
+        // Act
+        var inputs = sut.GetInputs();
+
+        // Assert
+        Assert.NotNull(inputs);
+        Assert.Equal("Inputs", inputs.DisplayName);
+        Assert.Collection(inputs.Variables,
+            x => Assert.Equal("Inputs.TestInput", x.FullPath),
+            x => Assert.Equal("Inputs.TestInput2", x.FullPath));
+    }
+
+    [Fact]
+    public void GetOutputs_WhenOutputsDoNotExist_ReturnsNull()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var outputs = sut.GetOutputs();
+
+        // Assert
+        Assert.Null(outputs);
+    }
+
+    [Fact]
+    public void GetOutputs_WhenOutputsDoExist_ReturnsOutputs()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [],
+            [],
+            null,
+            new S7Outputs()
+            {
+                DisplayName = "Outputs",
+                Variables = [
+                    new S7Variable() { DisplayName = "TestOutput", FullPath = "Outputs.TestOutput" },
+                    new S7Variable() { DisplayName = "TestOutput2", FullPath = "Outputs.TestOutput2" }
+                ]
+            },
+            null, null, null);
+
+        // Act
+        var outputs = sut.GetOutputs();
+
+        // Assert
+        Assert.NotNull(outputs);
+        Assert.Equal("Outputs", outputs.DisplayName);
+        Assert.Collection(outputs.Variables,
+            x => Assert.Equal("Outputs.TestOutput", x.FullPath),
+            x => Assert.Equal("Outputs.TestOutput2", x.FullPath));
+    }
+
+    [Fact]
+    public void GetMemory_WhenMemoryDoesNotExist_ReturnsNull()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var memory = sut.GetMemory();
+
+        // Assert
+        Assert.Null(memory);
+    }
+
+    [Fact]
+    public void GetMemory_WhenMemoryDoesExist_ReturnsMemory()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [],
+            [],
+            null,
+            null,
+            new S7Memory()
+            {
+                DisplayName = "Memory",
+                Variables = [
+                    new S7Variable() { DisplayName = "TestVar", FullPath = "Memory.TestVar" },
+                    new S7Variable() { DisplayName = "TestVar2", FullPath = "Memory.TestVar2" }
+                ]
+            },
+            null, null);
+
+        // Act
+        var memory = sut.GetMemory();
+
+        // Assert
+        Assert.NotNull(memory);
+        Assert.Equal("Memory", memory.DisplayName);
+        Assert.Collection(memory.Variables,
+            x => Assert.Equal("Memory.TestVar", x.FullPath),
+            x => Assert.Equal("Memory.TestVar2", x.FullPath));
+    }
+
+    [Fact]
+    public void GetTimers_WhenTimersDoNotExist_ReturnsNull()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var memory = sut.GetTimers();
+
+        // Assert
+        Assert.Null(memory);
+    }
+
+    [Fact]
+    public void GetTimers_WhenTimersDoExist_ReturnsTimers()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [],
+            [],
+            null,
+            null,
+            null,
+            new S7Timers()
+            {
+                DisplayName = "Timers",
+                Variables = [
+                    new S7Variable() { DisplayName = "TestVar", FullPath = "Timers.TestVar" },
+                    new S7Variable() { DisplayName = "TestVar2", FullPath = "Timers.TestVar2" }
+                ]
+            },
+            null);
+
+        // Act
+        var timers = sut.GetTimers();
+
+        // Assert
+        Assert.NotNull(timers);
+        Assert.Equal("Timers", timers.DisplayName);
+        Assert.Collection(timers.Variables,
+            x => Assert.Equal("Timers.TestVar", x.FullPath),
+            x => Assert.Equal("Timers.TestVar2", x.FullPath));
+    }
+
+    [Fact]
+    public void GetCounters_WhenCountersDoNotExist_ReturnsNull()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var memory = sut.GetCounters();
+
+        // Assert
+        Assert.Null(memory);
+    }
+
+    [Fact]
+    public void GetCounters_WhenCountersDoExist_ReturnsCounters()
+    {
+        // Arrange
+        var sut = CreateSut();
+        _realDataStore.SetStructure(
+            [],
+            [],
+            null,
+            null,
+            null,
+            null,
+            new S7Counters()
+            {
+                DisplayName = "Counters",
+                Variables = [
+                    new S7Variable() { DisplayName = "TestVar", FullPath = "Counters.TestVar" },
+                    new S7Variable() { DisplayName = "TestVar2", FullPath = "Counters.TestVar2" }
+                ]
+            });
+
+        // Act
+        var counters = sut.GetCounters();
+
+        // Assert
+        Assert.NotNull(counters);
+        Assert.Equal("Counters", counters.DisplayName);
+        Assert.Collection(counters.Variables,
+            x => Assert.Equal("Counters.TestVar", x.FullPath),
+            x => Assert.Equal("Counters.TestVar2", x.FullPath));
+    }
+
     #endregion GetVariable Tests
 
     #region UpdateVariableType Tests

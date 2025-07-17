@@ -185,6 +185,44 @@ public class S7DataStoreUnitTests
         Assert.True(allVars.ContainsKey("DataBlocksGlobal.DB1.Var1"));
     }
 
+    [Fact]
+    public void FindVariables_AfterBuildCache_ReturnsCorrectList()
+    {
+        // Arrange
+        const string firstVar = "ThisVarShouldBeFound";
+        const string secondVar = "ThisVarShouldBeFoundToo";
+        const string thirdVar = "ButThisOneShouldNot";
+
+        var sut = CreateSut();
+        sut.SetStructure(
+            [
+                new S7DataBlockGlobal
+                {
+                    DisplayName = "DB1",
+                    Variables =
+                    [
+                        new S7Variable { DisplayName = firstVar },
+                        new S7Variable { DisplayName = secondVar },
+                        new S7Variable { DisplayName = thirdVar }
+                    ]
+                }
+            ],
+            [],
+            null, null, null, null, null);
+
+        sut.BuildCache();
+
+        // Act
+        var foundVars = sut.FindVariablesWhere(x => x.DisplayName!.Contains("Found"));
+        var notFoundVars = sut.FindVariablesWhere(x => x.S7Type == S7DataType.TIME);
+
+        // Assert
+        Assert.Collection(foundVars,
+            x => Assert.Equal(firstVar, x.DisplayName),
+            x => Assert.Equal(secondVar, x.DisplayName));
+        Assert.Empty(notFoundVars);
+    }
+
     #endregion Getter Tests
 
     #region UpdateVariable Tests
