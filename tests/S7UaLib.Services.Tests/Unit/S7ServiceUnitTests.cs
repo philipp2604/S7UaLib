@@ -591,12 +591,14 @@ public class S7ServiceUnitTests
             x =>
             {
                 Assert.Equal("DB1", x.DisplayName);
-                Assert.Collection(x.Variables, y => Assert.Equal("DataBlocksGlobal.DB1.TestVar", y.FullPath));
+                Assert.Single(x.Variables);
+                Assert.Equal("DataBlocksGlobal.DB1.TestVar", x.Variables[0].FullPath);
             },
             x =>
             {
                 Assert.Equal("DB2", x.DisplayName);
-                Assert.Collection(x.Variables, y => Assert.Equal("DataBlocksGlobal.DB2.TestVar2", y.FullPath));
+                Assert.Single(x.Variables);
+                Assert.Equal("DataBlocksGlobal.DB2.TestVar2", x.Variables[0].FullPath);
             });
     }
 
@@ -658,13 +660,15 @@ public class S7ServiceUnitTests
             {
                 Assert.Equal("IDB1", x.DisplayName);
                 Assert.NotNull(x.Static);
-                Assert.Collection(x.Static.Variables, y => Assert.Equal("DataBlocksInstance.IDB1.TestVar", y.FullPath));
+                Assert.Single(x.Static.Variables);
+                Assert.Equal("DataBlocksInstance.IDB1.TestVar", x.Static.Variables[0].FullPath);
             },
             x =>
             {
                 Assert.Equal("IDB2", x.DisplayName);
                 Assert.NotNull(x.Static);
-                Assert.Collection(x.Static.Variables, y => Assert.Equal("DataBlocksInstance.IDB2.TestVar2", y.FullPath));
+                Assert.Single(x.Static.Variables);
+                Assert.Equal("DataBlocksInstance.IDB2.TestVar2", x.Static.Variables[0].FullPath);
             });
     }
 
