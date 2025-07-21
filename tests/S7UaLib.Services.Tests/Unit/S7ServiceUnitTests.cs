@@ -180,7 +180,7 @@ public class S7ServiceUnitTests
 
         // Setup an initial structure with the parent DB
         _realDataStore.SetStructure(
-            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" }],
             [], null, null, null, null, null);
         _realDataStore.BuildCache();
 

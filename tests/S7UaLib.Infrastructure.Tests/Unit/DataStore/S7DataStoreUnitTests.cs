@@ -228,12 +228,125 @@ public class S7DataStoreUnitTests
     #region AddVariable Tests
 
     [Fact]
+    public void AddVariable_WithoutNodeIdInGlobalDb_AssignsCorrectNodeId()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" }], [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "DataBlocksGlobal.DB1.Temp";
+        var newVar = new S7Variable { DisplayName = "Temp", FullPath = path }; // No NodeId provided
+
+        // Act
+        sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
+        Assert.NotNull(addedVar);
+        Assert.Equal("ns=3;s=DB1.Temp", addedVar.NodeId);
+        Assert.Equal(path, addedVar.FullPath);
+    }
+
+    [Fact]
+    public void AddVariable_WithoutNodeIdInInputs_AssignsCorrectNodeId()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.BuildCache();
+
+        const string path = "Inputs.NewInput";
+        var newVar = new S7Variable { DisplayName = "NewInput", FullPath = path }; // No NodeId
+
+        // Act
+        sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
+        Assert.NotNull(addedVar);
+        Assert.Equal("ns=3;s=Inputs.NewInput", addedVar.NodeId);
+        Assert.Equal(path, addedVar.FullPath);
+    }
+
+    [Fact]
+    public void AddVariable_WithStructWithoutNodeIds_AssignsNodeIdsRecursively()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure([new S7DataBlockGlobal { DisplayName = "Settings", FullPath = "DataBlocksGlobal.Settings" }], [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string structPath = "DataBlocksGlobal.Settings.Motor";
+        const string memberPath = "DataBlocksGlobal.Settings.Motor.Speed";
+
+        var memberVar = new S7Variable { DisplayName = "Speed", FullPath = memberPath }; // No NodeId
+        var structVar = new S7Variable { DisplayName = "Motor", FullPath = structPath, S7Type = S7DataType.STRUCT, StructMembers = [memberVar] }; // No NodeId
+
+
+        // Act
+        sut.AddVariableToCache(structVar);
+
+        // Assert
+        Assert.True(sut.TryGetVariableByPath(structPath, out var addedStruct));
+        Assert.NotNull(addedStruct);
+        Assert.Equal("ns=3;s=Settings.Motor", addedStruct.NodeId);
+        Assert.Equal(structPath, addedStruct.FullPath);
+
+        Assert.True(sut.TryGetVariableByPath(memberPath, out var addedMember));
+        Assert.NotNull(addedMember);
+        Assert.Equal("ns=3;s=Settings.Motor.Speed", addedMember.NodeId);
+        Assert.Equal(memberPath, addedMember.FullPath);
+    }
+
+    [Fact]
+    public void AddVariable_WithoutNodeIdInInstanceDb_DoesNotAssignNodeId()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var staticSection = new S7InstanceDbSection { DisplayName = "Static", FullPath = "DataBlocksInstance.MyFB_DB.Static" };
+        sut.SetStructure([], [new S7DataBlockInstance { DisplayName = "MyFB_DB", FullPath = "DataBlocksInstance.MyFB_DB", Static = staticSection }], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "DataBlocksInstance.MyFB_DB.Static.InternalValue";
+        var newVar = new S7Variable { DisplayName = "InternalValue", FullPath = path }; // No NodeId
+
+        // Act
+        sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
+        Assert.NotNull(addedVar);
+        Assert.True(string.IsNullOrEmpty(addedVar.NodeId), "NodeId should not be auto-generated for instance DBs.");
+    }
+
+    [Fact]
+    public void AddVariable_WithExistingNodeId_KeepsUserProvidedNodeId()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" }], [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string userNodeId = "My.Custom.NodeId";
+        const string path = "DataBlocksGlobal.DB1.Temp";
+        var newVar = new S7Variable { DisplayName = "Temp", FullPath = path, NodeId = userNodeId };
+
+        // Act
+        sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
+        Assert.NotNull(addedVar);
+        Assert.Equal(userNodeId, addedVar.NodeId);
+    }
+
+    [Fact]
     public void AddVariable_ToGlobalDb_SuccessfullyAddsVariableAndRebuildsCache()
     {
         // Arrange
         var sut = CreateSut();
         sut.SetStructure(
-            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" }],
             [], null, null, null, null, null);
         sut.BuildCache();
 
@@ -249,6 +362,8 @@ public class S7DataStoreUnitTests
         Assert.True(sut.TryGetVariableByPath(path, out var updatedVar));
         Assert.NotNull(updatedVar);
         Assert.True((bool)updatedVar.Value!);
+        Assert.Equal("DataBlocksGlobal.DB1.NewVar", updatedVar.FullPath);
+        Assert.Equal("ns=3;s=DB1.NewVar", updatedVar.NodeId);
     }
 
     [Fact]
@@ -256,7 +371,6 @@ public class S7DataStoreUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        sut.SetStructure([], [], new S7Inputs { DisplayName = "Inputs" }, null, null, null, null);
         sut.BuildCache();
 
         const string path = "Inputs.NewInput";
@@ -268,7 +382,7 @@ public class S7DataStoreUnitTests
         // Assert
         Assert.True(success);
         Assert.NotNull(sut.Inputs);
-        Assert.Single(sut.Inputs.Variables, v => v.DisplayName == "NewInput");
+        Assert.Single(sut.Inputs.Variables, v => v.DisplayName == "NewInput" && v.NodeId == "ns=3;s=Inputs.NewInput");
         Assert.True(sut.TryGetVariableByPath(path, out _));
     }
 
@@ -303,7 +417,7 @@ public class S7DataStoreUnitTests
         // Arrange
         var sut = CreateSut();
         sut.SetStructure(
-            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" }],
             [], null, null, null, null, null);
         sut.BuildCache();
 

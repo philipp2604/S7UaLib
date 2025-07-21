@@ -173,7 +173,7 @@ internal class S7DataStore : IS7DataStore
     /// <inheritdoc cref="IS7DataStore.FindVariablesWhere(Func{IS7Variable, bool})"/>
     public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)
     {
-        lock(_lock)
+        lock (_lock)
         {
             return [.. _variableCacheByPath.Values.Where(predicate)];
         }
@@ -469,26 +469,37 @@ internal class S7DataStore : IS7DataStore
     {
         var pathSegments = path.Split('.');
 
-        // Base case: The path has only one segment left, which is the name of the new variable.
-        // 'element' is the direct parent where the variable should be added.
+        // Base case: The path has only one segment left. 'element' is the direct parent.
         if (pathSegments.Length == 1)
         {
+            // Determine the full path of the parent to construct the child's full path
+            string parentFullPath = element switch
+            {
+                IS7Variable v => v.FullPath,
+                IS7StructureElement s => s.FullPath,
+                IS7DataBlockInstance i => i.FullPath,
+                IS7InstanceDbSection sec => sec.FullPath,
+                _ => element.DisplayName
+            } ?? string.Empty;
+
+            // Generate NodeIds for the new variable and its members before adding it.
+            var variableWithNodeId = AssignNodeIdsRecursivelyIfMissing(newVariable, $"{parentFullPath}.{pathSegments[0]}");
+
             switch (element)
             {
                 case S7Variable parentVar when parentVar.S7Type == S7DataType.STRUCT:
-                    var newMembers = new List<IS7Variable>(parentVar.StructMembers) { newVariable };
+                    var newMembers = new List<IS7Variable>(parentVar.StructMembers) { variableWithNodeId };
                     return (parentVar with { StructMembers = newMembers.AsReadOnly() }, true);
 
                 case S7StructureElement parentStruct:
-                    var newVars = new List<IS7Variable>(parentStruct.Variables) { newVariable };
+                    var newVars = new List<IS7Variable>(parentStruct.Variables) { variableWithNodeId };
                     return (parentStruct with { Variables = newVars.AsReadOnly() }, true);
 
                 case S7InstanceDbSection parentSection:
-                    var newSectionVars = new List<IS7Variable>(parentSection.Variables) { newVariable };
+                    var newSectionVars = new List<IS7Variable>(parentSection.Variables) { variableWithNodeId };
                     return (parentSection with { Variables = newSectionVars.AsReadOnly() }, true);
 
                 default:
-                    // The parent element type cannot hold variables.
                     return (element, false);
             }
         }
@@ -497,6 +508,7 @@ internal class S7DataStore : IS7DataStore
         var nextSegment = pathSegments[0];
         var remainingPath = string.Join(".", pathSegments.Skip(1));
 
+        // ... (Der Rest der Methode bleibt exakt gleich wie in der vorherigen Antwort) ...
         switch (element)
         {
             case S7Variable variable when variable.S7Type == S7DataType.STRUCT:
@@ -514,7 +526,7 @@ internal class S7DataStore : IS7DataStore
                         }
                     }
                 }
-                break; // Target member not found in this struct
+                break;
             }
 
             case S7StructureElement s7Element:
@@ -532,7 +544,7 @@ internal class S7DataStore : IS7DataStore
                         }
                     }
                 }
-                break; // Target variable not found in this element
+                break;
             }
 
             case S7DataBlockInstance idb:
@@ -562,7 +574,6 @@ internal class S7DataStore : IS7DataStore
 
             case S7InstanceDbSection section:
             {
-                // Try to find the next segment in the variables list (for nested structs)
                 var variables = section.Variables.ToList();
                 for (int i = 0; i < variables.Count; i++)
                 {
@@ -577,7 +588,6 @@ internal class S7DataStore : IS7DataStore
                     }
                 }
 
-                // Try to find the next segment in the nested instances list
                 var nestedInstances = section.NestedInstances.ToList();
                 for (int i = 0; i < nestedInstances.Count; i++)
                 {
@@ -595,7 +605,59 @@ internal class S7DataStore : IS7DataStore
             }
         }
 
-        // If we reach here, the next segment of the path was not found in any child collection.
         return (element, false);
+    }
+
+    private IS7Variable AssignNodeIdsRecursivelyIfMissing(IS7Variable variable, string fullPath)
+    {
+        // Must be S7Variable record to use 'with' expression
+        if (variable is not S7Variable s7Var) return variable;
+
+        // 1. Assign NodeId to the current variable if needed
+        var finalVar = s7Var;
+        if (string.IsNullOrEmpty(s7Var.NodeId))
+        {
+            string nodeIdIdentifier;
+            if (fullPath.StartsWith("DataBlocksGlobal.", StringComparison.OrdinalIgnoreCase))
+            {
+                nodeIdIdentifier = fullPath.Substring("DataBlocksGlobal.".Length);
+            }
+            else if (fullPath.StartsWith("Inputs.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Outputs.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Memory.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Timers.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Counters.", StringComparison.OrdinalIgnoreCase))
+            {
+                nodeIdIdentifier = fullPath;
+            }
+            else // DataBlocksInstance or other unsupported auto-generation
+            {
+                nodeIdIdentifier = string.Empty;
+            }
+
+            if (!string.IsNullOrEmpty(nodeIdIdentifier))
+            {
+                finalVar = finalVar with { NodeId = $"ns=3;s={nodeIdIdentifier}" };
+            }
+        }
+
+        // Always ensure the full path is set correctly on the variable itself.
+        finalVar = finalVar with { FullPath = fullPath };
+
+        // 2. If it's a struct, recurse for its members
+        if (finalVar.S7Type == S7DataType.STRUCT && finalVar.StructMembers.Any())
+        {
+            var newMembers = new List<IS7Variable>();
+            foreach (var member in finalVar.StructMembers)
+            {
+                if (member.DisplayName is null) continue;
+
+                string memberFullPath = $"{fullPath}.{member.DisplayName}";
+                newMembers.Add(AssignNodeIdsRecursivelyIfMissing(member, memberFullPath));
+            }
+            finalVar = finalVar with { StructMembers = newMembers.AsReadOnly() };
+        }
+
+        return finalVar;
     }
 }
