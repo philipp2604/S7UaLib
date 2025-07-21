@@ -282,7 +282,6 @@ public class S7DataStoreUnitTests
         var memberVar = new S7Variable { DisplayName = "Speed", FullPath = memberPath }; // No NodeId
         var structVar = new S7Variable { DisplayName = "Motor", FullPath = structPath, S7Type = S7DataType.STRUCT, StructMembers = [memberVar] }; // No NodeId
 
-
         // Act
         sut.AddVariableToCache(structVar);
 
@@ -429,7 +428,6 @@ public class S7DataStoreUnitTests
         var member2 = new S7Variable { DisplayName = "MemberB", FullPath = memberBPath, Value = 20 };
         var newStruct = new S7Variable { DisplayName = "NewStruct", FullPath = structPath, S7Type = S7DataType.STRUCT, StructMembers = [member1, member2] };
 
-
         // Act
         var success = sut.AddVariableToCache(newStruct);
 
@@ -468,7 +466,6 @@ public class S7DataStoreUnitTests
         Assert.Single(updatedL1Struct.StructMembers, m => m.DisplayName == "DeepVar");
         Assert.True(sut.TryGetVariableByPath(path, out _));
     }
-
 
     [Fact]
     public void AddVariable_WhenParentPathDoesNotExist_ReturnsFalse()

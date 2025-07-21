@@ -441,7 +441,7 @@ internal class S7DataStore : IS7DataStore
         }
     }
 
-    private (IReadOnlyList<T> List, bool Added) AddVariableToList<T>(IReadOnlyList<T> list, string path, IS7Variable newVariable) where T : class, IUaNode
+    private static (IReadOnlyList<T> List, bool Added) AddVariableToList<T>(IReadOnlyList<T> list, string path, IS7Variable newVariable) where T : class, IUaNode
     {
         var mutableList = list.ToList();
         for (int i = 0; i < mutableList.Count; i++)
@@ -465,7 +465,7 @@ internal class S7DataStore : IS7DataStore
         return (list, false);
     }
 
-    private (IUaNode Element, bool Added) AddVariableToElement(IUaNode element, string path, IS7Variable newVariable)
+    private static (IUaNode Element, bool Added) AddVariableToElement(IUaNode element, string path, IS7Variable newVariable)
     {
         var pathSegments = path.Split('.');
 
@@ -608,7 +608,7 @@ internal class S7DataStore : IS7DataStore
         return (element, false);
     }
 
-    private IS7Variable AssignNodeIdsRecursivelyIfMissing(IS7Variable variable, string fullPath)
+    private static IS7Variable AssignNodeIdsRecursivelyIfMissing(IS7Variable variable, string fullPath)
     {
         // Must be S7Variable record to use 'with' expression
         if (variable is not S7Variable s7Var) return variable;
@@ -617,24 +617,15 @@ internal class S7DataStore : IS7DataStore
         var finalVar = s7Var;
         if (string.IsNullOrEmpty(s7Var.NodeId))
         {
-            string nodeIdIdentifier;
-            if (fullPath.StartsWith("DataBlocksGlobal.", StringComparison.OrdinalIgnoreCase))
-            {
-                nodeIdIdentifier = fullPath.Substring("DataBlocksGlobal.".Length);
-            }
-            else if (fullPath.StartsWith("Inputs.", StringComparison.OrdinalIgnoreCase) ||
+            string nodeIdIdentifier = fullPath.StartsWith("DataBlocksGlobal.", StringComparison.OrdinalIgnoreCase)
+                ? fullPath["DataBlocksGlobal.".Length..]
+                : fullPath.StartsWith("Inputs.", StringComparison.OrdinalIgnoreCase) ||
                      fullPath.StartsWith("Outputs.", StringComparison.OrdinalIgnoreCase) ||
                      fullPath.StartsWith("Memory.", StringComparison.OrdinalIgnoreCase) ||
                      fullPath.StartsWith("Timers.", StringComparison.OrdinalIgnoreCase) ||
-                     fullPath.StartsWith("Counters.", StringComparison.OrdinalIgnoreCase))
-            {
-                nodeIdIdentifier = fullPath;
-            }
-            else // DataBlocksInstance or other unsupported auto-generation
-            {
-                nodeIdIdentifier = string.Empty;
-            }
-
+                     fullPath.StartsWith("Counters.", StringComparison.OrdinalIgnoreCase)
+                    ? fullPath
+                    : string.Empty;
             if (!string.IsNullOrEmpty(nodeIdIdentifier))
             {
                 finalVar = finalVar with { NodeId = $"ns=3;s={nodeIdIdentifier}" };
