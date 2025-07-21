@@ -38,13 +38,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private readonly Dictionary<NodeId, MonitoredItem> _monitoredItems = [];
     private readonly SemaphoreSlim _subscriptionSemaphore = new(1, 1);
 
-    private static readonly NodeId _dataBlocksGlobalRootNode = new("DataBlocksGlobal", 3);
-    private static readonly NodeId _dataBlocksInstanceRootNode = new("DataBlocksInstance", 3);
-    private static readonly NodeId _memoryRootNode = new("Memory", 3);
-    private static readonly NodeId _inputsRootNode = new("Inputs", 3);
-    private static readonly NodeId _outputsRootNode = new("Outputs", 3);
-    private static readonly NodeId _timersRootNode = new("Timers", 3);
-    private static readonly NodeId _countersRootNode = new("Counters", 3);
+    private static readonly NodeId _dataBlocksGlobalRootNode = new(S7StructureConstants._s7DataBlocksGlobalNamespaceIdentifier);
+    private static readonly NodeId _dataBlocksInstanceRootNode = new(S7StructureConstants._s7DataBlocksInstanceNamespaceIdentifier);
+    private static readonly NodeId _memoryRootNode = new(S7StructureConstants._s7MemoryNamespaceIdentifier);
+    private static readonly NodeId _inputsRootNode = new(S7StructureConstants._s7InputsNamespaceIdentifier);
+    private static readonly NodeId _outputsRootNode = new(S7StructureConstants._s7OutputsNamespaceIdentifier);
+    private static readonly NodeId _timersRootNode = new(S7StructureConstants._s7TimersNamespaceIdentifier);
+    private static readonly NodeId _countersRootNode = new(S7StructureConstants._s7CountersNamespaceIdentifier);
 
     #region Instance Type Converters
 

@@ -236,7 +236,29 @@ public class S7Service : IS7Service
 
     #endregion Connection Methods
 
-    #region Structure Discovery Methods
+    #region Structure Discovery and Registration Methods
+
+    /// <inheritdoc cref="IS7Service.RegisterVariableAsync(IS7Variable, CancellationToken)"/>
+    public Task<bool> RegisterVariableAsync(IS7Variable variable, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (variable is null || string.IsNullOrWhiteSpace(variable.FullPath))
+        {
+            _logger?.LogWarning("Cannot register variable: FullPath or variable is null.");
+            return Task.FromResult(false);
+        }
+
+        bool success = _dataStore.AddVariableToCache(variable);
+
+        if (success && variable.NodeId is not null)
+        {
+            _nodeIdToPathMap[variable.NodeId] = variable.FullPath;
+            _logger?.LogInformation("Successfully registered variable at path '{Path}' and updated NodeId cache.", variable.FullPath);
+        }
+
+        return Task.FromResult(success);
+    }
 
     /// <inheritdoc cref="IS7Service.DiscoverStructureAsync(CancellationToken)"/>
     public async Task DiscoverStructureAsync(CancellationToken cancellationToken = default)
@@ -303,7 +325,7 @@ public class S7Service : IS7Service
         RebuildNodeIdCache();
     }
 
-    #endregion Structure Discovery Methods
+    #endregion Structure Discovery and Registration Methods
 
     #region Variables Access and Manipulation Methods
 

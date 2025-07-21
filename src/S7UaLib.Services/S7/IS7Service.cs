@@ -158,7 +158,7 @@ internal interface IS7Service : IDisposable
 
     #endregion Configuration Methods
 
-    #region Structure Discovery Methods
+    #region Structure Discovery and Registration Methods
 
     /// <summary>
     /// Discovers the entire structure of the OPC UA server and populates the internal data store.
@@ -169,7 +169,18 @@ internal interface IS7Service : IDisposable
     /// </summary>
     public Task DiscoverStructureAsync(CancellationToken cancellationToken = default);
 
-    #endregion Structure Discovery Methods
+    /// <summary>
+    /// Registers a new variable manually in the data store's structure.
+    /// The parent element of the variable must already exist. This method will not create parent elements.
+    /// If the variable is a struct with members, its members are also registered recursively.
+    /// After successful registration, the internal cache is rebuilt.
+    /// </summary>
+    /// <param name="variable">The <see cref="IS7Variable"/> instance to register. It must contain the FullPath, NodeId and other relevant information.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that returns true if the registration was successful; otherwise, false (e.g., if the parent path does not exist or the variable already exists).</returns>
+    Task<bool> RegisterVariableAsync(IS7Variable variable, CancellationToken cancellationToken = default);
+
+    #endregion Structure Discovery and Registration Methods
 
     #region Variables Access and Manipulation Methods
 
