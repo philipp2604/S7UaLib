@@ -48,6 +48,14 @@ internal interface IS7DataStore
     public IS7Counters? Counters { get; }
 
     /// <summary>
+    /// Adds a new variable to the store at the specified full path. This modifies the
+    /// immutable hierarchy and rebuilds the cache. The parent element must exist.
+    /// </summary>
+    /// <param name="newVariable">The new variable instance to add.</param>
+    /// <returns>True if the variable was added successfully; otherwise, false.</returns>
+    public bool AddVariableToCache(IS7Variable newVariable);
+
+    /// <summary>
     /// Updates the structure of the S7 PLC data by setting the provided data blocks, inputs, outputs, memory, timers,
     /// and counters.
     /// </summary>

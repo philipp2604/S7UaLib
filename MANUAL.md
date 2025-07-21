@@ -276,10 +276,12 @@ This section provides a complete reference for the public `S7Service` class. The
 - `Task DisconnectAsync(bool leaveChannelOpen = false, CancellationToken cancellationToken = default)`
   > Disconnects from the S7 UA server.
 
-#### Structure Discovery Methods
+#### Structure Discovery / Registration Methods
 
 - `Task DiscoverStructureAsync(CancellationToken cancellationToken = default)`
   > Discovers the entire structure of the OPC UA server and populates the internal data store. Throws an `InvalidOperationException` if not connected.
+- `Task<bool> RegisterVariableAsync(IS7Variable variable, CancellationToken cancellationToken = default)`
+  > Registers a new variable manually in the data store's structure / cache. The parent element of the variable must already exist. This method will not create parent elements. If the variable is a struct with members, its members are also registered recursively. After successful registration, the internal cache is rebuilt.
 
 #### Variables Access and Manipulation Methods
 - `IS7Inputs? GetInputs()`

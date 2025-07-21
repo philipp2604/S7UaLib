@@ -18,6 +18,12 @@ internal class S7DataStore : IS7DataStore
         {
             _logger = loggerFactory.CreateLogger<S7DataStore>();
         }
+
+        Inputs = new S7Inputs { DisplayName = "Inputs", FullPath = "Inputs", NodeId = S7StructureConstants._s7InputsNamespaceIdentifier };
+        Outputs = new S7Outputs { DisplayName = "Outputs", FullPath = "Outputs", NodeId = S7StructureConstants._s7OutputsNamespaceIdentifier };
+        Memory = new S7Memory { DisplayName = "Memory", FullPath = "Memory", NodeId = S7StructureConstants._s7MemoryNamespaceIdentifier };
+        Timers = new S7Timers { DisplayName = "Timers", FullPath = "Timers", NodeId = S7StructureConstants._s7TimersNamespaceIdentifier };
+        Counters = new S7Counters { DisplayName = "Counters", FullPath = "Counters", NodeId = S7StructureConstants._s7CountersNamespaceIdentifier };
     }
 
     private readonly Dictionary<string, IS7Variable> _variableCacheByPath = new(StringComparer.OrdinalIgnoreCase);
@@ -36,19 +42,111 @@ internal class S7DataStore : IS7DataStore
     public IReadOnlyList<IS7DataBlockInstance> DataBlocksInstance { get; private set; } = [];
 
     /// <inheritdoc cref="IS7DataStore.Inputs"/>
-    public IS7Inputs? Inputs { get; private set; }
+    public IS7Inputs Inputs { get; private set; }
 
     /// ´<inheritdoc cref="IS7DataStore.Outputs"/>
-    public IS7Outputs? Outputs { get; private set; }
+    public IS7Outputs Outputs { get; private set; }
 
     /// <inheritdoc cref="IS7DataStore.Memory"/>
-    public IS7Memory? Memory { get; private set; }
+    public IS7Memory Memory { get; private set; }
 
     /// <inheritdoc cref="IS7DataStore.Timers"/>
-    public IS7Timers? Timers { get; private set; }
+    public IS7Timers Timers { get; private set; }
 
     /// <inheritdoc cref="IS7DataStore.Counters"/>
-    public IS7Counters? Counters { get; private set; }
+    public IS7Counters Counters { get; private set; }
+
+    /// <inheritdoc cref="IS7DataStore.AddVariableToCache(IS7Variable)"/>
+    public bool AddVariableToCache(IS7Variable newVariable)
+    {
+        lock (_lock)
+        {
+            if (_variableCacheByPath.ContainsKey(newVariable.FullPath!))
+            {
+                _logger?.LogWarning("Cannot add variable: A variable with path '{Path}' already exists.", newVariable.FullPath!);
+                return false;
+            }
+
+            var pathSegments = newVariable.FullPath!.Split('.');
+            if (pathSegments.Length < 2)
+            {
+                _logger?.LogWarning("Cannot add variable: The path '{Path}' is not valid. It must contain at least a root and a variable name.", newVariable.FullPath!);
+                return false;
+            }
+
+            var rootName = pathSegments[0];
+            var remainingPath = string.Join(".", pathSegments.Skip(1));
+            bool added = false;
+
+            if (rootName.Equals("DataBlocksGlobal", StringComparison.OrdinalIgnoreCase))
+            {
+                (var newList, added) = AddVariableToList(DataBlocksGlobal, remainingPath, newVariable);
+                if (added) DataBlocksGlobal = newList;
+            }
+            else if (rootName.Equals("DataBlocksInstance", StringComparison.OrdinalIgnoreCase))
+            {
+                (var newList, added) = AddVariableToList(DataBlocksInstance, remainingPath, newVariable);
+                if (added) DataBlocksInstance = newList;
+            }
+            else if (Inputs is not null && rootName.Equals(Inputs.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                (var newElement, var success) = AddVariableToElement(Inputs, remainingPath, newVariable);
+                if (success)
+                {
+                    Inputs = (S7Inputs)newElement;
+                    added = true;
+                }
+            }
+            else if (Outputs is not null && rootName.Equals(Outputs.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                (var newElement, var success) = AddVariableToElement(Outputs, remainingPath, newVariable);
+                if (success)
+                {
+                    Outputs = (S7Outputs)newElement;
+                    added = true;
+                }
+            }
+            else if (Memory is not null && rootName.Equals(Memory.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                (var newElement, var success) = AddVariableToElement(Memory, remainingPath, newVariable);
+                if (success)
+                {
+                    Memory = (S7Memory)newElement;
+                    added = true;
+                }
+            }
+            else if (Timers is not null && rootName.Equals(Timers.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                (var newElement, var success) = AddVariableToElement(Timers, remainingPath, newVariable);
+                if (success)
+                {
+                    Timers = (S7Timers)newElement;
+                    added = true;
+                }
+            }
+            else if (Counters is not null && rootName.Equals(Counters.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                (var newElement, var success) = AddVariableToElement(Counters, remainingPath, newVariable);
+                if (success)
+                {
+                    Counters = (S7Counters)newElement;
+                    added = true;
+                }
+            }
+
+            if (added)
+            {
+                _logger?.LogDebug("Variable '{FullPath}' added to data store. Rebuilding cache.", newVariable.FullPath!);
+                BuildCache();
+            }
+            else
+            {
+                _logger?.LogWarning("Failed to add variable '{FullPath}'. Parent path might not exist.", newVariable.FullPath!);
+            }
+
+            return added;
+        }
+    }
 
     /// <inheritdoc cref="IS7DataStore.SetStructure(IReadOnlyList{IS7DataBlockGlobal}, IReadOnlyList{IS7DataBlockInstance}, IS7Inputs?, IS7Outputs?, IS7Memory?, IS7Timers?, IS7Counters?)"/>
     public void SetStructure(
@@ -64,18 +162,18 @@ internal class S7DataStore : IS7DataStore
         {
             DataBlocksGlobal = globalDbs;
             DataBlocksInstance = instDbs;
-            Inputs = inputs;
-            Outputs = outputs;
-            Memory = memory;
-            Timers = timers;
-            Counters = counters;
+            Inputs = inputs ?? new S7Inputs() { DisplayName = "Inputs", FullPath = "Inputs" };
+            Outputs = outputs ?? new S7Outputs { DisplayName = "Outputs", FullPath = "Outputs" };
+            Memory = memory ?? new S7Memory { DisplayName = "Memory", FullPath = "Memory" };
+            Timers = timers ?? new S7Timers { DisplayName = "Timers", FullPath = "Timers" };
+            Counters = counters ?? new S7Counters { DisplayName = "Counters", FullPath = "Counters" };
         }
     }
 
     /// <inheritdoc cref="IS7DataStore.FindVariablesWhere(Func{IS7Variable, bool})"/>
     public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)
     {
-        lock(_lock)
+        lock (_lock)
         {
             return [.. _variableCacheByPath.Values.Where(predicate)];
         }
@@ -341,5 +439,216 @@ internal class S7DataStore : IS7DataStore
                 }
                 break;
         }
+    }
+
+    private static (IReadOnlyList<T> List, bool Added) AddVariableToList<T>(IReadOnlyList<T> list, string path, IS7Variable newVariable) where T : class, IUaNode
+    {
+        var mutableList = list.ToList();
+        for (int i = 0; i < mutableList.Count; i++)
+        {
+            var currentElement = mutableList[i];
+            if (currentElement.DisplayName is not null && path.StartsWith(currentElement.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                string remainingPath = (path.Length == currentElement.DisplayName.Length)
+                    ? ""
+                    : path[currentElement.DisplayName.Length..].TrimStart('.');
+
+                var (newElement, added) = AddVariableToElement(currentElement, remainingPath, newVariable);
+
+                if (added)
+                {
+                    mutableList[i] = (T)newElement;
+                    return (mutableList.AsReadOnly(), true);
+                }
+            }
+        }
+        return (list, false);
+    }
+
+    private static (IUaNode Element, bool Added) AddVariableToElement(IUaNode element, string path, IS7Variable newVariable)
+    {
+        var pathSegments = path.Split('.');
+
+        // Base case: The path has only one segment left. 'element' is the direct parent.
+        if (pathSegments.Length == 1)
+        {
+            // Determine the full path of the parent to construct the child's full path
+            string parentFullPath = element switch
+            {
+                IS7Variable v => v.FullPath,
+                IS7StructureElement s => s.FullPath,
+                IS7DataBlockInstance i => i.FullPath,
+                IS7InstanceDbSection sec => sec.FullPath,
+                _ => element.DisplayName
+            } ?? string.Empty;
+
+            // Generate NodeIds for the new variable and its members before adding it.
+            var variableWithNodeId = AssignNodeIdsRecursivelyIfMissing(newVariable, $"{parentFullPath}.{pathSegments[0]}");
+
+            switch (element)
+            {
+                case S7Variable parentVar when parentVar.S7Type == S7DataType.STRUCT:
+                    var newMembers = new List<IS7Variable>(parentVar.StructMembers) { variableWithNodeId };
+                    return (parentVar with { StructMembers = newMembers.AsReadOnly() }, true);
+
+                case S7StructureElement parentStruct:
+                    var newVars = new List<IS7Variable>(parentStruct.Variables) { variableWithNodeId };
+                    return (parentStruct with { Variables = newVars.AsReadOnly() }, true);
+
+                case S7InstanceDbSection parentSection:
+                    var newSectionVars = new List<IS7Variable>(parentSection.Variables) { variableWithNodeId };
+                    return (parentSection with { Variables = newSectionVars.AsReadOnly() }, true);
+
+                default:
+                    return (element, false);
+            }
+        }
+
+        // Recursive step: Traverse deeper.
+        var nextSegment = pathSegments[0];
+        var remainingPath = string.Join(".", pathSegments.Skip(1));
+
+        // ... (Der Rest der Methode bleibt exakt gleich wie in der vorherigen Antwort) ...
+        switch (element)
+        {
+            case S7Variable variable when variable.S7Type == S7DataType.STRUCT:
+            {
+                var members = variable.StructMembers.ToList();
+                for (int i = 0; i < members.Count; i++)
+                {
+                    if (members[i].DisplayName == nextSegment)
+                    {
+                        var (newMember, added) = AddVariableToElement(members[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            members[i] = (IS7Variable)newMember;
+                            return (variable with { StructMembers = members.AsReadOnly() }, true);
+                        }
+                    }
+                }
+                break;
+            }
+
+            case S7StructureElement s7Element:
+            {
+                var variables = s7Element.Variables.ToList();
+                for (int i = 0; i < variables.Count; i++)
+                {
+                    if (variables[i].DisplayName == nextSegment)
+                    {
+                        var (newChild, added) = AddVariableToElement(variables[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            variables[i] = (IS7Variable)newChild;
+                            return (s7Element with { Variables = variables.AsReadOnly() }, true);
+                        }
+                    }
+                }
+                break;
+            }
+
+            case S7DataBlockInstance idb:
+            {
+                if (idb.Inputs?.DisplayName == nextSegment)
+                {
+                    var (newSection, added) = AddVariableToElement(idb.Inputs, remainingPath, newVariable);
+                    if (added) return (idb with { Inputs = (S7InstanceDbSection)newSection }, true);
+                }
+                else if (idb.Outputs?.DisplayName == nextSegment)
+                {
+                    var (newSection, added) = AddVariableToElement(idb.Outputs, remainingPath, newVariable);
+                    if (added) return (idb with { Outputs = (S7InstanceDbSection)newSection }, true);
+                }
+                else if (idb.InOuts?.DisplayName == nextSegment)
+                {
+                    var (newSection, added) = AddVariableToElement(idb.InOuts, remainingPath, newVariable);
+                    if (added) return (idb with { InOuts = (S7InstanceDbSection)newSection }, true);
+                }
+                else if (idb.Static?.DisplayName == nextSegment)
+                {
+                    var (newSection, added) = AddVariableToElement(idb.Static, remainingPath, newVariable);
+                    if (added) return (idb with { Static = (S7InstanceDbSection)newSection }, true);
+                }
+                break;
+            }
+
+            case S7InstanceDbSection section:
+            {
+                var variables = section.Variables.ToList();
+                for (int i = 0; i < variables.Count; i++)
+                {
+                    if (variables[i].DisplayName == nextSegment)
+                    {
+                        var (newChild, added) = AddVariableToElement(variables[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            variables[i] = (IS7Variable)newChild;
+                            return (section with { Variables = variables.AsReadOnly() }, true);
+                        }
+                    }
+                }
+
+                var nestedInstances = section.NestedInstances.ToList();
+                for (int i = 0; i < nestedInstances.Count; i++)
+                {
+                    if (nestedInstances[i].DisplayName == nextSegment)
+                    {
+                        var (newChild, added) = AddVariableToElement(nestedInstances[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            nestedInstances[i] = (IS7DataBlockInstance)newChild;
+                            return (section with { NestedInstances = nestedInstances.AsReadOnly() }, true);
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        return (element, false);
+    }
+
+    private static IS7Variable AssignNodeIdsRecursivelyIfMissing(IS7Variable variable, string fullPath)
+    {
+        // Must be S7Variable record to use 'with' expression
+        if (variable is not S7Variable s7Var) return variable;
+
+        // 1. Assign NodeId to the current variable if needed
+        var finalVar = s7Var;
+        if (string.IsNullOrEmpty(s7Var.NodeId))
+        {
+            string nodeIdIdentifier = fullPath.StartsWith("DataBlocksGlobal.", StringComparison.OrdinalIgnoreCase)
+                ? fullPath["DataBlocksGlobal.".Length..]
+                : fullPath.StartsWith("Inputs.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Outputs.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Memory.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Timers.", StringComparison.OrdinalIgnoreCase) ||
+                     fullPath.StartsWith("Counters.", StringComparison.OrdinalIgnoreCase)
+                    ? fullPath
+                    : string.Empty;
+            if (!string.IsNullOrEmpty(nodeIdIdentifier))
+            {
+                finalVar = finalVar with { NodeId = $"ns=3;s={nodeIdIdentifier}" };
+            }
+        }
+
+        // Always ensure the full path is set correctly on the variable itself.
+        finalVar = finalVar with { FullPath = fullPath };
+
+        // 2. If it's a struct, recurse for its members
+        if (finalVar.S7Type == S7DataType.STRUCT && finalVar.StructMembers.Any())
+        {
+            var newMembers = new List<IS7Variable>();
+            foreach (var member in finalVar.StructMembers)
+            {
+                if (member.DisplayName is null) continue;
+
+                string memberFullPath = $"{fullPath}.{member.DisplayName}";
+                newMembers.Add(AssignNodeIdsRecursivelyIfMissing(member, memberFullPath));
+            }
+            finalVar = finalVar with { StructMembers = newMembers.AsReadOnly() };
+        }
+
+        return finalVar;
     }
 }

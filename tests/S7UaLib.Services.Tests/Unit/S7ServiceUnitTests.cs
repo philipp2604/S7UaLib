@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.VisualStudio.TestPlatform.Utilities;
 using Moq;
 using Opc.Ua;
 using Opc.Ua.Client;
@@ -12,6 +13,8 @@ using S7UaLib.Infrastructure.Serialization.Models;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
 using S7UaLib.TestHelpers;
+using System;
+using System.Diagnostics.Metrics;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 
@@ -164,6 +167,77 @@ public class S7ServiceUnitTests
     }
 
     #endregion DiscoverStructure Tests
+
+    #region RegisterVariable Tests
+
+    [Fact]
+    public async Task RegisterVariableAsync_WithValidData_CallsDataStoreAndReturnsTrue()
+    {
+        // Arrange
+        // The S7DataStore is a real instance, so we can verify its state.
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.DB1.NewVar";
+
+        // Setup an initial structure with the parent DB
+        _realDataStore.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" }],
+            [], null, null, null, null, null);
+        _realDataStore.BuildCache();
+
+        var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path, NodeId = "ns=3;s=New", S7Type = S7DataType.BOOL };
+
+        // Act
+        var result = await sut.RegisterVariableAsync(newVar);
+
+        // Assert
+        Assert.True(result);
+        var retrievedVar = sut.GetVariable(path);
+        Assert.NotNull(retrievedVar);
+        Assert.Equal("NewVar", retrievedVar.DisplayName);
+        Assert.Equal("ns=3;s=New", retrievedVar.NodeId);
+    }
+
+    [Fact]
+    public async Task RegisterVariableAsync_WhenDataStoreFails_ReturnsFalse()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.NonExistentDB.NewVar"; // Parent DB does not exist
+        var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path, S7Type = S7DataType.BOOL };
+
+        // Act
+        var result = await sut.RegisterVariableAsync(newVar);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData(null, "var")]
+    [InlineData("path", null)]
+    [InlineData("", "var")]
+    public async Task RegisterVariableAsync_WithNullOrEmptyInputs_ReturnsFalse(string? path, string? varName)
+    {
+        // Arrange
+        var sut = CreateSut();
+        var variable = varName is null ? null : new S7Variable { FullPath = path, DisplayName = varName };
+
+        // Act
+        var result = await sut.RegisterVariableAsync(variable!);
+
+        // Assert
+        Assert.False(result);
+        _mockLogger.Verify(
+                log => log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("Cannot register variable: FullPath or variable is null.")),
+                    null,
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+    }
+
+    #endregion RegisterVariable Tests
 
     #region ReadAllVariables Tests
 
@@ -322,7 +396,7 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetInputs_WhenInputsDoNotExist_ReturnsNull()
+    public void GetInputs_WhenInputsDoNotExist_ReturnsNewInputs()
     {
         // Arrange
         var sut = CreateSut();
@@ -331,7 +405,10 @@ public class S7ServiceUnitTests
         var inputs = sut.GetInputs();
 
         // Assert
-        Assert.Null(inputs);
+        Assert.NotNull(inputs);
+        Assert.Empty(inputs.Variables);
+        Assert.Equal("Inputs", inputs.DisplayName);
+        Assert.Equal("Inputs", inputs.FullPath);
     }
 
     [Fact]
@@ -364,7 +441,7 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetOutputs_WhenOutputsDoNotExist_ReturnsNull()
+    public void GetOutputs_WhenOutputsDoNotExist_ReturnsNewOutputs()
     {
         // Arrange
         var sut = CreateSut();
@@ -373,7 +450,10 @@ public class S7ServiceUnitTests
         var outputs = sut.GetOutputs();
 
         // Assert
-        Assert.Null(outputs);
+        Assert.NotNull(outputs);
+        Assert.Empty(outputs.Variables);
+        Assert.Equal("Outputs", outputs.DisplayName);
+        Assert.Equal("Outputs", outputs.FullPath);
     }
 
     [Fact]
@@ -407,7 +487,7 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetMemory_WhenMemoryDoesNotExist_ReturnsNull()
+    public void GetMemory_WhenMemoryDoesNotExist_ReturnsNewMemory()
     {
         // Arrange
         var sut = CreateSut();
@@ -416,7 +496,10 @@ public class S7ServiceUnitTests
         var memory = sut.GetMemory();
 
         // Assert
-        Assert.Null(memory);
+        Assert.NotNull(memory);
+        Assert.Empty(memory.Variables);
+        Assert.Equal("Memory", memory.DisplayName);
+        Assert.Equal("Memory", memory.FullPath);
     }
 
     [Fact]
@@ -451,16 +534,19 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetTimers_WhenTimersDoNotExist_ReturnsNull()
+    public void GetTimers_WhenTimersDoNotExist_ReturnsNewTimers()
     {
         // Arrange
         var sut = CreateSut();
 
         // Act
-        var memory = sut.GetTimers();
+        var timers = sut.GetTimers();
 
         // Assert
-        Assert.Null(memory);
+        Assert.NotNull(timers);
+        Assert.Empty(timers.Variables);
+        Assert.Equal("Timers", timers.DisplayName);
+        Assert.Equal("Timers", timers.FullPath);
     }
 
     [Fact]
@@ -496,16 +582,19 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetCounters_WhenCountersDoNotExist_ReturnsNull()
+    public void GetCounters_WhenCountersDoNotExist_ReturnsNewCounters()
     {
         // Arrange
         var sut = CreateSut();
 
         // Act
-        var memory = sut.GetCounters();
+        var counters = sut.GetCounters();
 
         // Assert
-        Assert.Null(memory);
+        Assert.NotNull(counters);
+        Assert.Empty(counters.Variables);
+        Assert.Equal("Counters", counters.DisplayName);
+        Assert.Equal("Counters", counters.FullPath);
     }
 
     [Fact]
