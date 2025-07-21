@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.VisualStudio.TestPlatform.Utilities;
 using Moq;
 using Opc.Ua;
 using Opc.Ua.Client;
@@ -12,6 +13,8 @@ using S7UaLib.Infrastructure.Serialization.Models;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
 using S7UaLib.TestHelpers;
+using System;
+using System.Diagnostics.Metrics;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 
@@ -322,7 +325,7 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetInputs_WhenInputsDoNotExist_ReturnsNull()
+    public void GetInputs_WhenInputsDoNotExist_ReturnsNewInputs()
     {
         // Arrange
         var sut = CreateSut();
@@ -331,7 +334,10 @@ public class S7ServiceUnitTests
         var inputs = sut.GetInputs();
 
         // Assert
-        Assert.Null(inputs);
+        Assert.NotNull(inputs);
+        Assert.Empty(inputs.Variables);
+        Assert.Equal("Inputs", inputs.DisplayName);
+        Assert.Equal("Inputs", inputs.FullPath);
     }
 
     [Fact]
@@ -364,7 +370,7 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetOutputs_WhenOutputsDoNotExist_ReturnsNull()
+    public void GetOutputs_WhenOutputsDoNotExist_ReturnsNewOutputs()
     {
         // Arrange
         var sut = CreateSut();
@@ -373,7 +379,10 @@ public class S7ServiceUnitTests
         var outputs = sut.GetOutputs();
 
         // Assert
-        Assert.Null(outputs);
+        Assert.NotNull(outputs);
+        Assert.Empty(outputs.Variables);
+        Assert.Equal("Outputs", outputs.DisplayName);
+        Assert.Equal("Outputs", outputs.FullPath);
     }
 
     [Fact]
@@ -407,7 +416,7 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetMemory_WhenMemoryDoesNotExist_ReturnsNull()
+    public void GetMemory_WhenMemoryDoesNotExist_ReturnsNewMemory()
     {
         // Arrange
         var sut = CreateSut();
@@ -416,7 +425,10 @@ public class S7ServiceUnitTests
         var memory = sut.GetMemory();
 
         // Assert
-        Assert.Null(memory);
+        Assert.NotNull(memory);
+        Assert.Empty(memory.Variables);
+        Assert.Equal("Memory", memory.DisplayName);
+        Assert.Equal("Memory", memory.FullPath);
     }
 
     [Fact]
@@ -451,16 +463,19 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetTimers_WhenTimersDoNotExist_ReturnsNull()
+    public void GetTimers_WhenTimersDoNotExist_ReturnsNewTimers()
     {
         // Arrange
         var sut = CreateSut();
 
         // Act
-        var memory = sut.GetTimers();
+        var timers = sut.GetTimers();
 
         // Assert
-        Assert.Null(memory);
+        Assert.NotNull(timers);
+        Assert.Empty(timers.Variables);
+        Assert.Equal("Timers", timers.DisplayName);
+        Assert.Equal("Timers", timers.FullPath);
     }
 
     [Fact]
@@ -496,16 +511,19 @@ public class S7ServiceUnitTests
     }
 
     [Fact]
-    public void GetCounters_WhenCountersDoNotExist_ReturnsNull()
+    public void GetCounters_WhenCountersDoNotExist_ReturnsNewCounters()
     {
         // Arrange
         var sut = CreateSut();
 
         // Act
-        var memory = sut.GetCounters();
+        var counters = sut.GetCounters();
 
         // Assert
-        Assert.Null(memory);
+        Assert.NotNull(counters);
+        Assert.Empty(counters.Variables);
+        Assert.Equal("Counters", counters.DisplayName);
+        Assert.Equal("Counters", counters.FullPath);
     }
 
     [Fact]
