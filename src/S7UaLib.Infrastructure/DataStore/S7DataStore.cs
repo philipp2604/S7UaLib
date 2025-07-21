@@ -90,7 +90,7 @@ internal class S7DataStore : IS7DataStore
             }
             else if (Inputs is not null && rootName.Equals(Inputs.DisplayName, StringComparison.OrdinalIgnoreCase))
             {
-                var (newElement, success) = AddVariableToElement(Inputs, remainingPath, newVariable);
+                (var newElement, var success) = AddVariableToElement(Inputs, remainingPath, newVariable);
                 if (success)
                 {
                     Inputs = (S7Inputs)newElement;
@@ -99,7 +99,7 @@ internal class S7DataStore : IS7DataStore
             }
             else if (Outputs is not null && rootName.Equals(Outputs.DisplayName, StringComparison.OrdinalIgnoreCase))
             {
-                var (newElement, success) = AddVariableToElement(Outputs, remainingPath, newVariable);
+                (var newElement, var success) = AddVariableToElement(Outputs, remainingPath, newVariable);
                 if (success)
                 {
                     Outputs = (S7Outputs)newElement;
@@ -108,7 +108,7 @@ internal class S7DataStore : IS7DataStore
             }
             else if (Memory is not null && rootName.Equals(Memory.DisplayName, StringComparison.OrdinalIgnoreCase))
             {
-                var (newElement, success) = AddVariableToElement(Memory, remainingPath, newVariable);
+                (var newElement, var success) = AddVariableToElement(Memory, remainingPath, newVariable);
                 if (success)
                 {
                     Memory = (S7Memory)newElement;
@@ -117,7 +117,7 @@ internal class S7DataStore : IS7DataStore
             }
             else if (Timers is not null && rootName.Equals(Timers.DisplayName, StringComparison.OrdinalIgnoreCase))
             {
-                var (newElement, success) = AddVariableToElement(Timers, remainingPath, newVariable);
+                (var newElement, var success) = AddVariableToElement(Timers, remainingPath, newVariable);
                 if (success)
                 {
                     Timers = (S7Timers)newElement;
@@ -126,7 +126,7 @@ internal class S7DataStore : IS7DataStore
             }
             else if (Counters is not null && rootName.Equals(Counters.DisplayName, StringComparison.OrdinalIgnoreCase))
             {
-                var (newElement, success) = AddVariableToElement(Counters, remainingPath, newVariable);
+                (var newElement, var success) = AddVariableToElement(Counters, remainingPath, newVariable);
                 if (success)
                 {
                     Counters = (S7Counters)newElement;
@@ -468,80 +468,134 @@ internal class S7DataStore : IS7DataStore
     private (IUaNode Element, bool Added) AddVariableToElement(IUaNode element, string path, IS7Variable newVariable)
     {
         var pathSegments = path.Split('.');
-        var nextSegment = pathSegments[0];
 
-        // Base case: The path points directly to the new variable, so 'element' is its parent.
+        // Base case: The path has only one segment left, which is the name of the new variable.
+        // 'element' is the direct parent where the variable should be added.
         if (pathSegments.Length == 1)
         {
             switch (element)
             {
                 case S7Variable parentVar when parentVar.S7Type == S7DataType.STRUCT:
-                    var newMembers = parentVar.StructMembers.ToList();
-                    newMembers.Add(newVariable);
+                    var newMembers = new List<IS7Variable>(parentVar.StructMembers) { newVariable };
                     return (parentVar with { StructMembers = newMembers.AsReadOnly() }, true);
 
                 case S7StructureElement parentStruct:
-                    var newVars = parentStruct.Variables.ToList();
-                    newVars.Add(newVariable);
+                    var newVars = new List<IS7Variable>(parentStruct.Variables) { newVariable };
                     return (parentStruct with { Variables = newVars.AsReadOnly() }, true);
 
                 case S7InstanceDbSection parentSection:
-                    var newSectionVars = parentSection.Variables.ToList();
-                    newSectionVars.Add(newVariable);
+                    var newSectionVars = new List<IS7Variable>(parentSection.Variables) { newVariable };
                     return (parentSection with { Variables = newSectionVars.AsReadOnly() }, true);
 
                 default:
-                    // This element type cannot contain variables.
+                    // The parent element type cannot hold variables.
                     return (element, false);
             }
         }
 
-        // Recursive step: Traverse deeper into the hierarchy.
+        // Recursive step: Traverse deeper.
+        var nextSegment = pathSegments[0];
         var remainingPath = string.Join(".", pathSegments.Skip(1));
 
         switch (element)
         {
             case S7Variable variable when variable.S7Type == S7DataType.STRUCT:
             {
-                (var newMembers, bool added) = AddVariableToList(variable.StructMembers, path, newVariable);
-                return added ? (variable with { StructMembers = newMembers }, true) : (element, false);
+                var members = variable.StructMembers.ToList();
+                for (int i = 0; i < members.Count; i++)
+                {
+                    if (members[i].DisplayName == nextSegment)
+                    {
+                        var (newMember, added) = AddVariableToElement(members[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            members[i] = (IS7Variable)newMember;
+                            return (variable with { StructMembers = members.AsReadOnly() }, true);
+                        }
+                    }
+                }
+                break; // Target member not found in this struct
+            }
+
+            case S7StructureElement s7Element:
+            {
+                var variables = s7Element.Variables.ToList();
+                for (int i = 0; i < variables.Count; i++)
+                {
+                    if (variables[i].DisplayName == nextSegment)
+                    {
+                        var (newChild, added) = AddVariableToElement(variables[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            variables[i] = (IS7Variable)newChild;
+                            return (s7Element with { Variables = variables.AsReadOnly() }, true);
+                        }
+                    }
+                }
+                break; // Target variable not found in this element
             }
 
             case S7DataBlockInstance idb:
             {
-                IUaNode? sectionToSearch = null;
-                if (idb.Inputs?.DisplayName == nextSegment) sectionToSearch = idb.Inputs;
-                else if (idb.Outputs?.DisplayName == nextSegment) sectionToSearch = idb.Outputs;
-                else if (idb.InOuts?.DisplayName == nextSegment) sectionToSearch = idb.InOuts;
-                else if (idb.Static?.DisplayName == nextSegment) sectionToSearch = idb.Static;
-
-                if (sectionToSearch is not null)
+                if (idb.Inputs?.DisplayName == nextSegment)
                 {
-                    var (newSection, added) = AddVariableToElement(sectionToSearch, remainingPath, newVariable);
-                    if (added)
-                    {
-                        var newIdb = idb;
-                        if (idb.Inputs?.DisplayName == nextSegment) newIdb = newIdb with { Inputs = (S7InstanceDbSection)newSection };
-                        else if (idb.Outputs?.DisplayName == nextSegment) newIdb = newIdb with { Outputs = (S7InstanceDbSection)newSection };
-                        else if (idb.InOuts?.DisplayName == nextSegment) newIdb = newIdb with { InOuts = (S7InstanceDbSection)newSection };
-                        else if (idb.Static?.DisplayName == nextSegment) newIdb = newIdb with { Static = (S7InstanceDbSection)newSection };
-                        return (newIdb, true);
-                    }
+                    var (newSection, added) = AddVariableToElement(idb.Inputs, remainingPath, newVariable);
+                    if (added) return (idb with { Inputs = (S7InstanceDbSection)newSection }, true);
+                }
+                else if (idb.Outputs?.DisplayName == nextSegment)
+                {
+                    var (newSection, added) = AddVariableToElement(idb.Outputs, remainingPath, newVariable);
+                    if (added) return (idb with { Outputs = (S7InstanceDbSection)newSection }, true);
+                }
+                else if (idb.InOuts?.DisplayName == nextSegment)
+                {
+                    var (newSection, added) = AddVariableToElement(idb.InOuts, remainingPath, newVariable);
+                    if (added) return (idb with { InOuts = (S7InstanceDbSection)newSection }, true);
+                }
+                else if (idb.Static?.DisplayName == nextSegment)
+                {
+                    var (newSection, added) = AddVariableToElement(idb.Static, remainingPath, newVariable);
+                    if (added) return (idb with { Static = (S7InstanceDbSection)newSection }, true);
                 }
                 break;
             }
 
             case S7InstanceDbSection section:
             {
-                (var newVars, bool varsAdded) = AddVariableToList(section.Variables, path, newVariable);
-                if (varsAdded) return (section with { Variables = newVars }, true);
+                // Try to find the next segment in the variables list (for nested structs)
+                var variables = section.Variables.ToList();
+                for (int i = 0; i < variables.Count; i++)
+                {
+                    if (variables[i].DisplayName == nextSegment)
+                    {
+                        var (newChild, added) = AddVariableToElement(variables[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            variables[i] = (IS7Variable)newChild;
+                            return (section with { Variables = variables.AsReadOnly() }, true);
+                        }
+                    }
+                }
 
-                (var newNested, bool nestedAdded) = AddVariableToList(section.NestedInstances, path, newVariable);
-                if (nestedAdded) return (section with { NestedInstances = newNested }, true);
+                // Try to find the next segment in the nested instances list
+                var nestedInstances = section.NestedInstances.ToList();
+                for (int i = 0; i < nestedInstances.Count; i++)
+                {
+                    if (nestedInstances[i].DisplayName == nextSegment)
+                    {
+                        var (newChild, added) = AddVariableToElement(nestedInstances[i], remainingPath, newVariable);
+                        if (added)
+                        {
+                            nestedInstances[i] = (IS7DataBlockInstance)newChild;
+                            return (section with { NestedInstances = nestedInstances.AsReadOnly() }, true);
+                        }
+                    }
+                }
                 break;
             }
         }
 
+        // If we reach here, the next segment of the path was not found in any child collection.
         return (element, false);
     }
 }

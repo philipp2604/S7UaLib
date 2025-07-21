@@ -168,6 +168,77 @@ public class S7ServiceUnitTests
 
     #endregion DiscoverStructure Tests
 
+    #region RegisterVariable Tests
+
+    [Fact]
+    public async Task RegisterVariableAsync_WithValidData_CallsDataStoreAndReturnsTrue()
+    {
+        // Arrange
+        // The S7DataStore is a real instance, so we can verify its state.
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.DB1.NewVar";
+
+        // Setup an initial structure with the parent DB
+        _realDataStore.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [], null, null, null, null, null);
+        _realDataStore.BuildCache();
+
+        var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path, NodeId = "ns=3;s=New", S7Type = S7DataType.BOOL };
+
+        // Act
+        var result = await sut.RegisterVariableAsync(newVar);
+
+        // Assert
+        Assert.True(result);
+        var retrievedVar = sut.GetVariable(path);
+        Assert.NotNull(retrievedVar);
+        Assert.Equal("NewVar", retrievedVar.DisplayName);
+        Assert.Equal("ns=3;s=New", retrievedVar.NodeId);
+    }
+
+    [Fact]
+    public async Task RegisterVariableAsync_WhenDataStoreFails_ReturnsFalse()
+    {
+        // Arrange
+        var sut = CreateSut();
+        const string path = "DataBlocksGlobal.NonExistentDB.NewVar"; // Parent DB does not exist
+        var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path, S7Type = S7DataType.BOOL };
+
+        // Act
+        var result = await sut.RegisterVariableAsync(newVar);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData(null, "var")]
+    [InlineData("path", null)]
+    [InlineData("", "var")]
+    public async Task RegisterVariableAsync_WithNullOrEmptyInputs_ReturnsFalse(string? path, string? varName)
+    {
+        // Arrange
+        var sut = CreateSut();
+        var variable = varName is null ? null : new S7Variable { FullPath = path, DisplayName = varName };
+
+        // Act
+        var result = await sut.RegisterVariableAsync(variable!);
+
+        // Assert
+        Assert.False(result);
+        _mockLogger.Verify(
+                log => log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("Cannot register variable: FullPath or variable is null.")),
+                    null,
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+    }
+
+    #endregion RegisterVariable Tests
+
     #region ReadAllVariables Tests
 
     [Fact]

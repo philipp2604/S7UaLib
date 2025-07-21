@@ -225,6 +225,183 @@ public class S7DataStoreUnitTests
 
     #endregion Getter Tests
 
+    #region AddVariable Tests
+
+    [Fact]
+    public void AddVariable_ToGlobalDb_SuccessfullyAddsVariableAndRebuildsCache()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "DataBlocksGlobal.DB1.NewVar";
+        var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path, Value = true };
+
+        // Act
+        var success = sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.True(success);
+        Assert.Single(sut.DataBlocksGlobal[0].Variables, v => v.DisplayName == "NewVar");
+        Assert.True(sut.TryGetVariableByPath(path, out var updatedVar));
+        Assert.NotNull(updatedVar);
+        Assert.True((bool)updatedVar.Value!);
+    }
+
+    [Fact]
+    public void AddVariable_ToIoArea_SuccessfullyAddsVariable()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure([], [], new S7Inputs { DisplayName = "Inputs" }, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "Inputs.NewInput";
+        var newVar = new S7Variable { DisplayName = "NewInput", FullPath = path, Value = true };
+
+        // Act
+        var success = sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.True(success);
+        Assert.NotNull(sut.Inputs);
+        Assert.Single(sut.Inputs.Variables, v => v.DisplayName == "NewInput");
+        Assert.True(sut.TryGetVariableByPath(path, out _));
+    }
+
+    [Fact]
+    public void AddVariable_ToExistingStruct_SuccessfullyAddsMember()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var structVar = new S7Variable { DisplayName = "MyStruct", FullPath = "DataBlocksGlobal.DB1.MyStruct", S7Type = S7DataType.STRUCT };
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1", Variables = [structVar] }],
+            [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "DataBlocksGlobal.DB1.MyStruct.NewMember";
+        var newMember = new S7Variable { DisplayName = "NewMember", Value = 42, FullPath = path };
+
+        // Act
+        var success = sut.AddVariableToCache(newMember);
+
+        // Assert
+        Assert.True(success);
+        var updatedStruct = (S7Variable)sut.DataBlocksGlobal[0].Variables[0];
+        Assert.Single(updatedStruct.StructMembers, m => m.DisplayName == "NewMember");
+        Assert.True(sut.TryGetVariableByPath(path, out var cachedMember));
+        Assert.Equal(42, cachedMember?.Value);
+    }
+
+    [Fact]
+    public void AddVariable_NewStructWithMembers_SuccessfullyAddsStructAndAllMembersToCache()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string structPath = "DataBlocksGlobal.DB1.NewStruct";
+        const string memberAPath = "DataBlocksGlobal.DB1.NewStruct.MemberA";
+        const string memberBPath = "DataBlocksGlobal.DB1.NewStruct.MemberB";
+
+        var member1 = new S7Variable { DisplayName = "MemberA", FullPath = memberAPath, Value = 10 };
+        var member2 = new S7Variable { DisplayName = "MemberB", FullPath = memberBPath, Value = 20 };
+        var newStruct = new S7Variable { DisplayName = "NewStruct", FullPath = structPath, S7Type = S7DataType.STRUCT, StructMembers = [member1, member2] };
+
+
+        // Act
+        var success = sut.AddVariableToCache(newStruct);
+
+        // Assert
+        Assert.True(success);
+        // Check if struct is in the hierarchy
+        Assert.Single(sut.DataBlocksGlobal[0].Variables, v => v.DisplayName == "NewStruct");
+        // Check if struct and all members are in the cache
+        Assert.True(sut.TryGetVariableByPath(structPath, out _));
+        Assert.True(sut.TryGetVariableByPath(memberAPath, out var cachedMemberA));
+        Assert.True(sut.TryGetVariableByPath(memberBPath, out var cachedMemberB));
+        Assert.Equal(10, cachedMemberA?.Value);
+        Assert.Equal(20, cachedMemberB?.Value);
+    }
+
+    [Fact]
+    public void AddVariable_ToNestedStruct_SuccessfullyAddsVariable()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var level1Struct = new S7Variable { DisplayName = "Level1", FullPath = "DataBlocksGlobal.DB1.Level1", S7Type = S7DataType.STRUCT };
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1", Variables = [level1Struct] }],
+            [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "DataBlocksGlobal.DB1.Level1.DeepVar";
+        var newVar = new S7Variable { DisplayName = "DeepVar", FullPath = path, Value = "test" };
+
+        // Act
+        var success = sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.True(success);
+        var updatedL1Struct = (S7Variable)sut.DataBlocksGlobal[0].Variables[0];
+        Assert.Single(updatedL1Struct.StructMembers, m => m.DisplayName == "DeepVar");
+        Assert.True(sut.TryGetVariableByPath(path, out _));
+    }
+
+
+    [Fact]
+    public void AddVariable_WhenParentPathDoesNotExist_ReturnsFalse()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "DataBlocksGlobal.DB_DOES_NOT_EXIST.NewVar";
+        var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path };
+
+        // Act
+        var success = sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.False(success);
+        Assert.Single(sut.DataBlocksGlobal); // Unchanged
+        Assert.Empty(sut.DataBlocksGlobal[0].Variables); // Unchanged
+        Assert.False(sut.TryGetVariableByPath(path, out _));
+    }
+
+    [Fact]
+    public void AddVariable_WhenVariableAlreadyExists_ReturnsFalse()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var existingVar = new S7Variable { DisplayName = "ExistingVar" };
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1", Variables = [existingVar] }],
+            [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const string path = "DataBlocksGlobal.DB1.ExistingVar";
+        var newVar = new S7Variable { DisplayName = "ExistingVar", FullPath = path };
+
+        // Act
+        var success = sut.AddVariableToCache(newVar);
+
+        // Assert
+        Assert.False(success);
+    }
+
+    #endregion AddVariable Tests
+
     #region UpdateVariable Tests
 
     [Fact]

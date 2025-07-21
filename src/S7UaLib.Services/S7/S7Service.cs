@@ -243,7 +243,7 @@ public class S7Service : IS7Service
     {
         ThrowIfDisposed();
 
-        if (string.IsNullOrWhiteSpace(variable.FullPath) || variable is null)
+        if (variable is null || string.IsNullOrWhiteSpace(variable.FullPath))
         {
             _logger?.LogWarning("Cannot register variable: FullPath or variable is null.");
             return Task.FromResult(false);
