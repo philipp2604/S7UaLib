@@ -628,4 +628,59 @@ public class S7DataStoreUnitTests
     }
 
     #endregion UpdateVariable Tests
+
+    #region Thread-Safety Tests
+
+    [Fact(Timeout = 5000)] // Timeout to detect deadlocks
+    public async Task AddVariableToCache_WhenCalledConcurrently_MaintainsDataIntegrityAndAvoidsRaceConditions()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" }],
+            [], null, null, null, null, null);
+        sut.BuildCache();
+
+        const int numberOfConcurrentAdds = 100;
+        var tasks = new List<Task>();
+
+        // Act
+        // Starting 100 tasks that all try to add a variable concurrently.
+        for (int i = 0; i < numberOfConcurrentAdds; i++)
+        {
+            var taskIndex = i; // Capture variable for closure
+            var newVar = new S7Variable
+            {
+                DisplayName = $"ConcurrentVar_{taskIndex}",
+                FullPath = $"DataBlocksGlobal.DB1.ConcurrentVar_{taskIndex}"
+            };
+
+            tasks.Add(Task.Run(() => sut.AddVariableToCache(newVar)));
+        }
+
+        // Wait until all tasks complete
+        await Task.WhenAll(tasks);
+
+        // Assert
+        // 1. Check for the expected amount of variables in the DataBlocksGlobal section.
+        //    Since we added 100 variables, we expect exactly 100 variables in the DB1 section
+        //    otherwise a race condition or deadlock might have occurred.
+        Assert.NotNull(sut.DataBlocksGlobal);
+        Assert.Single(sut.DataBlocksGlobal);
+        Assert.Equal(numberOfConcurrentAdds, sut.DataBlocksGlobal[0].Variables.Count);
+
+        // 2. Check the cache too.
+        var allVars = sut.GetAllVariables();
+        Assert.Equal(numberOfConcurrentAdds, allVars.Count);
+
+        for (int i = 0; i < numberOfConcurrentAdds; i++)
+        {
+            var expectedPath = $"DataBlocksGlobal.DB1.ConcurrentVar_{i}";
+            Assert.True(sut.TryGetVariableByPath(expectedPath, out var foundVar), $"Variable '{expectedPath}' should be in the cache.");
+            Assert.NotNull(foundVar);
+            Assert.Equal($"ConcurrentVar_{i}", foundVar.DisplayName);
+        }
+    }
+
+    #endregion Thread-Safety Tests
 }
