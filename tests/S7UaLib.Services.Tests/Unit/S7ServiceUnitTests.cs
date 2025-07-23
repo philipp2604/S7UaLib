@@ -1,11 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestPlatform.Utilities;
 using Moq;
-using Opc.Ua;
-using Opc.Ua.Client;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Structure;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.DataStore;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.Serialization.Json;
@@ -28,6 +27,9 @@ public class S7ServiceUnitTests
     private readonly Mock<ILoggerFactory> _mockLoggerFactory;
     private readonly Mock<ILogger<S7Service>> _mockLogger;
     private readonly MockFileSystem _mockFileSystem;
+    private const string _appName = "S7UaLib Integration Tests";
+    private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
+    private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
 
     public S7ServiceUnitTests()
     {
@@ -52,28 +54,14 @@ public class S7ServiceUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        const string appName = "TestApp";
-        const string appUri = "urn:test:app";
-        const string productUri = "urn:test:prod";
+        var appConfig = CreateTestAppConfig();
 
-        var securityConfig = new Core.Ua.Configuration.SecurityConfiguration(new());
-        var clientConfig = new Core.Ua.Configuration.ClientConfiguration();
-        var transportQuotas = new Core.Ua.Configuration.TransportQuotas();
-        var opLimits = new Core.Ua.Configuration.OperationLimits();
-
-        _mockClient.Setup(c => c.ConfigureAsync(
-                appName,
-                appUri,
-                productUri,
-                securityConfig,
-                clientConfig,
-                transportQuotas,
-                opLimits))
+        _mockClient.Setup(c => c.ConfigureAsync(appConfig))
             .Returns(Task.CompletedTask)
             .Verifiable();
 
         // Act
-        await sut.ConfigureAsync(appName, appUri, productUri, securityConfig, clientConfig, transportQuotas, opLimits);
+        await sut.ConfigureAsync(appConfig);
 
         // Assert
         // Verify that the client's Configure method was called with the exact same parameters.
@@ -825,7 +813,7 @@ public class S7ServiceUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        var nodeId = new NodeId("ns=3;s=Test");
+        var nodeId = new Opc.Ua.NodeId("ns=3;s=Test");
         var variable = new S7Variable { DisplayName = "TestVar", NodeId = nodeId.ToString(), S7Type = S7DataType.INT };
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
@@ -865,7 +853,7 @@ public class S7ServiceUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        var nodeId = new NodeId("ns=3;s=Test");
+        var nodeId = new Opc.Ua.NodeId("ns=3;s=Test");
         var variable = new S7Variable { DisplayName = "TestVar", NodeId = nodeId.ToString(), S7Type = S7DataType.INT };
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
@@ -898,7 +886,7 @@ public class S7ServiceUnitTests
         // Arrange
         var sut = CreateSut();
         const string path = "DataBlocksGlobal.DB1.TestVar";
-        var variable = new S7Variable { DisplayName = "TestVar", NodeId = new NodeId(1).ToString(), IsSubscribed = false, SamplingInterval = 500 };
+        var variable = new S7Variable { DisplayName = "TestVar", NodeId = new Opc.Ua.NodeId(1).ToString(), IsSubscribed = false, SamplingInterval = 500 };
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
@@ -928,9 +916,9 @@ public class S7ServiceUnitTests
         // Arrange
         var sut = CreateSut();
 
-        var varToSub1 = new S7Variable { DisplayName = "Var1", NodeId = new NodeId(1).ToString(), IsSubscribed = true, SamplingInterval = 100, FullPath = "DB.Var1" };
-        var varToSub2 = new S7Variable { DisplayName = "Var2", NodeId = new NodeId(2).ToString(), IsSubscribed = true, SamplingInterval = 200, FullPath = "DB.Var2" };
-        var varNotToSub = new S7Variable { DisplayName = "Var3", NodeId = new NodeId(3).ToString(), IsSubscribed = false, FullPath = "DB.Var3" };
+        var varToSub1 = new S7Variable { DisplayName = "Var1", NodeId = new Opc.Ua.NodeId(1).ToString(), IsSubscribed = true, SamplingInterval = 100, FullPath = "DB.Var1" };
+        var varToSub2 = new S7Variable { DisplayName = "Var2", NodeId = new Opc.Ua.NodeId(2).ToString(), IsSubscribed = true, SamplingInterval = 200, FullPath = "DB.Var2" };
+        var varNotToSub = new S7Variable { DisplayName = "Var3", NodeId = new Opc.Ua.NodeId(3).ToString(), IsSubscribed = false, FullPath = "DB.Var3" };
 
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB", Variables = [varToSub1, varToSub2, varNotToSub] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
@@ -964,8 +952,8 @@ public class S7ServiceUnitTests
         // Arrange
         var sut = CreateSut();
 
-        var varToSub1 = new S7Variable { DisplayName = "Var1", NodeId = new NodeId(1).ToString(), IsSubscribed = true, FullPath = "DB.Var1" };
-        var varToFail = new S7Variable { DisplayName = "Var2", NodeId = new NodeId(2).ToString(), IsSubscribed = true, FullPath = "DB.Var2" };
+        var varToSub1 = new S7Variable { DisplayName = "Var1", NodeId = new Opc.Ua.NodeId(1).ToString(), IsSubscribed = true, FullPath = "DB.Var1" };
+        var varToFail = new S7Variable { DisplayName = "Var2", NodeId = new Opc.Ua.NodeId(2).ToString(), IsSubscribed = true, FullPath = "DB.Var2" };
 
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB", Variables = [varToSub1, varToFail] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
@@ -989,7 +977,7 @@ public class S7ServiceUnitTests
         // Arrange
         var sut = CreateSut();
         const string path = "DataBlocksGlobal.DB1.TestVar";
-        var variable = new S7Variable { DisplayName = "TestVar", NodeId = new NodeId(1).ToString(), IsSubscribed = true };
+        var variable = new S7Variable { DisplayName = "TestVar", NodeId = new Opc.Ua.NodeId(1).ToString(), IsSubscribed = true };
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
@@ -1013,7 +1001,7 @@ public class S7ServiceUnitTests
         // Arrange
         var sut = CreateSut();
         const string path = "DataBlocksGlobal.DB1.TestVar";
-        var nodeId = new NodeId(123, 2);
+        var nodeId = new Opc.Ua.NodeId(123, 2);
         var oldVariable = new S7Variable
         {
             NodeId = nodeId.ToString(),
@@ -1028,8 +1016,8 @@ public class S7ServiceUnitTests
         var nodeIdToPathMap = (Dictionary<string, string>)PrivateFieldHelpers.GetPrivateField(sut, "_nodeIdToPathMap")!;
         nodeIdToPathMap[nodeId.ToString()] = path;
 
-        var monitoredItem = new MonitoredItem { StartNodeId = nodeId, DisplayName = "TestVar" };
-        var notification = new MonitoredItemNotification { Value = new DataValue(new Variant((short)200)) };
+        var monitoredItem = new Opc.Ua.Client.MonitoredItem { StartNodeId = nodeId, DisplayName = "TestVar" };
+        var notification = new Opc.Ua.MonitoredItemNotification { Value = new Opc.Ua.DataValue(new Opc.Ua.Variant((short)200)) };
         var clientEventArgs = new MonitoredItemChangedEventArgs(monitoredItem, notification);
 
         _mockClient.Setup(c => c.GetConverter(S7DataType.INT, typeof(short)))
@@ -1058,7 +1046,7 @@ public class S7ServiceUnitTests
         // Arrange
         var sut = CreateSut();
         const string path = "DataBlocksGlobal.DB1.TestVar";
-        var nodeId = new NodeId(123, 2);
+        var nodeId = new Opc.Ua.NodeId(123, 2);
         const short sameValue = 150;
         var oldVariable = new S7Variable
         {
@@ -1073,8 +1061,8 @@ public class S7ServiceUnitTests
         var nodeIdToPathMap = (Dictionary<string, string>)PrivateFieldHelpers.GetPrivateField(sut, "_nodeIdToPathMap")!;
         nodeIdToPathMap[nodeId.ToString()] = path;
 
-        var monitoredItem = new MonitoredItem { StartNodeId = nodeId };
-        var notification = new MonitoredItemNotification { Value = new DataValue(new Variant(sameValue)) };
+        var monitoredItem = new Opc.Ua.Client.MonitoredItem { StartNodeId = nodeId };
+        var notification = new Opc.Ua.MonitoredItemNotification { Value = new Opc.Ua.DataValue(new Opc.Ua.Variant(sameValue)) };
         var clientEventArgs = new MonitoredItemChangedEventArgs(monitoredItem, notification);
 
         _mockClient.Setup(c => c.GetConverter(It.IsAny<S7DataType>(), It.IsAny<Type>()))
@@ -1323,4 +1311,18 @@ public class S7ServiceUnitTests
     }
 
     #endregion Connection Tests
+
+    private static ApplicationConfiguration CreateTestAppConfig()
+    {
+        return new ApplicationConfiguration
+        {
+            ApplicationName = _appName,
+            ApplicationUri = _appUri,
+            ProductUri = _productUri,
+            SecurityConfiguration = new SecurityConfiguration(new SecurityConfigurationStores()),
+            ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
+            OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
+        };
+    }
 }

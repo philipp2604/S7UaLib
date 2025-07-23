@@ -125,15 +125,9 @@ internal interface IS7Service : IDisposable
     /// <summary>
     /// Configures the client for first use.
     /// </summary>
-    /// <param name="appName">The OPC-UA application name.</param>
-    /// <param name="appUri">The OPC UA application uri.</param>
-    /// <param name="productUri">The OPC UA product uri.</param>
-    /// <param name="securityConfiguration">The <see cref="Core.Ua.Configuration.SecurityConfiguration"/> used for configuring security settings.</param>
-    /// <param name="clientConfig">The <see cref="Core.Ua.Configuration.ClientConfiguration"/>, optionally used for configuring client related settings.</param>
-    /// <param name="transportQuotas">The <see cref="Core.Ua.Configuration.TransportQuotas"/>, optionally used for configuring transport quotas.</param>
-    /// <param name="opLimits">The <see cref="Core.Ua.Configuration.OperationLimits"/>, optionally used for configuring operation limits.</param>
+    /// <param name="appConfig">The <see cref="ApplicationConfiguration"/> to use for the client.</param>
     /// <returns>A task indicating the state of the async function.</returns>
-    public Task ConfigureAsync(string appName, string appUri, string productUri, SecurityConfiguration securityConfiguration, ClientConfiguration? clientConfig = null, TransportQuotas? transportQuotas = null, OperationLimits? opLimits = null);
+    public Task ConfigureAsync(ApplicationConfiguration appConfig);
 
     /// <summary>
     /// Saves the client's currently used configuration to a file.

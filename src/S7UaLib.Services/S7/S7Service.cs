@@ -197,17 +197,10 @@ public class S7Service : IS7Service
         await _client.LoadConfigurationAsync(filePath);
     }
 
-    /// <inheritdoc cref="IS7Service.ConfigureAsync(string, string, string, SecurityConfiguration, ClientConfiguration?, TransportQuotas?, OperationLimits?)"/>
-    public async Task ConfigureAsync(string appName,
-        string appUri,
-        string productUri,
-        SecurityConfiguration
-        securityConfiguration,
-        ClientConfiguration? clientConfig = null,
-        TransportQuotas? transportQuotas = null,
-        OperationLimits? opLimits = null)
+    /// <inheritdoc/>
+    public async Task ConfigureAsync(ApplicationConfiguration appConfig)
     {
-        await _client.ConfigureAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+        await _client.ConfigureAsync(appConfig);
     }
 
     /// <inheritdoc cref="IS7Service.AddTrustedCertificateAsync(X509Certificate2, CancellationToken)"/>

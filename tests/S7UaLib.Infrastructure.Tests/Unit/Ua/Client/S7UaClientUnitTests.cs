@@ -1,8 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
-using Opc.Ua.Client;
-using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
@@ -19,8 +17,11 @@ public class S7UaClientUnitTests
     private readonly Mock<ILoggerFactory> _mockLoggerFactory;
     private readonly Mock<ILogger<S7UaClient>> _mockLogger;
     private readonly Action<IList, IList> _validateResponse;
-    private readonly Mock<ISession> _mockSession;
+    private readonly Mock<Opc.Ua.Client.ISession> _mockSession;
     private readonly UserIdentity? _userIdentity = new();
+    private const string _appName = "S7UaLib Integration Tests";
+    private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
+    private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
 
     public S7UaClientUnitTests()
     {
@@ -30,7 +31,7 @@ public class S7UaClientUnitTests
 
         _validateResponse = (_, _) => { };
 
-        _mockSession = new Mock<ISession>();
+        _mockSession = new Mock<Opc.Ua.Client.ISession>();
         _mockSession.SetupGet(s => s.Connected).Returns(true);
     }
 
@@ -73,12 +74,26 @@ public class S7UaClientUnitTests
         var certStores = new SecurityConfigurationStores
         {
             AppRoot = Path.Combine(rootPath, "certs"),
-            TrustedRoot = Path.Combine(rootPath, "certs", "trusted"),
-            IssuerRoot = Path.Combine(rootPath, "certs", "issuer"),
-            RejectedRoot = Path.Combine(rootPath, "certs", "rejected"),
+            TrustedRoot = Path.Combine(rootPath, "certs"),
+            IssuerRoot = Path.Combine(rootPath, "certs"),
+            RejectedRoot = Path.Combine(rootPath, "certs"),
             SubjectName = "CN=S7UaClient.Test"
         };
         return new SecurityConfiguration(certStores);
+    }
+
+    private static ApplicationConfiguration CreateTestAppConfig(string certRootPath)
+    {
+        return new ApplicationConfiguration
+        {
+            ApplicationName = _appName,
+            ApplicationUri = _appUri,
+            ProductUri = _productUri,
+            SecurityConfiguration = CreateTestSecurityConfig(certRootPath),
+            ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
+            OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
+        };
     }
 
     [Fact]
@@ -87,11 +102,11 @@ public class S7UaClientUnitTests
         // Arrange
         var client = new S7UaClient();
         client.Dispose();
-        var securityConfig = CreateTestSecurityConfig(Path.GetTempPath());
+        var appConfig = CreateTestAppConfig(Path.GetTempPath());
 
         // Act & Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            client.ConfigureAsync("TestApp", "urn:test", "urn:test:prod", securityConfig));
+            client.ConfigureAsync(appConfig));
     }
 
     [Fact]
@@ -105,66 +120,36 @@ public class S7UaClientUnitTests
         const string appUri = "urn:localhost:mytestapp";
         const string productUri = "urn:mycompany:mytestapp";
 
-        // Act
-        await client.ConfigureAsync(appName, appUri, productUri, securityConfig);
-
-        // Assert
-        var appInst = PrivateFieldHelpers.GetPrivateField(client, "_appInst") as ApplicationInstance;
-        Assert.NotNull(appInst);
-
-        var appConfig = appInst.ApplicationConfiguration;
-        Assert.NotNull(appConfig);
-        Assert.Equal(appName, appConfig.ApplicationName);
-        Assert.Equal(appUri, appConfig.ApplicationUri);
-        Assert.Equal(productUri, appConfig.ProductUri);
-        Assert.Equal("CN=S7UaClient.Test", appConfig.SecurityConfiguration.ApplicationCertificate.SubjectName);
-    }
-
-    [Fact]
-    public async Task Configure_WithAllParameters_SetsFullConfigurationCorrectly()
-    {
-        // Arrange
-        using var tempDir = new TempDirectory();
-        var client = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
-        var securityConfig = CreateTestSecurityConfig(tempDir.Path);
-
-        var clientConfig = new Core.Ua.Configuration.ClientConfiguration
+        var appConfig = new ApplicationConfiguration()
         {
-            SessionTimeout = 60000,
-            WellKnownDiscoveryUrls = ["opc.tcp://localhost:4840/discovery"]
-        };
-
-        var transportQuotas = new Core.Ua.Configuration.TransportQuotas
-        {
-            MaxArrayLength = 2048,
-            OperationTimeout = 120000
-        };
-
-        var opLimits = new Core.Ua.Configuration.OperationLimits
-        {
-            MaxNodesPerRead = 500,
-            MaxNodesPerWrite = 500
+            ApplicationName = appName,
+            ApplicationUri = appUri,
+            ProductUri = productUri,
         };
 
         // Act
-        await client.ConfigureAsync("FullApp", "urn:full", "urn:prod:full", securityConfig, clientConfig, transportQuotas, opLimits);
+        await client.ConfigureAsync(appConfig);
 
         // Assert
-        var appInst = PrivateFieldHelpers.GetPrivateField(client, "_appInst") as ApplicationInstance;
+        var appInst = PrivateFieldHelpers.GetPrivateField(client, "_appInst") as Opc.Ua.Configuration.ApplicationInstance;
         Assert.NotNull(appInst);
-        var appConfig = appInst.ApplicationConfiguration;
 
-        // Verify Client Config
-        Assert.Equal(clientConfig.SessionTimeout, (uint)appConfig.ClientConfiguration.DefaultSessionTimeout);
-        Assert.Contains(clientConfig.WellKnownDiscoveryUrls[0], appConfig.ClientConfiguration.WellKnownDiscoveryUrls);
+        var retrievedAppConfig = appInst.ApplicationConfiguration;
+        Assert.NotNull(retrievedAppConfig);
+        Assert.Equal(appName, retrievedAppConfig.ApplicationName);
+        Assert.Equal(appUri, retrievedAppConfig.ApplicationUri);
+        Assert.Equal(productUri, retrievedAppConfig.ProductUri);
+        Assert.Equal(Path.Combine(securityConfig.SecurityConfigurationStores.AppRoot, "own"), Path.Combine(tempDir.Path, retrievedAppConfig.SecurityConfiguration.ApplicationCertificate.StorePath));
+        Assert.Equal(Path.Combine(tempDir.Path, client.ApplicationConfiguration!.SecurityConfiguration.SecurityConfigurationStores.AppRoot), securityConfig.SecurityConfigurationStores.AppRoot);
 
-        // Verify Transport Quotas
-        Assert.Equal(transportQuotas.MaxArrayLength, (uint)appConfig.TransportQuotas.MaxArrayLength);
-        Assert.Equal(transportQuotas.OperationTimeout, (uint)appConfig.TransportQuotas.OperationTimeout);
+        Assert.Equal((uint)retrievedAppConfig.ClientConfiguration.DefaultSessionTimeout, appConfig.ClientConfiguration.SessionTimeout);
+        Assert.Contains(retrievedAppConfig.ClientConfiguration.WellKnownDiscoveryUrls[0], appConfig.ClientConfiguration.WellKnownDiscoveryUrls);
 
-        // Verify Operation Limits
-        Assert.Equal(opLimits.MaxNodesPerRead, appConfig.ClientConfiguration.OperationLimits.MaxNodesPerRead);
-        Assert.Equal(opLimits.MaxNodesPerWrite, appConfig.ClientConfiguration.OperationLimits.MaxNodesPerWrite);
+        Assert.Equal((uint)retrievedAppConfig.TransportQuotas.MaxArrayLength, (uint)appConfig.TransportQuotas.MaxArrayLength);
+        Assert.Equal((uint)retrievedAppConfig.TransportQuotas.OperationTimeout, (uint)appConfig.TransportQuotas.OperationTimeout);
+
+        Assert.Equal(retrievedAppConfig.ClientConfiguration.OperationLimits.MaxNodesPerRead, appConfig.ClientConfiguration.OperationLimits.MaxNodesPerRead);
+        Assert.Equal(retrievedAppConfig.ClientConfiguration.OperationLimits.MaxNodesPerWrite, appConfig.ClientConfiguration.OperationLimits.MaxNodesPerWrite);
     }
 
     [Fact]
@@ -194,7 +179,8 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        var appConfig = CreateTestAppConfig(tempDir.Path);
+        await client.ConfigureAsync(appConfig);
 
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() => client.SaveConfiguration(null!));
@@ -208,7 +194,8 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        var appConfig = CreateTestAppConfig(tempDir.Path);
+        await client.ConfigureAsync(appConfig);
 
         // Act & Assert
         Assert.Throws<ArgumentException>(() => client.SaveConfiguration(filePath!));
@@ -220,7 +207,8 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        var appConfig = CreateTestAppConfig(tempDir.Path);
+        await client.ConfigureAsync(appConfig);
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() => client.LoadConfigurationAsync(null!));
@@ -234,7 +222,8 @@ public class S7UaClientUnitTests
         // Arrange
         using var tempDir = new TempDirectory();
         var client = new S7UaClient();
-        await client.ConfigureAsync("TestApp", "urn:test", "urn:prod", CreateTestSecurityConfig(tempDir.Path));
+        var appConfig = CreateTestAppConfig(tempDir.Path);
+        await client.ConfigureAsync(appConfig);
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() => client.LoadConfigurationAsync(filePath));
@@ -248,8 +237,12 @@ public class S7UaClientUnitTests
 
         // --- Arrange: Create and save a configuration ---
         var saveClient = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
-        var securityConfig = CreateTestSecurityConfig(tempDir.Path);
-        await saveClient.ConfigureAsync("SavedApp", "urn:saved", "urn:prod:saved", securityConfig, new Core.Ua.Configuration.ClientConfiguration { SessionTimeout = 99000 });
+        var saveAppConfig = CreateTestAppConfig(tempDir.Path);
+        saveAppConfig.ApplicationName = "SavedApp";
+        saveAppConfig.ApplicationUri = "urn:saved";
+        saveAppConfig.ProductUri = "urn:prod:saved";
+        saveAppConfig.ClientConfiguration.SessionTimeout = 99000;
+        await saveClient.ConfigureAsync(saveAppConfig);
 
         // --- Act 1: Save the configuration ---
         saveClient.SaveConfiguration(configFilePath);
@@ -262,13 +255,17 @@ public class S7UaClientUnitTests
 
         // --- Arrange 2: Create a new client with a different initial config ---
         var loadClient = new S7UaClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
-        await loadClient.ConfigureAsync("InitialApp", "urn:initial", "urn:prod:initial", CreateTestSecurityConfig(tempDir.Path));
+        var loadAppConfig = CreateTestAppConfig(tempDir.Path);
+        loadAppConfig.ApplicationName = "InitialApp";
+        loadAppConfig.ApplicationUri = "urn:initial";
+        loadAppConfig.ProductUri = "urn:prod:initial";
+        await loadClient.ConfigureAsync(loadAppConfig);
 
         // --- Act 2: Load the previously saved configuration ---
         await loadClient.LoadConfigurationAsync(configFilePath);
 
         // --- Assert 2: The client's configuration is now updated ---
-        var appInst = PrivateFieldHelpers.GetPrivateField(loadClient, "_appInst") as ApplicationInstance;
+        var appInst = PrivateFieldHelpers.GetPrivateField(loadClient, "_appInst") as Opc.Ua.Configuration.ApplicationInstance;
         Assert.NotNull(appInst);
 
         var loadedConfig = appInst.ApplicationConfiguration;
@@ -298,8 +295,8 @@ public class S7UaClientUnitTests
     {
         // Arrange
         var client = CreateSut();
-        var mockSession = new Mock<ISession>();
-        var reconnectHandler = new SessionReconnectHandler(true, -1);
+        var mockSession = new Mock<Opc.Ua.Client.ISession>();
+        var reconnectHandler = new Opc.Ua.Client.SessionReconnectHandler(true, -1);
 
         PrivateFieldHelpers.SetPrivateField(client, "_session", mockSession.Object);
         PrivateFieldHelpers.SetPrivateField(client, "_reconnectHandler", reconnectHandler);
@@ -322,9 +319,9 @@ public class S7UaClientUnitTests
     {
         // Arrange
         var client = CreateSut();
-        var mockSession = new Mock<ISession>();
+        var mockSession = new Mock<Opc.Ua.Client.ISession>();
         PrivateFieldHelpers.SetPrivateField(client, "_session", mockSession.Object);
-        PrivateFieldHelpers.SetPrivateField(client, "_reconnectHandler", new Mock<SessionReconnectHandler>(true, -1).Object);
+        PrivateFieldHelpers.SetPrivateField(client, "_reconnectHandler", new Mock<Opc.Ua.Client.SessionReconnectHandler>(true, -1).Object);
 
         bool disconnectingFired = false;
         bool disconnectedFired = false;
@@ -344,7 +341,7 @@ public class S7UaClientUnitTests
     {
         // Arrange
         var client = CreateSut();
-        var mockSession = new Mock<ISession>();
+        var mockSession = new Mock<Opc.Ua.Client.ISession>();
 
         // Act & Assert
         Assert.False(client.IsConnected, "Should not be connected initially.");
@@ -366,9 +363,9 @@ public class S7UaClientUnitTests
         var client = CreateSut();
         client.ReconnectPeriod = 1000;
 
-        var mockSession = new Mock<ISession>();
+        var mockSession = new Mock<Opc.Ua.Client.ISession>();
 
-        var mockReconnectHandler = new Mock<SessionReconnectHandler>(true, -1);
+        var mockReconnectHandler = new Mock<Opc.Ua.Client.SessionReconnectHandler>(true, -1);
 
         PrivateFieldHelpers.SetPrivateField(client, "_session", mockSession.Object);
         PrivateFieldHelpers.SetPrivateField(client, "_reconnectHandler", mockReconnectHandler.Object);
@@ -376,7 +373,7 @@ public class S7UaClientUnitTests
         bool reconnectingFired = false;
         client.Reconnecting += (s, e) => reconnectingFired = true;
 
-        var keepAliveEventArgs = new KeepAliveEventArgs(new Opc.Ua.ServiceResult(Opc.Ua.StatusCodes.BadConnectionClosed), Opc.Ua.ServerState.CommunicationFault, DateTime.Now);
+        var keepAliveEventArgs = new Opc.Ua.Client.KeepAliveEventArgs(new Opc.Ua.ServiceResult(Opc.Ua.StatusCodes.BadConnectionClosed), Opc.Ua.ServerState.CommunicationFault, DateTime.Now);
 
         Assert.False(keepAliveEventArgs.CancelKeepAlive);
 
@@ -776,12 +773,12 @@ public class S7UaClientUnitTests
         var mockClient = new Mock<S7UaClient>(_userIdentity!, _validateResponse, _mockLoggerFactory.Object) { CallBase = true };
         var client = mockClient.Object;
 
-        _mockSession.Setup(s => s.DefaultSubscription).Returns(new Subscription());
+        _mockSession.Setup(s => s.DefaultSubscription).Returns(new Opc.Ua.Client.Subscription());
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
-        _mockSession.Setup(s => s.AddSubscription(It.IsAny<Subscription>())).Returns(true);
+        _mockSession.Setup(s => s.AddSubscription(It.IsAny<Opc.Ua.Client.Subscription>())).Returns(true);
 
         mockClient.Protected()
-            .Setup<Task>("CreateSubscriptionOnServerAsync", ItExpr.IsAny<Subscription>())
+            .Setup<Task>("CreateSubscriptionOnServerAsync", ItExpr.IsAny<Opc.Ua.Client.Subscription>())
             .Returns(Task.CompletedTask)
             .Verifiable();
 
@@ -790,8 +787,8 @@ public class S7UaClientUnitTests
 
         // Assert
         Assert.True(result, "CreateSubscriptionAsync should have returned true.");
-        _mockSession.Verify(s => s.AddSubscription(It.IsAny<Subscription>()), Times.Once);
-        mockClient.Protected().Verify("CreateSubscriptionOnServerAsync", Times.Once(), ItExpr.IsAny<Subscription>());
+        _mockSession.Verify(s => s.AddSubscription(It.IsAny<Opc.Ua.Client.Subscription>()), Times.Once);
+        mockClient.Protected().Verify("CreateSubscriptionOnServerAsync", Times.Once(), ItExpr.IsAny<Opc.Ua.Client.Subscription>());
     }
 
     [Fact]
@@ -800,7 +797,7 @@ public class S7UaClientUnitTests
         // Arrange
         var client = CreateSut();
 
-        var existingSubscription = new Mock<Subscription>(new Subscription());
+        var existingSubscription = new Mock<Opc.Ua.Client.Subscription>(new Opc.Ua.Client.Subscription());
         PrivateFieldHelpers.SetPrivateField(client, "_session", _mockSession.Object);
         PrivateFieldHelpers.SetPrivateField(client, "_subscription", existingSubscription.Object);
 
@@ -809,7 +806,7 @@ public class S7UaClientUnitTests
 
         // Assert
         Assert.True(result);
-        _mockSession.Verify(s => s.AddSubscription(It.IsAny<Subscription>()), Times.Never);
+        _mockSession.Verify(s => s.AddSubscription(It.IsAny<Opc.Ua.Client.Subscription>()), Times.Never);
     }
 
     [Fact]
@@ -820,12 +817,12 @@ public class S7UaClientUnitTests
         var client = mockClient.Object;
         var variable = new S7Variable { NodeId = new Opc.Ua.NodeId("ns=2;s=Var1").ToString(), DisplayName = "Var1" };
 
-        var subscription = new Subscription(_mockSession.Object.DefaultSubscription);
+        var subscription = new Opc.Ua.Client.Subscription(_mockSession.Object.DefaultSubscription);
 
         PrivateFieldHelpers.SetPrivateField(client, "_subscription", subscription);
 
         mockClient.Protected()
-            .Setup<Task>("ApplySubscriptionChangesAsync", ItExpr.IsAny<Subscription>())
+            .Setup<Task>("ApplySubscriptionChangesAsync", ItExpr.IsAny<Opc.Ua.Client.Subscription>())
             .Returns(Task.CompletedTask)
             .Verifiable();
 
@@ -837,7 +834,7 @@ public class S7UaClientUnitTests
         Assert.Single(subscription.MonitoredItems);
         Assert.Equal(variable.NodeId, subscription.MonitoredItems.First().StartNodeId);
 
-        mockClient.Protected().Verify("ApplySubscriptionChangesAsync", Times.Once(), ItExpr.IsAny<Subscription>());
+        mockClient.Protected().Verify("ApplySubscriptionChangesAsync", Times.Once(), ItExpr.IsAny<Opc.Ua.Client.Subscription>());
     }
 
     [Fact]
@@ -849,21 +846,21 @@ public class S7UaClientUnitTests
 
         var variable = new S7Variable { NodeId = new Opc.Ua.NodeId("ns=2;s=Var1").ToString(), DisplayName = "Var1" };
 
-        var subscription = new Subscription(_mockSession.Object.DefaultSubscription);
-        var monitoredItem = new MonitoredItem(subscription.DefaultItem)
+        var subscription = new Opc.Ua.Client.Subscription(_mockSession.Object.DefaultSubscription);
+        var monitoredItem = new Opc.Ua.Client.MonitoredItem(subscription.DefaultItem)
         {
             StartNodeId = variable.NodeId
         };
         subscription.AddItem(monitoredItem);
 
         PrivateFieldHelpers.SetPrivateField(client, "_subscription", subscription);
-        var monitoredItemsDict = (Dictionary<Opc.Ua.NodeId, MonitoredItem>)PrivateFieldHelpers.GetPrivateField(client, "_monitoredItems")!;
+        var monitoredItemsDict = (Dictionary<Opc.Ua.NodeId, Opc.Ua.Client.MonitoredItem>)PrivateFieldHelpers.GetPrivateField(client, "_monitoredItems")!;
         monitoredItemsDict[variable.NodeId] = monitoredItem;
 
         Assert.Single(subscription.MonitoredItems);
 
         mockClient.Protected()
-            .Setup<Task>("ApplySubscriptionChangesAsync", ItExpr.IsAny<Subscription>())
+            .Setup<Task>("ApplySubscriptionChangesAsync", ItExpr.IsAny<Opc.Ua.Client.Subscription>())
             .Returns(Task.CompletedTask)
             .Verifiable();
 
@@ -873,7 +870,7 @@ public class S7UaClientUnitTests
         // Assert
         Assert.True(result, "UnsubscribeFromVariableAsync should return true on success.");
         Assert.Empty(subscription.MonitoredItems);
-        mockClient.Protected().Verify("ApplySubscriptionChangesAsync", Times.Once(), ItExpr.IsAny<Subscription>());
+        mockClient.Protected().Verify("ApplySubscriptionChangesAsync", Times.Once(), ItExpr.IsAny<Opc.Ua.Client.Subscription>());
     }
 
     #endregion Subscription Tests

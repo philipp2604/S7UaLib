@@ -1,11 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
-using Opc.Ua;
-using Opc.Ua.Client;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.S7.Converters;
 using S7UaLib.Infrastructure.Ua.Converters;
@@ -28,23 +27,23 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     private readonly ILogger? _logger;
     private readonly ILoggerFactory? _loggerFactory;
-    private SessionReconnectHandler? _reconnectHandler;
-    private ISession? _session;
+    private Opc.Ua.Client.SessionReconnectHandler? _reconnectHandler;
+    private Opc.Ua.Client.ISession? _session;
     private Opc.Ua.Configuration.ApplicationInstance? _appInst;
     private readonly Action<IList, IList> _validateResponse;
     private bool _disposed;
     private readonly SemaphoreSlim _sessionSemaphore = new(1, 1);
-    private Subscription? _subscription;
-    private readonly Dictionary<NodeId, MonitoredItem> _monitoredItems = [];
+    private Opc.Ua.Client.Subscription? _subscription;
+    private readonly Dictionary<Opc.Ua.NodeId, Opc.Ua.Client.MonitoredItem> _monitoredItems = [];
     private readonly SemaphoreSlim _subscriptionSemaphore = new(1, 1);
 
-    private static readonly NodeId _dataBlocksGlobalRootNode = new(S7StructureConstants._s7DataBlocksGlobalNamespaceIdentifier);
-    private static readonly NodeId _dataBlocksInstanceRootNode = new(S7StructureConstants._s7DataBlocksInstanceNamespaceIdentifier);
-    private static readonly NodeId _memoryRootNode = new(S7StructureConstants._s7MemoryNamespaceIdentifier);
-    private static readonly NodeId _inputsRootNode = new(S7StructureConstants._s7InputsNamespaceIdentifier);
-    private static readonly NodeId _outputsRootNode = new(S7StructureConstants._s7OutputsNamespaceIdentifier);
-    private static readonly NodeId _timersRootNode = new(S7StructureConstants._s7TimersNamespaceIdentifier);
-    private static readonly NodeId _countersRootNode = new(S7StructureConstants._s7CountersNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _dataBlocksGlobalRootNode = new(S7StructureConstants._s7DataBlocksGlobalNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _dataBlocksInstanceRootNode = new(S7StructureConstants._s7DataBlocksInstanceNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _memoryRootNode = new(S7StructureConstants._s7MemoryNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _inputsRootNode = new(S7StructureConstants._s7InputsNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _outputsRootNode = new(S7StructureConstants._s7OutputsNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _timersRootNode = new(S7StructureConstants._s7TimersNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _countersRootNode = new(S7StructureConstants._s7CountersNamespaceIdentifier);
 
     #region Instance Type Converters
 
@@ -75,7 +74,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
-    public S7UaClient(Core.Ua.UserIdentity? userIdentity = null, ILoggerFactory? loggerFactory = null) : this(userIdentity, ClientBase.ValidateResponse, loggerFactory)
+    public S7UaClient(Core.Ua.UserIdentity? userIdentity = null, ILoggerFactory? loggerFactory = null) : this(userIdentity, Opc.Ua.ClientBase.ValidateResponse, loggerFactory)
     { }
 
     /// <summary>
@@ -225,6 +224,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Public Properties
 
+    /// <inheritdoc/>
+    public ApplicationConfiguration? ApplicationConfiguration { get; private set; }
+
     /// <inheritdoc cref="IS7UaClient.KeepAliveInterval"/>
     public int KeepAliveInterval { get; set; } = 5000;
 
@@ -246,11 +248,11 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Configuration Methods
 
-    /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.Configuration.SecurityConfiguration, S7UaLib.Core.Ua.Configuration.ClientConfiguration?, S7UaLib.Core.Ua.Configuration.TransportQuotas?, S7UaLib.Core.Ua.Configuration.OperationLimits?)"/>
-    public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
+    /// <inheritdoc/>
+    public async Task ConfigureAsync(ApplicationConfiguration appConfig)
     {
         ThrowIfDisposed();
-        await BuildClientAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+        await BuildClientAsync(appConfig);
     }
 
     /// <inheritdoc cref="IS7UaClient.SaveConfiguration(string)"/>
@@ -271,6 +273,72 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         await _appInst.LoadApplicationConfiguration(filePath, false);
 
+        var appConfig = new ApplicationConfiguration()
+        {
+            ApplicationName = _appInst.ApplicationName,
+            ApplicationUri = _appInst.ApplicationConfiguration.ApplicationUri,
+            ProductUri = _appInst.ApplicationConfiguration.ProductUri,
+            TransportQuotas = new TransportQuotas()
+            {
+                ChannelLifetime = (uint)_appInst.ApplicationConfiguration.TransportQuotas.ChannelLifetime,
+                MaxStringLength = (uint)_appInst.ApplicationConfiguration.TransportQuotas.MaxStringLength,
+                MaxByteStringLength = (uint)_appInst.ApplicationConfiguration.TransportQuotas.MaxByteStringLength,
+                MaxArrayLength = (uint)_appInst.ApplicationConfiguration.TransportQuotas.MaxArrayLength,
+                MaxBufferSize = (uint)_appInst.ApplicationConfiguration.TransportQuotas.MaxBufferSize,
+                MaxDecoderRecoveries = (uint)_appInst.ApplicationConfiguration.TransportQuotas.MaxDecoderRecoveries,
+                MaxEncodingNestingLevels = (uint)_appInst.ApplicationConfiguration.TransportQuotas.MaxEncodingNestingLevels,
+                MaxMessageSize = (uint)_appInst.ApplicationConfiguration.TransportQuotas.MaxMessageSize,
+                OperationTimeout = (uint)_appInst.ApplicationConfiguration.TransportQuotas.OperationTimeout,
+                SecurityTokenLifetime = (uint)_appInst.ApplicationConfiguration.TransportQuotas.SecurityTokenLifetime
+            },
+            ClientConfiguration = new ClientConfiguration()
+            {
+                WellKnownDiscoveryUrls = [.. _appInst.ApplicationConfiguration.ClientConfiguration.WellKnownDiscoveryUrls],
+                SessionTimeout = (uint)_appInst.ApplicationConfiguration.ClientConfiguration.DefaultSessionTimeout,
+                MinSubscriptionLifetime = (uint)_appInst.ApplicationConfiguration.ClientConfiguration.MinSubscriptionLifetime,
+            },
+            OperationLimits = new OperationLimits()
+            {
+                MaxMonitoredItemsPerCall = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxMonitoredItemsPerCall,
+                MaxNodesPerBrowse = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerBrowse,
+                MaxNodesPerHistoryReadData = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadData,
+                MaxNodesPerHistoryReadEvents = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadEvents,
+                MaxNodesPerHistoryUpdateData = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateData,
+                MaxNodesPerHistoryUpdateEvents = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateEvents,
+                MaxNodesPerMethodCall = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerMethodCall,
+                MaxNodesPerNodeManagement = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerNodeManagement,
+                MaxNodesPerRead = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerRead,
+                MaxNodesPerRegisterNodes = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerRegisterNodes,
+                MaxNodesPerTranslateBrowsePathsToNodeIds = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds,
+                MaxNodesPerWrite = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerWrite
+            },
+            SecurityConfiguration = new SecurityConfiguration(
+                new SecurityConfigurationStores(
+                    _appInst.ApplicationConfiguration.SecurityConfiguration.ApplicationCertificate.SubjectName,
+                    _appInst.ApplicationConfiguration.SecurityConfiguration.TrustedPeerCertificates.StorePath,
+                    _appInst.ApplicationConfiguration.SecurityConfiguration.ApplicationCertificates.StorePath,
+                    _appInst.ApplicationConfiguration.SecurityConfiguration.TrustedIssuerCertificates.StorePath,
+                    _appInst.ApplicationConfiguration.SecurityConfiguration.RejectedCertificateStore.StorePath))
+            {
+                SendCertificateChain = _appInst.ApplicationConfiguration.SecurityConfiguration.SendCertificateChain,
+                AddAppCertToTrustedStore = _appInst.ApplicationConfiguration.SecurityConfiguration.AddAppCertToTrustedStore,
+                AutoAcceptUntrustedCertificates = _appInst.ApplicationConfiguration.SecurityConfiguration.AutoAcceptUntrustedCertificates,
+                MaxRejectedCertificates = (uint)_appInst.ApplicationConfiguration.SecurityConfiguration.MaxRejectedCertificates,
+                MinCertificateKeySize = _appInst.ApplicationConfiguration.SecurityConfiguration.MinimumCertificateKeySize,
+                RejectSHA1SignedCertificates = _appInst.ApplicationConfiguration.SecurityConfiguration.RejectSHA1SignedCertificates,
+                RejectUnknownRevocationStatus = _appInst.ApplicationConfiguration.SecurityConfiguration.RejectUnknownRevocationStatus,
+                SuppressNonceValidationErrors = _appInst.ApplicationConfiguration.SecurityConfiguration.SuppressNonceValidationErrors,
+                UseValidatedCertificates = _appInst.ApplicationConfiguration.SecurityConfiguration.UseValidatedCertificates,
+                SkipDomainValidation = new DomainValidation()
+                {
+                    Skip = _appInst.ApplicationConfiguration.Extensions
+                    .Find(x => x.Name == "SkipDomainValidation") is XmlElement xmlElement && xmlElement.FirstChild is XmlNode skipNode && bool.TryParse(skipNode.InnerText, out var skipDomainValidation) && skipDomainValidation
+                }
+            }
+        };
+
+        ApplicationConfiguration = appConfig;
+
         _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
     }
 
@@ -285,76 +353,69 @@ internal class S7UaClient : IS7UaClient, IDisposable
         await _appInst.ApplicationConfiguration.CertificateValidator.UpdateAsync(_appInst.ApplicationConfiguration.SecurityConfiguration);
     }
 
-    internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
+    internal async Task BuildClientAsync(ApplicationConfiguration appConfig)
     {
         _appInst = new()
         {
-            ApplicationName = appName,
+            ApplicationName = appConfig.ApplicationName,
             ApplicationType = Opc.Ua.ApplicationType.Client
         };
 
-        var build = _appInst.Build(appUri, productUri);
+        var build = _appInst.Build(appConfig.ApplicationUri, appConfig.ProductUri);
 
-        if (transportQuotas != null)
-        {
-            build.SetChannelLifetime((int)transportQuotas.ChannelLifetime)
-                .SetMaxStringLength((int)transportQuotas.MaxStringLength)
-                .SetMaxByteStringLength((int)transportQuotas.MaxByteStringLength)
-                .SetMaxArrayLength((int)transportQuotas.MaxArrayLength)
-                .SetMaxBufferSize((int)transportQuotas.MaxBufferSize)
-                .SetMaxDecoderRecoveries((int)transportQuotas.MaxDecoderRecoveries)
-                .SetMaxEncodingNestingLevels((int)transportQuotas.MaxEncodingNestingLevels)
-                .SetMaxMessageSize((int)transportQuotas.MaxMessageSize)
-                .SetOperationTimeout((int)transportQuotas.OperationTimeout)
-                .SetSecurityTokenLifetime((int)transportQuotas.SecurityTokenLifetime);
-        }
+        build.SetChannelLifetime((int)appConfig.TransportQuotas.ChannelLifetime)
+                .SetMaxStringLength((int)appConfig.TransportQuotas.MaxStringLength)
+                .SetMaxByteStringLength((int)appConfig.TransportQuotas.MaxByteStringLength)
+                .SetMaxArrayLength((int)appConfig.TransportQuotas.MaxArrayLength)
+                .SetMaxBufferSize((int)appConfig.TransportQuotas.MaxBufferSize)
+                .SetMaxDecoderRecoveries((int)appConfig.TransportQuotas.MaxDecoderRecoveries)
+                .SetMaxEncodingNestingLevels((int)appConfig.TransportQuotas.MaxEncodingNestingLevels)
+                .SetMaxMessageSize((int)appConfig.TransportQuotas.MaxMessageSize)
+                .SetOperationTimeout((int)appConfig.TransportQuotas.OperationTimeout)
+                .SetSecurityTokenLifetime((int)appConfig.TransportQuotas.SecurityTokenLifetime);
 
         var clientBuild = build.AsClient();
 
-        clientConfig ??= new();
-        foreach (var uri in clientConfig.WellKnownDiscoveryUrls)
+        foreach (var uri in appConfig.ClientConfiguration.WellKnownDiscoveryUrls)
         {
             clientBuild.AddWellKnownDiscoveryUrls(uri);
         }
 
-        if (opLimits != null)
-        {
-            clientBuild.SetClientOperationLimits(
+        clientBuild.SetClientOperationLimits(
                 new Opc.Ua.OperationLimits()
                 {
-                    MaxMonitoredItemsPerCall = opLimits.MaxMonitoredItemsPerCall,
-                    MaxNodesPerBrowse = opLimits.MaxNodesPerBrowse,
-                    MaxNodesPerHistoryReadData = opLimits.MaxNodesPerHistoryReadData,
-                    MaxNodesPerHistoryReadEvents = opLimits.MaxNodesPerHistoryReadEvents,
-                    MaxNodesPerHistoryUpdateData = opLimits.MaxNodesPerHistoryUpdateData,
-                    MaxNodesPerHistoryUpdateEvents = opLimits.MaxNodesPerHistoryUpdateEvents,
-                    MaxNodesPerMethodCall = opLimits.MaxNodesPerMethodCall,
-                    MaxNodesPerNodeManagement = opLimits.MaxNodesPerNodeManagement,
-                    MaxNodesPerRead = opLimits.MaxNodesPerRead,
-                    MaxNodesPerRegisterNodes = opLimits.MaxNodesPerRegisterNodes,
-                    MaxNodesPerTranslateBrowsePathsToNodeIds = opLimits.MaxNodesPerTranslateBrowsePathsToNodeIds,
-                    MaxNodesPerWrite = opLimits.MaxNodesPerWrite
+                    MaxMonitoredItemsPerCall = appConfig.ClientConfiguration.OperationLimits.MaxMonitoredItemsPerCall,
+                    MaxNodesPerBrowse = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerBrowse,
+                    MaxNodesPerHistoryReadData = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadData,
+                    MaxNodesPerHistoryReadEvents = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadEvents,
+                    MaxNodesPerHistoryUpdateData = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateData,
+                    MaxNodesPerHistoryUpdateEvents = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateEvents,
+                    MaxNodesPerMethodCall = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerMethodCall,
+                    MaxNodesPerNodeManagement = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerNodeManagement,
+                    MaxNodesPerRead = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerRead,
+                    MaxNodesPerRegisterNodes = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerRegisterNodes,
+                    MaxNodesPerTranslateBrowsePathsToNodeIds = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds,
+                    MaxNodesPerWrite = appConfig.ClientConfiguration.OperationLimits.MaxNodesPerWrite
                 });
-        }
 
-        var finalBuild = clientBuild.SetDefaultSessionTimeout((int)clientConfig.SessionTimeout)
-            .SetMinSubscriptionLifetime((int)clientConfig.MinSubscriptionLifetime)
+        var finalBuild = clientBuild.SetDefaultSessionTimeout((int)appConfig.ClientConfiguration.SessionTimeout)
+            .SetMinSubscriptionLifetime((int)appConfig.ClientConfiguration.MinSubscriptionLifetime)
         .AddSecurityConfigurationStores(
-            securityConfiguration.SecurityConfigurationStores.SubjectName,
-            securityConfiguration.SecurityConfigurationStores.AppRoot,
-            securityConfiguration.SecurityConfigurationStores.TrustedRoot,
-            securityConfiguration.SecurityConfigurationStores.IssuerRoot,
-            securityConfiguration.SecurityConfigurationStores.RejectedRoot)
-        .SetSendCertificateChain(securityConfiguration.SendCertificateChain)
-        .SetAddAppCertToTrustedStore(securityConfiguration.AddAppCertToTrustedStore)
-        .SetAutoAcceptUntrustedCertificates(securityConfiguration.AutoAcceptUntrustedCertificates)
-        .SetMaxRejectedCertificates((int)securityConfiguration.MaxRejectedCertificates)
-        .SetMinimumCertificateKeySize((ushort)securityConfiguration.MinCertificateKeySize)
-        .SetRejectSHA1SignedCertificates(securityConfiguration.RejectSHA1SignedCertificates)
-        .SetRejectUnknownRevocationStatus(securityConfiguration.RejectUnknownRevocationStatus)
-        .SetSuppressNonceValidationErrors(securityConfiguration.SuppressNonceValidationErrors)
-        .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates)
-        .AddExtension<Core.Ua.Configuration.DomainValidation>(new XmlQualifiedName("SkipDomainValidation"), securityConfiguration.SkipDomainValidation);
+            appConfig.SecurityConfiguration.SecurityConfigurationStores.SubjectName,
+            appConfig.SecurityConfiguration.SecurityConfigurationStores.AppRoot,
+            appConfig.SecurityConfiguration.SecurityConfigurationStores.TrustedRoot,
+            appConfig.SecurityConfiguration.SecurityConfigurationStores.IssuerRoot,
+            appConfig.SecurityConfiguration.SecurityConfigurationStores.RejectedRoot)
+        .SetSendCertificateChain(appConfig.SecurityConfiguration.SendCertificateChain)
+        .SetAddAppCertToTrustedStore(appConfig.SecurityConfiguration.AddAppCertToTrustedStore)
+        .SetAutoAcceptUntrustedCertificates(appConfig.SecurityConfiguration.AutoAcceptUntrustedCertificates)
+        .SetMaxRejectedCertificates((int)appConfig.SecurityConfiguration.MaxRejectedCertificates)
+        .SetMinimumCertificateKeySize((ushort)appConfig.SecurityConfiguration.MinCertificateKeySize)
+        .SetRejectSHA1SignedCertificates(appConfig.SecurityConfiguration.RejectSHA1SignedCertificates)
+        .SetRejectUnknownRevocationStatus(appConfig.SecurityConfiguration.RejectUnknownRevocationStatus)
+        .SetSuppressNonceValidationErrors(appConfig.SecurityConfiguration.SuppressNonceValidationErrors)
+        .SetUseValidatedCertificates(appConfig.SecurityConfiguration.UseValidatedCertificates)
+        .AddExtension<Core.Ua.Configuration.DomainValidation>(new XmlQualifiedName("SkipDomainValidation"), appConfig.SecurityConfiguration.SkipDomainValidation);
 
         await finalBuild.Create();
 
@@ -362,6 +423,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         {
             throw new SystemException("Application instance certificate invalid!");
         }
+
+        ApplicationConfiguration = appConfig;
 
         _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
     }
@@ -388,15 +451,15 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
             OnConnecting(ConnectionEventArgs.Empty);
 
-            var endpointDescription = CoreClientUtils.SelectEndpoint(_appInst!.ApplicationConfiguration, serverUrl, useSecurity);
+            var endpointDescription = Opc.Ua.Client.CoreClientUtils.SelectEndpoint(_appInst!.ApplicationConfiguration, serverUrl, useSecurity);
 
             // Validate server certificate
             var serverCert = endpointDescription.ServerCertificate;
-            var serverCertId = new CertificateIdentifier(serverCert);
+            var serverCertId = new Opc.Ua.CertificateIdentifier(serverCert);
             await _appInst.ApplicationConfiguration.CertificateValidator.ValidateAsync(serverCertId.Certificate, cancellationToken).ConfigureAwait(false);
 
-            var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
-            var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
+            var endpointConfig = Opc.Ua.EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
+            var endpoint = new Opc.Ua.ConfiguredEndpoint(null, endpointDescription, endpointConfig);
 
             // Optionally validate server domain
             if (_appInst.ApplicationConfiguration.Extensions.Find(x => x.Name == "DomainValidation") is XmlElement xmlElement)
@@ -411,7 +474,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                             {
                                 _appInst.ApplicationConfiguration.CertificateValidator.ValidateDomains(serverCertId.Certificate, endpoint);
                             }
-                            catch (ServiceResultException ex)
+                            catch (Opc.Ua.ServiceResultException ex)
                             {
                                 if (ex.StatusCode == Opc.Ua.StatusCodes.BadCertificateHostNameInvalid)
                                 {
@@ -428,7 +491,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 ? new Opc.Ua.UserIdentity()
                 : new Opc.Ua.UserIdentity(UserIdentity.Username, UserIdentity.Password);
 
-            var sessionFactory = TraceableSessionFactory.Instance;
+            var sessionFactory = Opc.Ua.Client.TraceableSessionFactory.Instance;
             var session = await sessionFactory.CreateAsync(
                 _appInst!.ApplicationConfiguration,
                 endpoint,
@@ -455,7 +518,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
             _session.KeepAlive += Session_KeepAlive;
 
-            _reconnectHandler = new SessionReconnectHandler(true, ReconnectPeriodExponentialBackoff);
+            _reconnectHandler = new Opc.Ua.Client.SessionReconnectHandler(true, ReconnectPeriodExponentialBackoff);
 
             OnConnected(ConnectionEventArgs.Empty);
         }
@@ -523,7 +586,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return GetAllStructureElementsCore<S7DataBlockGlobal>(_dataBlocksGlobalRootNode, NodeClass.Object);
+            return GetAllStructureElementsCore<S7DataBlockGlobal>(_dataBlocksGlobalRootNode, Opc.Ua.NodeClass.Object);
         }
         finally
         {
@@ -544,17 +607,17 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 return [];
             }
 
-            var browser = new Browser(_session)
+            var browser = new Opc.Ua.Client.Browser(_session)
             {
-                BrowseDirection = BrowseDirection.Forward,
-                NodeClassMask = (int)NodeClass.Object,
-                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
+                BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+                NodeClassMask = (int)Opc.Ua.NodeClass.Object,
+                ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
                 IncludeSubtypes = true
             };
-            ReferenceDescriptionCollection descriptions = browser.Browse(_dataBlocksInstanceRootNode);
+            Opc.Ua.ReferenceDescriptionCollection descriptions = browser.Browse(_dataBlocksInstanceRootNode);
 
             return descriptions
-                .Select(desc => new S7DataBlockInstance { NodeId = ((NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
+                .Select(desc => new S7DataBlockInstance { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
                 .ToList()
                 .AsReadOnly();
         }
@@ -702,18 +765,18 @@ internal class S7UaClient : IS7UaClient, IDisposable
             return element;
         }
 
-        var browser = new Browser(_session)
+        var browser = new Opc.Ua.Client.Browser(_session)
         {
-            BrowseDirection = BrowseDirection.Forward,
-            NodeClassMask = (int)NodeClass.Variable,
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)Opc.Ua.NodeClass.Variable,
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
             IncludeSubtypes = true
         };
-        ReferenceDescriptionCollection variableDescriptions = browser.Browse(element.NodeId);
+        Opc.Ua.ReferenceDescriptionCollection variableDescriptions = browser.Browse(element.NodeId);
 
         var discoveredVariables = variableDescriptions
             .Where(desc => desc.DisplayName.Text != "Icon")
-            .Select(desc => new S7Variable { NodeId = ((NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text }).ToList();
+            .Select(desc => new S7Variable { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text }).ToList();
 
         if (element.DisplayName == "Counters")
         {
@@ -759,18 +822,18 @@ internal class S7UaClient : IS7UaClient, IDisposable
             return instanceDbShell;
         }
 
-        var browser = new Browser(_session)
+        var browser = new Opc.Ua.Client.Browser(_session)
         {
-            BrowseDirection = BrowseDirection.Forward,
-            NodeClassMask = (int)NodeClass.Object,
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)Opc.Ua.NodeClass.Object,
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences
         };
         var childNodes = browser.Browse(instanceDbShell.NodeId);
 
         S7InstanceDbSection? input = null, output = null, inOut = null, stat = null;
         foreach (var childNode in childNodes)
         {
-            var sectionShell = new S7InstanceDbSection { NodeId = ((NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
+            var sectionShell = new S7InstanceDbSection { NodeId = ((Opc.Ua.NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
             var populatedSection = PopulateInstanceSectionCore(sectionShell);
             switch (populatedSection.DisplayName)
             {
@@ -819,14 +882,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         string initialPathPrefix = BuildInitialPath(elementWithStructure, rootContextName);
 
-        var nodesToReadCollector = new Dictionary<NodeId, S7Variable>();
+        var nodesToReadCollector = new Dictionary<Opc.Ua.NodeId, S7Variable>();
         CollectNodesToReadRecursivelyCore(elementWithStructure, nodesToReadCollector, initialPathPrefix);
 
-        var readResultsMap = new Dictionary<NodeId, DataValue>();
+        var readResultsMap = new Dictionary<Opc.Ua.NodeId, Opc.Ua.DataValue>();
         if (nodesToReadCollector.Count > 0)
         {
-            var nodesToRead = new ReadValueIdCollection(nodesToReadCollector.Keys.Select(nodeId => new ReadValueId { NodeId = nodeId, AttributeId = Attributes.Value }));
-            _session.Read(null, 0, TimestampsToReturn.Neither, nodesToRead, out var results, out _);
+            var nodesToRead = new Opc.Ua.ReadValueIdCollection(nodesToReadCollector.Keys.Select(nodeId => new Opc.Ua.ReadValueId { NodeId = nodeId, AttributeId = Opc.Ua.Attributes.Value }));
+            _session.Read(null, 0, Opc.Ua.TimestampsToReturn.Neither, nodesToRead, out var results, out _);
             _validateResponse(results, nodesToRead);
 
             for (int i = 0; i < nodesToRead.Count; i++)
@@ -903,15 +966,15 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 return true;
             }
 
-            var item = new MonitoredItem(_subscription.DefaultItem)
+            var item = new Opc.Ua.Client.MonitoredItem(_subscription.DefaultItem)
             {
                 DisplayName = variable.DisplayName,
                 StartNodeId = variable.NodeId,
-                AttributeId = Attributes.Value,
+                AttributeId = Opc.Ua.Attributes.Value,
                 SamplingInterval = (int)variable.SamplingInterval,
                 QueueSize = 1,
                 DiscardOldest = true,
-                MonitoringMode = MonitoringMode.Reporting
+                MonitoringMode = Opc.Ua.MonitoringMode.Reporting
             };
 
             item.Notification += OnMonitoredItemNotification;
@@ -1014,11 +1077,11 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 return false;
             }
 
-            var writeValue = new WriteValue
+            var writeValue = new Opc.Ua.WriteValue
             {
-                NodeId = new NodeId(nodeId),
-                AttributeId = Attributes.Value,
-                Value = new DataValue(new Variant(rawValue))
+                NodeId = new Opc.Ua.NodeId(nodeId),
+                AttributeId = Opc.Ua.Attributes.Value,
+                Value = new Opc.Ua.DataValue(new Opc.Ua.Variant(rawValue))
             };
             var response = await _session.WriteAsync(null, [writeValue], cancellationToken).ConfigureAwait(false);
             _validateResponse(response.Results, new[] { writeValue });
@@ -1057,7 +1120,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     private IUaNode RebuildHierarchyWithValuesRecursivelyCore(
         IUaNode templateElement,
-        IReadOnlyDictionary<NodeId, DataValue> readResultsMap,
+        IReadOnlyDictionary<Opc.Ua.NodeId, Opc.Ua.DataValue> readResultsMap,
         string currentPath)
     {
         switch (templateElement)
@@ -1104,7 +1167,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                         .Select(m => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(m, readResultsMap, fullPath))
                         .ToList();
 
-                    return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = UaStatusCodeConverter.Convert(StatusCodes.Good) };
+                    return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good) };
                 }
 
                 if (variable.NodeId != null && readResultsMap.TryGetValue(variable.NodeId, out var dataValue))
@@ -1123,7 +1186,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     };
                 }
 
-                return variable with { FullPath = fullPath, StatusCode = UaStatusCodeConverter.Convert(StatusCodes.BadWaitingForInitialData) };
+                return variable with { FullPath = fullPath, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.BadWaitingForInitialData) };
 
             default:
                 _logger?.LogWarning("RebuildHierarchy encountered an unhandled element type: {ElementType}", templateElement.GetType().Name);
@@ -1131,7 +1194,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
     }
 
-    private void CollectNodesToReadRecursivelyCore(IUaNode currentElement, IDictionary<NodeId, S7Variable> collectedNodes, string currentPath)
+    private void CollectNodesToReadRecursivelyCore(IUaNode currentElement, IDictionary<Opc.Ua.NodeId, S7Variable> collectedNodes, string currentPath)
     {
         switch (currentElement)
         {
@@ -1207,7 +1270,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Structure Browsing and Discovery Helpers
 
-    private T? GetSingletonStructureElementCore<T>(NodeId node) where T : S7StructureElement, new()
+    private T? GetSingletonStructureElementCore<T>(Opc.Ua.NodeId node) where T : S7StructureElement, new()
     {
         if (!IsConnected || _session is null)
         {
@@ -1215,22 +1278,22 @@ internal class S7UaClient : IS7UaClient, IDisposable
             return null;
         }
 
-        var nodeToRead = new ReadValueId { NodeId = node, AttributeId = Attributes.DisplayName };
-        _session.Read(null, 0, TimestampsToReturn.Neither, [nodeToRead], out var results, out _);
+        var nodeToRead = new Opc.Ua.ReadValueId { NodeId = node, AttributeId = Opc.Ua.Attributes.DisplayName };
+        _session.Read(null, 0, Opc.Ua.TimestampsToReturn.Neither, [nodeToRead], out var results, out _);
         _validateResponse(results, new[] { nodeToRead });
 
-        DataValue result = results[0];
+        Opc.Ua.DataValue result = results[0];
         if (Opc.Ua.StatusCode.IsBad(result.StatusCode))
         {
             _logger?.LogWarning("Failed to read DisplayName for node {NodeId}. It may not exist on the server. StatusCode: {StatusCode}", node, result.StatusCode);
             return null;
         }
 
-        string displayName = (result.Value as LocalizedText)?.Text ?? node.ToString();
+        string displayName = (result.Value as Opc.Ua.LocalizedText)?.Text ?? node.ToString();
         return new T { NodeId = node.ToString(), DisplayName = displayName };
     }
 
-    private ReadOnlyCollection<T> GetAllStructureElementsCore<T>(NodeId rootNode, NodeClass expectedNodeClass) where T : S7StructureElement, new()
+    private ReadOnlyCollection<T> GetAllStructureElementsCore<T>(Opc.Ua.NodeId rootNode, Opc.Ua.NodeClass expectedNodeClass) where T : S7StructureElement, new()
     {
         if (!IsConnected || _session is null)
         {
@@ -1238,17 +1301,17 @@ internal class S7UaClient : IS7UaClient, IDisposable
             return new ReadOnlyCollection<T>([]);
         }
 
-        var browser = new Browser(_session)
+        var browser = new Opc.Ua.Client.Browser(_session)
         {
-            BrowseDirection = BrowseDirection.Forward,
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
             NodeClassMask = (int)expectedNodeClass,
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
             IncludeSubtypes = true
         };
-        ReferenceDescriptionCollection descriptions = browser.Browse(rootNode);
+        Opc.Ua.ReferenceDescriptionCollection descriptions = browser.Browse(rootNode);
 
         return descriptions
-            .Select(desc => new T { NodeId = ((NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
+            .Select(desc => new T { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
             .ToList()
             .AsReadOnly();
     }
@@ -1259,27 +1322,27 @@ internal class S7UaClient : IS7UaClient, IDisposable
         if (!IsConnected || _session is null) return sectionShell;
 
 #pragma warning disable RCS1130
-        var browser = new Browser(_session)
+        var browser = new Opc.Ua.Client.Browser(_session)
         {
-            BrowseDirection = BrowseDirection.Forward,
-            NodeClassMask = (int)(NodeClass.Variable | NodeClass.Object),
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)(Opc.Ua.NodeClass.Variable | Opc.Ua.NodeClass.Object),
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
         };
 #pragma warning restore RCS1130
-        ReferenceDescriptionCollection childNodes = browser.Browse(sectionShell.NodeId);
+        Opc.Ua.ReferenceDescriptionCollection childNodes = browser.Browse(sectionShell.NodeId);
 
         var variables = new List<S7Variable>();
         var nestedInstances = new List<S7DataBlockInstance>();
         foreach (var childNode in childNodes)
         {
             //Filter out the Icon variable and process others
-            if (childNode.NodeClass == NodeClass.Variable && childNode.DisplayName.Text != "Icon")
+            if (childNode.NodeClass == Opc.Ua.NodeClass.Variable && childNode.DisplayName.Text != "Icon")
             {
-                variables.Add(new S7Variable { NodeId = ((NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text });
+                variables.Add(new S7Variable { NodeId = ((Opc.Ua.NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text });
             }
-            else if (childNode.NodeClass == NodeClass.Object)
+            else if (childNode.NodeClass == Opc.Ua.NodeClass.Object)
             {
-                var nestedShell = new S7DataBlockInstance { NodeId = ((NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
+                var nestedShell = new S7DataBlockInstance { NodeId = ((Opc.Ua.NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
                 nestedInstances.Add(DiscoverInstanceOfDataBlockCore(nestedShell));
             }
         }
@@ -1290,25 +1353,25 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Subscription Helpers
 
-    protected virtual Task CreateSubscriptionOnServerAsync(Subscription subscription)
+    protected virtual Task CreateSubscriptionOnServerAsync(Opc.Ua.Client.Subscription subscription)
     {
         return subscription.CreateAsync();
     }
 
-    protected virtual Subscription CreateNewSubscription(int publishingInterval)
+    protected virtual Opc.Ua.Client.Subscription CreateNewSubscription(int publishingInterval)
     {
         return _session is null
             ? throw new InvalidOperationException("Session is not available to create a subscription.")
-            : new Subscription(_session.DefaultSubscription)
+            : new Opc.Ua.Client.Subscription(_session.DefaultSubscription)
             {
                 PublishingInterval = publishingInterval,
                 LifetimeCount = 600,
                 MaxNotificationsPerPublish = 1000,
-                TimestampsToReturn = TimestampsToReturn.Both
+                TimestampsToReturn = Opc.Ua.TimestampsToReturn.Both
             };
     }
 
-    protected virtual Task ApplySubscriptionChangesAsync(Subscription subscription)
+    protected virtual Task ApplySubscriptionChangesAsync(Opc.Ua.Client.Subscription subscription)
     {
         return subscription.ApplyChangesAsync();
     }
@@ -1317,14 +1380,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Event Callbacks
 
-    private void Session_KeepAlive(ISession session, KeepAliveEventArgs e)
+    private void Session_KeepAlive(Opc.Ua.Client.ISession session, Opc.Ua.Client.KeepAliveEventArgs e)
     {
         if (_session?.Equals(session) != true)
         {
             return;
         }
 
-        if (ServiceResult.IsBad(e.Status))
+        if (Opc.Ua.ServiceResult.IsBad(e.Status))
         {
             if (ReconnectPeriod <= 0)
             {
@@ -1337,15 +1400,15 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
             switch (state)
             {
-                case SessionReconnectHandler.ReconnectState.Triggered:
+                case Opc.Ua.Client.SessionReconnectHandler.ReconnectState.Triggered:
                     _logger?.LogInformation("Reconnection triggered.");
                     break;
 
-                case SessionReconnectHandler.ReconnectState.Ready:
+                case Opc.Ua.Client.SessionReconnectHandler.ReconnectState.Ready:
                     _logger?.LogWarning("Reconnection handler is in 'Ready' state after BeginReconnect attempt. This might indicate automatic reconnection could not be triggered.");
                     break;
 
-                case SessionReconnectHandler.ReconnectState.Reconnecting:
+                case Opc.Ua.Client.SessionReconnectHandler.ReconnectState.Reconnecting:
                     _logger?.LogWarning("Reconnection in progress...");
                     break;
             }
@@ -1372,7 +1435,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     _logger?.LogInformation("Reconnected to S7 UA server with a new session.");
                     var oldSession = _session;
                     _session = _reconnectHandler.Session;
-                    Utils.SilentDispose(oldSession);
+                    Opc.Ua.Utils.SilentDispose(oldSession);
                 }
                 else
                 {
@@ -1394,7 +1457,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
     }
 
-    private void Client_CertificateValidation(Opc.Ua.CertificateValidator certificateValidator, CertificateValidationEventArgs e)
+    private void Client_CertificateValidation(Opc.Ua.CertificateValidator certificateValidator, Opc.Ua.CertificateValidationEventArgs e)
     {
         var accepted = false;
 
@@ -1460,9 +1523,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
         Reconnected?.Invoke(this, e);
     }
 
-    private void OnMonitoredItemNotification(MonitoredItem monitoredItem, MonitoredItemNotificationEventArgs e)
+    private void OnMonitoredItemNotification(Opc.Ua.Client.MonitoredItem monitoredItem, Opc.Ua.Client.MonitoredItemNotificationEventArgs e)
     {
-        if (e.NotificationValue is MonitoredItemNotification notification)
+        if (e.NotificationValue is Opc.Ua.MonitoredItemNotification notification)
         {
             MonitoredItemChanged?.Invoke(this, new MonitoredItemChangedEventArgs(monitoredItem, notification));
         }

@@ -10,6 +10,8 @@ public class ApplicationConfiguration
     public SecurityConfiguration SecurityConfiguration { get; set; } = new(new SecurityConfigurationStores());
     public TransportQuotas TransportQuotas { get; set; } = new();
 
+    public OperationLimits OperationLimits { get; set; } = new();
+
     public bool Validate()
     {
         return !string.IsNullOrWhiteSpace(ApplicationName)

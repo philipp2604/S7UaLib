@@ -58,7 +58,7 @@ public class S7ServiceIntegrationTests : IDisposable
     {
         var certStores = new SecurityConfigurationStores
         {
-            AppRoot = Path.Combine(_tempDir.Path, "pki"),
+            AppRoot = Path.Combine(_tempDir.Path, "pki", "app"),
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
             IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
             RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
@@ -69,13 +69,27 @@ public class S7ServiceIntegrationTests : IDisposable
         return new SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true } };
     }
 
+    private ApplicationConfiguration CreateTestAppConfig()
+    {
+        return new ApplicationConfiguration
+        {
+            ApplicationName = _appName,
+            ApplicationUri = _appUri,
+            ProductUri = _productUri,
+            SecurityConfiguration = CreateTestSecurityConfig(),
+            ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
+            OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
+        };
+    }
+
     private async Task<S7Service> CreateAndConnectServiceAsync()
     {
         var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
         _servicesToDispose.Add(service);
 
-        var securityConfig = CreateTestSecurityConfig();
-        await service.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        var appConfig = CreateTestAppConfig();
+        await service.ConfigureAsync(appConfig);
 
         try
         {
@@ -115,12 +129,12 @@ public class S7ServiceIntegrationTests : IDisposable
         var saveService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
         _servicesToDispose.Add(saveService);
 
-        await saveService.ConfigureAsync(
-            "SaveLoadTestApp",
-            "urn:saveload",
-            "urn:saveload:prod",
-            securityConfig,
-            new ClientConfiguration { SessionTimeout = 98765 });
+        var saveAppConfig = CreateTestAppConfig();
+        saveAppConfig.ApplicationUri = "urn:saveload";
+        saveAppConfig.ApplicationName = "SaveLoadTestApp";
+        saveAppConfig.ProductUri = "urn:saveload:prod";
+        saveAppConfig.ClientConfiguration.SessionTimeout = 98765;
+        await saveService.ConfigureAsync(saveAppConfig);
 
         // 2. Save the configuration to a file.
         saveService.SaveConfiguration(configFilePath);
@@ -129,7 +143,11 @@ public class S7ServiceIntegrationTests : IDisposable
         // 3. Create a new service instance with a *different* initial configuration.
         var loadService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
         _servicesToDispose.Add(loadService);
-        await loadService.ConfigureAsync("InitialApp", "urn:initial", "urn:initial:prod", CreateTestSecurityConfig());
+        var loadAppConfig = CreateTestAppConfig();
+        loadAppConfig.ApplicationUri = "urn:initial";
+        loadAppConfig.ApplicationName = "InitialApp";
+        loadAppConfig.ProductUri = "urn:initial:prod";
+        await loadService.ConfigureAsync(loadAppConfig);
 
         // Act: Load the previously saved configuration into the new service.
         await loadService.LoadConfigurationAsync(configFilePath);
@@ -155,8 +173,8 @@ public class S7ServiceIntegrationTests : IDisposable
     {
         // Arrange
         var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-        var securityConfig = CreateTestSecurityConfig();
-        await service.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        var appConfig = CreateTestAppConfig();
+        await service.ConfigureAsync(appConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -382,8 +400,8 @@ public class S7ServiceIntegrationTests : IDisposable
 
             // Act: Create new service and load
             service2 = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-            var securityConfig = CreateTestSecurityConfig();
-            await service2.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+            var appConfig = CreateTestAppConfig();
+            await service2.ConfigureAsync(appConfig);
             await service2.LoadStructureAsync(tempFile);
 
             // Assert: Structure is loaded before connection

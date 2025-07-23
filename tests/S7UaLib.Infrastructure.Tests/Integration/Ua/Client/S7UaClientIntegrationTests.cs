@@ -37,24 +37,21 @@ public class S7UaClientIntegrationTests : IDisposable
     {
         // Arrange
         var configFilePath = Path.Combine(_tempDir.Path, "S7UaClient.Config.xml");
-        var securityConfig = CreateTestSecurityConfig();
 
         var saveClient = new S7UaClient(null, _validateResponse);
         _clientsToDispose.Add(saveClient);
 
-        await saveClient.ConfigureAsync(
-            _appName,
-            _appUri,
-            _productUri,
-            securityConfig,
-            new ClientConfiguration { SessionTimeout = 88888 });
+        var appConfig = CreateTestAppConfig();
+        appConfig.ClientConfiguration.SessionTimeout = 88888;
+
+        await saveClient.ConfigureAsync(appConfig);
 
         saveClient.SaveConfiguration(configFilePath);
         Assert.True(File.Exists(configFilePath));
 
         var loadClient = new S7UaClient(null, _validateResponse);
         _clientsToDispose.Add(loadClient);
-        await loadClient.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        await loadClient.ConfigureAsync(appConfig);
 
         // Act
         await loadClient.LoadConfigurationAsync(configFilePath);
@@ -80,8 +77,8 @@ public class S7UaClientIntegrationTests : IDisposable
         var client = new S7UaClient(_userIdentity, _validateResponse);
         _clientsToDispose.Add(client);
 
-        var securityConfig = CreateTestSecurityConfig();
-        await client.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        var appConfig = CreateTestAppConfig();
+        await client.ConfigureAsync(appConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -151,11 +148,25 @@ public class S7UaClientIntegrationTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    private ApplicationConfiguration CreateTestAppConfig()
+    {
+        return new ApplicationConfiguration
+        {
+            ApplicationName = _appName,
+            ApplicationUri = _appUri,
+            ProductUri = _productUri,
+            SecurityConfiguration = CreateTestSecurityConfig(),
+            ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
+            OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
+        };
+    }
+
     private SecurityConfiguration CreateTestSecurityConfig()
     {
         var certStores = new Core.Ua.Configuration.SecurityConfigurationStores
         {
-            AppRoot = Path.Combine(_tempDir.Path, "pki"),
+            AppRoot = Path.Combine(_tempDir.Path, "pki", "app"),
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
             IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
             RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
@@ -168,7 +179,8 @@ public class S7UaClientIntegrationTests : IDisposable
     private async Task<S7UaClient> CreateAndConnectClientAsync()
     {
         var client = new S7UaClient(_userIdentity, _validateResponse, null);
-        await client.ConfigureAsync(_appName, _appUri, _productUri, CreateTestSecurityConfig());
+        var appConfig = CreateTestAppConfig();
+        await client.ConfigureAsync(appConfig);
 
         try
         {
