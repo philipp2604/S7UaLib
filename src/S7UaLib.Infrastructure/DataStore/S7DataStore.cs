@@ -57,8 +57,8 @@ internal class S7DataStore : IS7DataStore
     /// <inheritdoc cref="IS7DataStore.Counters"/>
     public IS7Counters Counters { get; private set; }
 
-    /// <inheritdoc cref="IS7DataStore.AddVariableToCache(IS7Variable)"/>
-    public bool AddVariableToCache(IS7Variable newVariable)
+    /// <inheritdoc cref="IS7DataStore.RegisterVariable(IS7Variable)"/>
+    public bool RegisterVariable(IS7Variable newVariable)
     {
         lock (_lock)
         {
@@ -497,7 +497,6 @@ internal class S7DataStore : IS7DataStore
         var nextSegment = pathSegments[0];
         var remainingPath = string.Join(".", pathSegments.Skip(1));
 
-        // ... (Der Rest der Methode bleibt exakt gleich wie in der vorherigen Antwort) ...
         switch (element)
         {
             case S7Variable variable when variable.S7Type == S7DataType.STRUCT:

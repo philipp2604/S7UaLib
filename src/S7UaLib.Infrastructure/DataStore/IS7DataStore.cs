@@ -53,7 +53,7 @@ internal interface IS7DataStore
     /// </summary>
     /// <param name="newVariable">The new variable instance to add.</param>
     /// <returns>True if the variable was added successfully; otherwise, false.</returns>
-    public bool AddVariableToCache(IS7Variable newVariable);
+    public bool RegisterVariable(IS7Variable newVariable);
 
     /// <summary>
     /// Updates the structure of the S7 PLC data by setting the provided data blocks, inputs, outputs, memory, timers,
