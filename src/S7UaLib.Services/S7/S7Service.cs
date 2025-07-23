@@ -249,7 +249,7 @@ public class S7Service : IS7Service
             return Task.FromResult(false);
         }
 
-        bool success = _dataStore.AddVariableToCache(variable);
+        bool success = _dataStore.RegisterVariable(variable);
 
         if (success && variable.NodeId is not null)
         {
