@@ -2,6 +2,7 @@
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 
 namespace S7UaLib.Infrastructure.DataStore;
@@ -26,7 +27,7 @@ internal class S7DataStore : IS7DataStore
         Counters = new S7Counters { DisplayName = "Counters", FullPath = "Counters", NodeId = S7StructureConstants._s7CountersNamespaceIdentifier };
     }
 
-    private readonly Dictionary<string, IS7Variable> _variableCacheByPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, IS7Variable> _variableCacheByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger? _logger;
 
 #if NET8_0
@@ -173,55 +174,43 @@ internal class S7DataStore : IS7DataStore
     /// <inheritdoc cref="IS7DataStore.FindVariablesWhere(Func{IS7Variable, bool})"/>
     public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)
     {
-        lock (_lock)
-        {
-            return [.. _variableCacheByPath.Values.Where(predicate)];
-        }
+        return [.. _variableCacheByPath.Values.Where(predicate)];
     }
 
     /// <inheritdoc cref="IS7DataStore.TryGetVariableByPath(string, out IS7Variable)"/>
     public bool TryGetVariableByPath(string fullPath, [MaybeNullWhen(false)] out IS7Variable variable)
     {
-        lock (_lock)
-        {
-            return _variableCacheByPath.TryGetValue(fullPath, out variable);
-        }
+        return _variableCacheByPath.TryGetValue(fullPath, out variable);
     }
 
     /// <inheritdoc cref="IS7DataStore.GetAllVariables"/>
     public IReadOnlyDictionary<string, IS7Variable> GetAllVariables()
     {
-        lock (_lock)
-        {
-            return new Dictionary<string, IS7Variable>(_variableCacheByPath, StringComparer.OrdinalIgnoreCase);
-        }
+        return new Dictionary<string, IS7Variable>(_variableCacheByPath, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc cref="IS7DataStore.BuildCache"/>
     public void BuildCache()
     {
-        lock (_lock)
+        _logger?.LogDebug("Starting to build variable cache.");
+        _variableCacheByPath.Clear();
+
+        foreach (var db in DataBlocksGlobal)
         {
-            _logger?.LogDebug("Starting to build variable cache.");
-            _variableCacheByPath.Clear();
-
-            foreach (var db in DataBlocksGlobal)
-            {
-                AddVariablesToCacheRecursively(db, "DataBlocksGlobal");
-            }
-            foreach (var db in DataBlocksInstance)
-            {
-                AddVariablesToCacheRecursively(db, "DataBlocksInstance");
-            }
-
-            if (Inputs is not null) AddVariablesToCacheRecursively(Inputs, null);
-            if (Outputs is not null) AddVariablesToCacheRecursively(Outputs, null);
-            if (Memory is not null) AddVariablesToCacheRecursively(Memory, null);
-            if (Timers is not null) AddVariablesToCacheRecursively(Timers, null);
-            if (Counters is not null) AddVariablesToCacheRecursively(Counters, null);
-
-            _logger?.LogDebug("Variable cache build completed. Cached {Count} variables.", _variableCacheByPath.Count);
+            AddVariablesToCacheRecursively(db, "DataBlocksGlobal");
         }
+        foreach (var db in DataBlocksInstance)
+        {
+            AddVariablesToCacheRecursively(db, "DataBlocksInstance");
+        }
+
+        if (Inputs is not null) AddVariablesToCacheRecursively(Inputs, null);
+        if (Outputs is not null) AddVariablesToCacheRecursively(Outputs, null);
+        if (Memory is not null) AddVariablesToCacheRecursively(Memory, null);
+        if (Timers is not null) AddVariablesToCacheRecursively(Timers, null);
+        if (Counters is not null) AddVariablesToCacheRecursively(Counters, null);
+
+        _logger?.LogDebug("Variable cache build completed. Cached {Count} variables.", _variableCacheByPath.Count);
     }
 
     /// <inheritdoc cref="IS7DataStore.UpdateVariable(string, IS7Variable)"/>
