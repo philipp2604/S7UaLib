@@ -81,7 +81,18 @@ const UserIdentity userIdentity = new UserIdentity(); // Anonymous user
 var service = new S7Service(userIdentity);
 
 // 2. Configure Service / Client
-await service.Configure(appName, appUri, productUri, new SecurityConfiguration(new SecurityConfigurationStores()));
+await service.ConfigureAsync(
+    new ApplicationConfiguration(
+        ApplicationName = _appName,
+        ApplicationUri = _appUri,
+        ProductUri = _productUri,
+        SecurityConfiguration = new SecurityConfiguration(new SecurityConfigurationStores())
+        {
+            AutoAcceptUntrustedCertificates = true,
+            SkipDomainValidation = new() { Skip = true
+        }
+    )
+);
 
 // Optional: Subscribe to value changes
 service.VariableValueChanged += OnVariableValueChanged;
