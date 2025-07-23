@@ -9,7 +9,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>philipp2604.$(AssemblyName)</PackageId>
     <Title>$(AssemblyName)</Title>
-    <Version>4.4.0</Version>
+    <Version>4.4.1</Version>
     <Authors>Philipp Siewert</Authors>
     <Product>$(PackageId)</Product>
     <Description>The internal engine room for the S7UaLib ecosystem. This library provides the concrete implementations for the abstractions defined in `S7UaLib.Core`. It brings the data models and contracts to life with a robust OPC UA client, a rich set of data type converters, an in-memory data store, and serialization logic.</Description>

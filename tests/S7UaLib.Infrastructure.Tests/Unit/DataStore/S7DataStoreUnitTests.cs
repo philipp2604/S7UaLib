@@ -225,10 +225,10 @@ public class S7DataStoreUnitTests
 
     #endregion Getter Tests
 
-    #region AddVariable Tests
+    #region RegisterVariable Tests
 
     [Fact]
-    public void AddVariable_WithoutNodeIdInGlobalDb_AssignsCorrectNodeId()
+    public void RegisterVariable_WithoutNodeIdInGlobalDb_AssignsCorrectNodeId()
     {
         // Arrange
         var sut = CreateSut();
@@ -239,7 +239,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "Temp", FullPath = path }; // No NodeId provided
 
         // Act
-        sut.AddVariableToCache(newVar);
+        sut.RegisterVariable(newVar);
 
         // Assert
         Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
@@ -249,7 +249,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_WithoutNodeIdInInputs_AssignsCorrectNodeId()
+    public void RegisterVariable_WithoutNodeIdInInputs_AssignsCorrectNodeId()
     {
         // Arrange
         var sut = CreateSut();
@@ -259,7 +259,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "NewInput", FullPath = path }; // No NodeId
 
         // Act
-        sut.AddVariableToCache(newVar);
+        sut.RegisterVariable(newVar);
 
         // Assert
         Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
@@ -269,7 +269,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_WithStructWithoutNodeIds_AssignsNodeIdsRecursively()
+    public void RegisterVariable_WithStructWithoutNodeIds_AssignsNodeIdsRecursively()
     {
         // Arrange
         var sut = CreateSut();
@@ -283,7 +283,7 @@ public class S7DataStoreUnitTests
         var structVar = new S7Variable { DisplayName = "Motor", FullPath = structPath, S7Type = S7DataType.STRUCT, StructMembers = [memberVar] }; // No NodeId
 
         // Act
-        sut.AddVariableToCache(structVar);
+        sut.RegisterVariable(structVar);
 
         // Assert
         Assert.True(sut.TryGetVariableByPath(structPath, out var addedStruct));
@@ -298,7 +298,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_WithoutNodeIdInInstanceDb_DoesNotAssignNodeId()
+    public void RegisterVariable_WithoutNodeIdInInstanceDb_DoesNotAssignNodeId()
     {
         // Arrange
         var sut = CreateSut();
@@ -310,7 +310,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "InternalValue", FullPath = path }; // No NodeId
 
         // Act
-        sut.AddVariableToCache(newVar);
+        sut.RegisterVariable(newVar);
 
         // Assert
         Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
@@ -319,7 +319,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_WithExistingNodeId_KeepsUserProvidedNodeId()
+    public void RegisterVariable_WithExistingNodeId_KeepsUserProvidedNodeId()
     {
         // Arrange
         var sut = CreateSut();
@@ -331,7 +331,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "Temp", FullPath = path, NodeId = userNodeId };
 
         // Act
-        sut.AddVariableToCache(newVar);
+        sut.RegisterVariable(newVar);
 
         // Assert
         Assert.True(sut.TryGetVariableByPath(path, out var addedVar));
@@ -340,7 +340,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_ToGlobalDb_SuccessfullyAddsVariableAndRebuildsCache()
+    public void RegisterVariable_ToGlobalDb_SuccessfullyAddsVariableAndRebuildsCache()
     {
         // Arrange
         var sut = CreateSut();
@@ -353,7 +353,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path, Value = true };
 
         // Act
-        var success = sut.AddVariableToCache(newVar);
+        var success = sut.RegisterVariable(newVar);
 
         // Assert
         Assert.True(success);
@@ -366,7 +366,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_ToIoArea_SuccessfullyAddsVariable()
+    public void RegisterVariable_ToIoArea_SuccessfullyAddsVariable()
     {
         // Arrange
         var sut = CreateSut();
@@ -376,7 +376,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "NewInput", FullPath = path, Value = true };
 
         // Act
-        var success = sut.AddVariableToCache(newVar);
+        var success = sut.RegisterVariable(newVar);
 
         // Assert
         Assert.True(success);
@@ -386,7 +386,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_ToExistingStruct_SuccessfullyAddsMember()
+    public void RegisterVariable_ToExistingStruct_SuccessfullyAddsMember()
     {
         // Arrange
         var sut = CreateSut();
@@ -400,7 +400,7 @@ public class S7DataStoreUnitTests
         var newMember = new S7Variable { DisplayName = "NewMember", Value = 42, FullPath = path };
 
         // Act
-        var success = sut.AddVariableToCache(newMember);
+        var success = sut.RegisterVariable(newMember);
 
         // Assert
         Assert.True(success);
@@ -411,7 +411,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_NewStructWithMembers_SuccessfullyAddsStructAndAllMembersToCache()
+    public void RegisterVariable_NewStructWithMembers_SuccessfullyAddsStructAndAllMembersToCache()
     {
         // Arrange
         var sut = CreateSut();
@@ -429,7 +429,7 @@ public class S7DataStoreUnitTests
         var newStruct = new S7Variable { DisplayName = "NewStruct", FullPath = structPath, S7Type = S7DataType.STRUCT, StructMembers = [member1, member2] };
 
         // Act
-        var success = sut.AddVariableToCache(newStruct);
+        var success = sut.RegisterVariable(newStruct);
 
         // Assert
         Assert.True(success);
@@ -444,7 +444,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_ToNestedStruct_SuccessfullyAddsVariable()
+    public void RegisterVariable_ToNestedStruct_SuccessfullyAddsVariable()
     {
         // Arrange
         var sut = CreateSut();
@@ -458,7 +458,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "DeepVar", FullPath = path, Value = "test" };
 
         // Act
-        var success = sut.AddVariableToCache(newVar);
+        var success = sut.RegisterVariable(newVar);
 
         // Assert
         Assert.True(success);
@@ -468,7 +468,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_WhenParentPathDoesNotExist_ReturnsFalse()
+    public void RegisterVariable_WhenParentPathDoesNotExist_ReturnsFalse()
     {
         // Arrange
         var sut = CreateSut();
@@ -481,7 +481,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "NewVar", FullPath = path };
 
         // Act
-        var success = sut.AddVariableToCache(newVar);
+        var success = sut.RegisterVariable(newVar);
 
         // Assert
         Assert.False(success);
@@ -491,7 +491,7 @@ public class S7DataStoreUnitTests
     }
 
     [Fact]
-    public void AddVariable_WhenVariableAlreadyExists_ReturnsFalse()
+    public void RegisterVariable_WhenVariableAlreadyExists_ReturnsFalse()
     {
         // Arrange
         var sut = CreateSut();
@@ -505,7 +505,7 @@ public class S7DataStoreUnitTests
         var newVar = new S7Variable { DisplayName = "ExistingVar", FullPath = path };
 
         // Act
-        var success = sut.AddVariableToCache(newVar);
+        var success = sut.RegisterVariable(newVar);
 
         // Assert
         Assert.False(success);
@@ -632,7 +632,7 @@ public class S7DataStoreUnitTests
     #region Thread-Safety Tests
 
     [Fact(Timeout = 5000)] // Timeout to detect deadlocks
-    public async Task AddVariableToCache_WhenCalledConcurrently_MaintainsDataIntegrityAndAvoidsRaceConditions()
+    public async Task RegisterVariable_WhenCalledConcurrently_MaintainsDataIntegrityAndAvoidsRaceConditions()
     {
         // Arrange
         var sut = CreateSut();
@@ -655,7 +655,7 @@ public class S7DataStoreUnitTests
                 FullPath = $"DataBlocksGlobal.DB1.ConcurrentVar_{taskIndex}"
             };
 
-            tasks.Add(Task.Run(() => sut.AddVariableToCache(newVar)));
+            tasks.Add(Task.Run(() => sut.RegisterVariable(newVar)));
         }
 
         // Wait until all tasks complete
