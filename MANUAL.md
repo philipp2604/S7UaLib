@@ -1,4 +1,4 @@
-S7UaLib API Description
+# S7UaLib API Description
 
 ## Overview
 
@@ -8,14 +8,18 @@ The primary goal of this library is to allow developers to interact with the PLC
 
 The main entry point for all interactions is the `S7Service` class, located in the `S7UaLib.Services.S7` namespace.
 
+**License Note:** S7UaLib depends on the official OPC Foundation libraries, which are licensed under the GPL v2.0. Consequently, any application using S7UaLib must also comply with the terms of the GPL v2.0 license.
+
 ## Key Features
 
 - **High-Level Service (`S7Service`):** A single, easy-to-use service class that manages the client configuration, connection, data storage, and communication.
+- **High-Performance Session Pooling:** Utilizes an internal pool of OPC UA sessions for stateless operations (browsing, reading, writing), dramatically reducing overhead and increasing throughput for high-frequency tasks.
 - **Automatic Structure Discovery:** The library can browse the entire OPC UA address space of the S7 PLC and build a complete, hierarchical in-memory model of all available data, including:
   - Global Data Blocks (DBs)
   - Instance Data Blocks (for FBs)
   - Inputs (I), Outputs (Q), and Memory (M) areas
   - Timers (T) and Counters (C)
+- **Manual Registration:** Manually define variables and data blocks that are not browsable on the OPC UA server, enabling access to any tag by its NodeID.
 - **Seamless S7 Data Type Conversion:** Automatically handles the conversion between complex S7-specific data types and standard .NET types. This is a core feature that saves significant development time. Supported types include:
   - `DATE_AND_TIME` (8-byte BCD) <-> `.NET DateTime`
   - `DTL` (12-byte struct) <-> `.NET DateTime` (with nanosecond precision)
@@ -37,7 +41,7 @@ The main entry point for all interactions is the `S7Service` class, located in t
 The library is built on a clean, three-layer architecture to separate concerns:
 
 -   **`S7UaLib.Core`**: The foundation. It defines all shared data models, interfaces, and enumerations (like `IS7Variable`, `S7DataType`, `ApplicationConfiguration`). It is the common "language" of the ecosystem.
--   **`S7UaLib.Infrastructure`**: The engine. It contains the concrete implementations for OPC UA communication (`S7UaClient`), data type conversion, and persistence logic. These are the internal mechanics.
+-   **`S7UaLib.Infrastructure`**: The engine. It contains the concrete implementations for OPC UA communication (`S7UaClient`), data type conversion, and persistence logic. The `S7UaClient` itself is composed of a main client for persistent connections (subscriptions, status) and a session pool for high-performance stateless operations (read/write/browse).
 -   **`S7UaLib` (the main package)**: The public API. It provides the high-level `S7Service`, which orchestrates the underlying components into a simple and powerful interface for you to use.
 
 As a user, you only need to interact with the `S7Service` from the main `S7UaLib` package and the data models from `S7UaLib.Core`.
@@ -67,6 +71,7 @@ Here is a complete example demonstrating the most common workflow.
 
 ```csharp
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Services.S7;
 using System;
 using System.IO;
@@ -77,25 +82,28 @@ public class Program
     public static async Task Main(string[] args)
     {
         // 1. Instantiate the S7Service.
-        // For anonymous login, pass null or a new UserIdentity().
+        // For anonymous login, use a new UserIdentity().
         // For username/password, use: new S7Service(new UserIdentity("user", "pass"))
-        var service = new S7Service(null);
+        // The maxSessions parameter configures the internal session pool size.
+        var service = new S7Service(new UserIdentity(), maxSessions: 5);
 
-        // 2. Configure the OPC UA client application identity and security.
+        // 2. Create the OPC UA client application configuration.
         // This is a mandatory step before connecting.
-        var securityConfig = new SecurityConfiguration(new SecurityConfigurationStores())
+        var appConfig = new ApplicationConfiguration
         {
-            // For testing, accept all certificates. In production, this should be false
-            // and you should manage the certificate trust list.
-            AutoAcceptUntrustedCertificates = true
+            ApplicationName = "My S7 UA Client",
+            ApplicationUri = "urn:localhost:MyS7UaClient", // Must be unique
+            ProductUri = "uri:mycompany:mys7uaclient",
+            SecurityConfiguration = new SecurityConfiguration(new SecurityConfigurationStores())
+            {
+                // For testing, accept all certificates. In production, this should be false
+                // and you should manage the certificate trust list.
+                AutoAcceptUntrustedCertificates = true,
+                SkipDomainValidation = new() { Skip = true },
+                RejectSHA1SignedCertificates = new() { Reject = false }
+            }
         };
-
-        await service.ConfigureAsync(
-            appName: "My S7 UA Client",
-            appUri: "urn:localhost:MyS7UaClient", // Must be unique
-            productUri: "uri:mycompany:mys7uaclient",
-            securityConfiguration: securityConfig
-        );
+        await service.ConfigureAsync(appConfig);
 
         var serverUrl = "opc.tcp://192.168.0.1:4840";
         var structureFilePath = "plc_structure.json";
@@ -157,6 +165,7 @@ public class Program
                 Console.WriteLine("Disconnecting...");
                 await service.DisconnectAsync();
             }
+            service.Dispose();
         }
     }
 }
@@ -199,18 +208,18 @@ if (subscribed)
 
 ### Correcting Data Types
 
-By default, a PLC tag is assigned S7DataType.UNKNOWN which means no value conversation takes place. If, for example, you want to use `S5TIME`. You can correct this in the data store. Changes can be made persistent by saving / loading the structure using `SaveStructureAsync` and `LoadStructureAsync`.
+By default, a PLC tag is assigned `S7DataType.UNKNOWN`, which means no value conversion takes place. If, for example, a `WORD` should be interpreted as an `S5TIME`, you can correct this in the data store. Changes can be made persistent by saving the structure using `SaveStructureAsync`.
 
 ```csharp
 using S7UaLib.Core.Enums;
-// ...assuming 'service' is a connected S7Service instance
+// ...assuming 'service' is a connected S7Service instance with a loaded structure
 
 var timerPath = "DataBlocksGlobal.Timers.T1_Preset";
 
-// Let's say discovery identified it as WORD
+// Let's say discovery identified it as an unknown type (raw value is a ushort)
 var timerVar = service.GetVariable(timerPath);
 Console.WriteLine($"Type before update: {timerVar.S7Type}, Value: {timerVar.Value}");
-// Output might be: Type before update: WORD, Value: 8212
+// Output might be: Type before update: UNKNOWN, Value: 8212
 
 // Update the type to S5TIME using the enum from S7UaLib.Core
 await service.UpdateVariableTypeAsync(timerPath, S7DataType.S5TIME);
@@ -219,6 +228,39 @@ await service.UpdateVariableTypeAsync(timerPath, S7DataType.S5TIME);
 timerVar = service.GetVariable(timerPath);
 Console.WriteLine($"Type after update: {timerVar.S7Type}, Value: {timerVar.Value}");
 // Output should be: Type after update: S5TIME, Value: 00:00:12.3400000 (as a TimeSpan)
+```
+
+### Manually Registering Variables
+
+If some variables or data blocks are not browsable via OPC UA, you can add them manually to the data store before reading their values.
+
+```csharp
+using S7UaLib.Core.S7.Structure;
+// ...assuming 'service' is a connected S7Service instance
+
+// 1. Register the parent data block if it doesn't exist
+var db = new S7DataBlockGlobal
+{
+    DisplayName = "NonBrowsableDB",
+    FullPath = "DataBlocksGlobal.NonBrowsableDB",
+    NodeId = "ns=3;s=\"NonBrowsableDB\"" // NodeId from your PLC project
+};
+await service.RegisterGlobalDataBlockAsync(db);
+
+// 2. Register the hidden variable within that data block
+var hiddenVar = new S7Variable
+{
+    DisplayName = "MyHiddenInt",
+    FullPath = "DataBlocksGlobal.NonBrowsableDB.MyHiddenInt",
+    NodeId = "ns=3;s=\"NonBrowsableDB\".\"MyHiddenInt\"", // NodeId from your PLC project
+    S7Type = S7DataType.INT
+};
+await service.RegisterVariableAsync(hiddenVar);
+
+// 3. Now you can read/write it like any other variable
+await service.ReadAllVariablesAsync();
+var value = service.GetVariable("DataBlocksGlobal.NonBrowsableDB.MyHiddenInt")?.Value;
+Console.WriteLine($"Value of hidden variable: {value}");
 ```
 
 ## `S7Service` API Reference
@@ -260,7 +302,7 @@ This section provides a complete reference for the public `S7Service` class. The
 
 #### Configuration Methods
 
-- `Task ConfigureAsync(string appName, string appUri, string productUri, SecurityConfiguration securityConfiguration, ClientConfiguration? clientConfig = null, TransportQuotas? transportQuotas = null, OperationLimits? opLimits = null)`
+- `Task ConfigureAsync(ApplicationConfiguration appConfig)`
   > Configures the underlying OPC UA client application. This must be called before connecting.
 - `void SaveConfiguration(string filePath)`
   > Saves the client's current OPC UA configuration to a file.
@@ -280,26 +322,28 @@ This section provides a complete reference for the public `S7Service` class. The
 
 - `Task DiscoverStructureAsync(CancellationToken cancellationToken = default)`
   > Discovers the entire structure of the OPC UA server and populates the internal data store. Throws an `InvalidOperationException` if not connected.
+- `Task<bool> RegisterGlobalDataBlockAsync(IS7DataBlockGlobal dataBlock, CancellationToken cancellationToken = default)`
+  > Registers a new global data block manually in the data store's structure.
 - `Task<bool> RegisterVariableAsync(IS7Variable variable, CancellationToken cancellationToken = default)`
-  > Registers a new variable manually in the data store's structure / cache. The parent element of the variable must already exist. This method will not create parent elements. If the variable is a struct with members, its members are also registered recursively. After successful registration, the internal cache is rebuilt.
+  > Registers a new variable manually in the data store's structure. The parent element must already exist.
 
 #### Variables Access and Manipulation Methods
-- `IS7Inputs? GetInputs()`
-  > Returns the cached inputs.
-- `IS7Outputs? GetOutputs()`
-  > Returns the cached outputs.
-- `IS7Memory? GetMemory()`
-  > Returns the cached memory.
-- `IS7Timers? GetTimers()`
-  > Returns the cached timers.
-- `IS7Counters? GetCounters()`
-  > Returns the cached counters.
-- `IReadOnlyList<IS7DataBlockInstance> GetInstanceDataBlocks()`
-  > Returns the cached instance data blocks.
 - `IReadOnlyList<IS7DataBlockGlobal> GetGlobalDataBlocks()`
   > Returns the cached global data blocks.
+- `IReadOnlyList<IS7DataBlockInstance> GetInstanceDataBlocks()`
+  > Returns the cached instance data blocks.
+- `IS7Inputs? GetInputs()`
+  > Returns the cached inputs area.
+- `IS7Outputs? GetOutputs()`
+  > Returns the cached outputs area.
+- `IS7Memory? GetMemory()`
+  > Returns the cached memory area.
+- `IS7Timers? GetTimers()`
+  > Returns the cached timers area.
+- `IS7Counters? GetCounters()`
+  > Returns the cached counters area.
 - `IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)`
-  > Filters and returns variables in cache based on a predicate
+  > Filters and returns variables from the internal cache based on a predicate.
 - `Task ReadAllVariablesAsync(CancellationToken cancellationToken = default)`
   > Reads the values of all discovered variables from the PLC. Raises the `VariableValueChanged` event for any variable whose value has changed.
 - `Task<bool> WriteVariableAsync(string fullPath, object value)`

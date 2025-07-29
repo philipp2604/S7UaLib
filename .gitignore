@@ -361,3 +361,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Claude
+CLAUDE.md
+.claude/
+
+# Certificates
+*.cer
+*.pfx
+*.der

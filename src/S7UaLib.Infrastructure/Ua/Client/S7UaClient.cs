@@ -1,50 +1,51 @@
-﻿using Microsoft.Extensions.Logging;
-using Opc.Ua;
-using Opc.Ua.Client;
+using Microsoft.Extensions.Logging;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.S7.Converters;
 using S7UaLib.Infrastructure.Ua.Converters;
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography.X509Certificates;
-using System.Xml;
 
 namespace S7UaLib.Infrastructure.Ua.Client;
 
 /// <summary>
-/// Represents a client for connecting to and interacting with an S7 UA server.
+/// S7 UA Client implementation with integrated session pool for improved performance.
+/// Uses a main client for connections/subscriptions and a session pool for stateless operations.
 /// </summary>
-/// <remarks>The <see cref="S7UaClient"/> class provides methods and properties for establishing and managing a
-/// session with an S7 UA server, including connection, disconnection, and reconnection handling. It supports
-/// configurable keep-alive intervals, session timeouts, and reconnection strategies.
 internal class S7UaClient : IS7UaClient, IDisposable
 {
     #region Private Fields
 
-    private readonly ILogger? _logger;
-    private readonly ILoggerFactory? _loggerFactory;
-    private SessionReconnectHandler? _reconnectHandler;
-    private ISession? _session;
-    private Opc.Ua.Configuration.ApplicationInstance? _appInst;
+    private readonly ILogger<S7UaClient>? _logger;
+    private readonly IS7UaMainClient _mainClient;
+    private readonly IS7UaSessionPool _sessionPool;
     private readonly Action<IList, IList> _validateResponse;
     private bool _disposed;
-    private readonly SemaphoreSlim _sessionSemaphore = new(1, 1);
-    private Subscription? _subscription;
-    private readonly Dictionary<NodeId, MonitoredItem> _monitoredItems = [];
-    private readonly SemaphoreSlim _subscriptionSemaphore = new(1, 1);
 
-    private static readonly NodeId _dataBlocksGlobalRootNode = new(S7StructureConstants._s7DataBlocksGlobalNamespaceIdentifier);
-    private static readonly NodeId _dataBlocksInstanceRootNode = new(S7StructureConstants._s7DataBlocksInstanceNamespaceIdentifier);
-    private static readonly NodeId _memoryRootNode = new(S7StructureConstants._s7MemoryNamespaceIdentifier);
-    private static readonly NodeId _inputsRootNode = new(S7StructureConstants._s7InputsNamespaceIdentifier);
-    private static readonly NodeId _outputsRootNode = new(S7StructureConstants._s7OutputsNamespaceIdentifier);
-    private static readonly NodeId _timersRootNode = new(S7StructureConstants._s7TimersNamespaceIdentifier);
-    private static readonly NodeId _countersRootNode = new(S7StructureConstants._s7CountersNamespaceIdentifier);
+    // Event handler references for proper cleanup
+    private readonly EventHandler<ConnectionEventArgs> _connectingHandler;
+
+    private readonly EventHandler<ConnectionEventArgs> _connectedHandler;
+    private readonly EventHandler<ConnectionEventArgs> _disconnectingHandler;
+    private readonly EventHandler<ConnectionEventArgs> _disconnectedHandler;
+    private readonly EventHandler<ConnectionEventArgs> _reconnectingHandler;
+    private readonly EventHandler<MonitoredItemChangedEventArgs> _monitoredItemChangedHandler;
+
+    // Static node references
+    private static readonly Opc.Ua.NodeId _dataBlocksGlobalRootNode = new(S7StructureConstants._s7DataBlocksGlobalNamespaceIdentifier);
+
+    private static readonly Opc.Ua.NodeId _dataBlocksInstanceRootNode = new(S7StructureConstants._s7DataBlocksInstanceNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _memoryRootNode = new(S7StructureConstants._s7MemoryNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _inputsRootNode = new(S7StructureConstants._s7InputsNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _outputsRootNode = new(S7StructureConstants._s7OutputsNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _timersRootNode = new(S7StructureConstants._s7TimersNamespaceIdentifier);
+    private static readonly Opc.Ua.NodeId _countersRootNode = new(S7StructureConstants._s7CountersNamespaceIdentifier);
 
     #region Instance Type Converters
 
@@ -69,34 +70,51 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #region Constructors
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="S7UaClient"/> class with the specified application configuration,
-    /// response validation action, and optional logger factory.
+    /// Initializes a new instance of the <see cref="S7UaClient"/> class.
     /// </summary>
-    /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
-    /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
-    public S7UaClient(Core.Ua.UserIdentity? userIdentity = null, ILoggerFactory? loggerFactory = null) : this(userIdentity, ClientBase.ValidateResponse, loggerFactory)
+    /// <param name="userIdentity">The user identity for authentication.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
+    public S7UaClient(UserIdentity? userIdentity = null, int maxSessions = 5, ILoggerFactory? loggerFactory = null)
+        : this(userIdentity, maxSessions, Opc.Ua.ClientBase.ValidateResponse, loggerFactory)
     { }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="S7UaClient"/> class with the specified application configuration,
-    /// response validation action, and optional logger factory.
+    /// Initializes a new instance of the <see cref="S7UaClient"/> class.
     /// </summary>
-    /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
-    /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
-    /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="appConfig"/> or <paramref name="validateResponse"/> is <see langword="null"/>.</exception>
-    public S7UaClient(Core.Ua.UserIdentity? userIdentity, Action<IList, IList>? validateResponse, ILoggerFactory? loggerFactory = null)
+    /// <param name="userIdentity">The user identity for authentication.</param>
+    /// <param name="validateResponse">Response validation callback.</param>
+    /// <param name="loggerFactory">Optional logger factory.</param>
+    public S7UaClient(UserIdentity? userIdentity, int maxSessions, Action<IList, IList>? validateResponse, ILoggerFactory? loggerFactory = null)
     {
-        UserIdentity = userIdentity ?? new Core.Ua.UserIdentity();
-
+        UserIdentity = userIdentity ?? new UserIdentity();
         _validateResponse = validateResponse ?? throw new ArgumentNullException(nameof(validateResponse));
-        _loggerFactory = loggerFactory;
 
-        if (_loggerFactory != null)
+        if (loggerFactory != null)
         {
-            _logger = _loggerFactory.CreateLogger<S7UaClient>();
+            _logger = loggerFactory.CreateLogger<S7UaClient>();
         }
+
+        // Create main client and session pool
+        _mainClient = new S7UaMainClient(UserIdentity, _validateResponse, loggerFactory);
+        _sessionPool = new S7UaSessionPool(UserIdentity, maxSessions, _validateResponse,
+            loggerFactory?.CreateLogger<S7UaSessionPool>());
+
+        // Initialize event handlers
+        _connectingHandler = (sender, e) => Connecting?.Invoke(this, e);
+        _connectedHandler = OnMainClientConnected;
+        _disconnectingHandler = (sender, e) => Disconnecting?.Invoke(this, e);
+        _disconnectedHandler = (sender, e) => Disconnected?.Invoke(this, e);
+        _reconnectingHandler = (sender, e) => Reconnecting?.Invoke(this, e);
+        _monitoredItemChangedHandler = (sender, e) => MonitoredItemChanged?.Invoke(this, e);
+
+        // Subscribe to main client events
+        _mainClient.Connecting += _connectingHandler;
+        _mainClient.Connected += _connectedHandler;
+        _mainClient.Disconnecting += _disconnectingHandler;
+        _mainClient.Disconnected += _disconnectedHandler;
+        _mainClient.Reconnecting += _reconnectingHandler;
+        _mainClient.Reconnected += OnMainClientReconnected;
+        _mainClient.MonitoredItemChanged += _monitoredItemChangedHandler;
 
         // Initialize instance converters
         _charConverterInstance = new S7CharConverter();
@@ -138,57 +156,77 @@ internal class S7UaClient : IS7UaClient, IDisposable
         };
     }
 
-    #endregion Constructors
-
-    #region Deconstructors
-
-    ~S7UaClient()
+    /// <summary>
+    /// Internal constructor for unit testing with mocked dependencies.
+    /// </summary>
+    internal S7UaClient(
+        IS7UaMainClient mainClient,
+        IS7UaSessionPool sessionPool,
+        UserIdentity? userIdentity,
+        ILogger<S7UaClient>? logger,
+        Action<IList, IList> validateResponse)
     {
-        Dispose(false);
-    }
+        _logger = logger;
+        _mainClient = mainClient;
+        _sessionPool = sessionPool;
+        _validateResponse = validateResponse;
+        UserIdentity = userIdentity ?? new UserIdentity();
 
-    #endregion Deconstructors
+        _connectingHandler = (sender, e) => Connecting?.Invoke(this, e);
+        _connectedHandler = OnMainClientConnected;
+        _disconnectingHandler = (sender, e) => Disconnecting?.Invoke(this, e);
+        _disconnectedHandler = (sender, e) => Disconnected?.Invoke(this, e);
+        _reconnectingHandler = (sender, e) => Reconnecting?.Invoke(this, e);
+        _monitoredItemChangedHandler = (sender, e) => MonitoredItemChanged?.Invoke(this, e);
 
-    #region Disposing
+        _mainClient.Connecting += _connectingHandler;
+        _mainClient.Connected += _connectedHandler;
+        _mainClient.Disconnecting += _disconnectingHandler;
+        _mainClient.Disconnected += _disconnectedHandler;
+        _mainClient.Reconnecting += _reconnectingHandler;
+        _mainClient.Reconnected += OnMainClientReconnected;
+        _mainClient.MonitoredItemChanged += _monitoredItemChangedHandler;
 
-    public void Dispose()
-    {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-    }
+        _charConverterInstance = new S7CharConverter();
+        _wCharConverterInstance = new S7WCharConverter();
+        _dateConverterInstance = new S7DateConverter();
+        _timeConverterInstance = new S7TimeConverter();
+        _lTimeConverterInstance = new S7LTimeConverter();
+        _dateAndTimeConverterInstance = new S7DateAndTimeConverter();
+        _timeOfDayConverterInstance = new S7TimeOfDayConverter();
+        _lTimeOfDayConverterInstance = new S7LTimeOfDayConverter();
+        _s5TimeConverterInstance = new S7S5TimeConverter();
+        _dtlConverterInstance = new S7DTLConverter();
+        _counterConverterInstance = new S7CounterConverter();
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (_disposed)
-            return;
-
-        if (disposing)
+        _typeConvertersInstance = new Dictionary<S7DataType, IS7TypeConverter>
         {
-            if (_session != null)
-            {
-                if (_session.Connected)
-                    DisconnectCore();
-                _session.Dispose();
-            }
-
-            if (_appInst != null)
-            {
-                _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation -= Client_CertificateValidation;
-            }
-
-            _sessionSemaphore.Dispose();
-            _subscriptionSemaphore.Dispose();
-
-            _disposed = true;
-        }
+            [S7DataType.CHAR] = _charConverterInstance,
+            [S7DataType.WCHAR] = _wCharConverterInstance,
+            [S7DataType.DATE] = _dateConverterInstance,
+            [S7DataType.TIME] = _timeConverterInstance,
+            [S7DataType.LTIME] = _lTimeConverterInstance,
+            [S7DataType.TIME_OF_DAY] = _timeOfDayConverterInstance,
+            [S7DataType.LTIME_OF_DAY] = _lTimeOfDayConverterInstance,
+            [S7DataType.S5TIME] = _s5TimeConverterInstance,
+            [S7DataType.DATE_AND_TIME] = _dateAndTimeConverterInstance,
+            [S7DataType.DTL] = _dtlConverterInstance,
+            [S7DataType.COUNTER] = _counterConverterInstance,
+            [S7DataType.ARRAY_OF_CHAR] = new S7ElementwiseArrayConverter(_charConverterInstance, typeof(byte)),
+            [S7DataType.ARRAY_OF_WCHAR] = new S7ElementwiseArrayConverter(_wCharConverterInstance, typeof(ushort)),
+            [S7DataType.ARRAY_OF_DATE] = new S7ElementwiseArrayConverter(_dateConverterInstance, typeof(ushort)),
+            [S7DataType.ARRAY_OF_TIME] = new S7ElementwiseArrayConverter(_timeConverterInstance, typeof(int)),
+            [S7DataType.ARRAY_OF_LTIME] = new S7ElementwiseArrayConverter(_lTimeConverterInstance, typeof(long)),
+            [S7DataType.ARRAY_OF_TIME_OF_DAY] = new S7ElementwiseArrayConverter(_timeOfDayConverterInstance, typeof(uint)),
+            [S7DataType.ARRAY_OF_LTIME_OF_DAY] = new S7ElementwiseArrayConverter(_lTimeOfDayConverterInstance, typeof(ulong)),
+            [S7DataType.ARRAY_OF_S5TIME] = new S7ElementwiseArrayConverter(_s5TimeConverterInstance, typeof(ushort)),
+            [S7DataType.ARRAY_OF_DATE_AND_TIME] = new S7ElementwiseArrayConverter(_dateAndTimeConverterInstance, typeof(byte)),
+            [S7DataType.ARRAY_OF_DTL] = new S7ElementwiseArrayConverter(_dtlConverterInstance, typeof(byte[])),
+            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverterInstance, typeof(ushort))
+        };
     }
 
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-    }
-
-    #endregion Disposing
+    #endregion Constructors
 
     #region Public Events
 
@@ -197,7 +235,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <inheritdoc cref="IS7UaClient.Connecting" />
     public event EventHandler<ConnectionEventArgs>? Connecting;
 
-    /// <inheritdoc cref="IS7UaClient.Connected" />/>
+    /// <inheritdoc cref="IS7UaClient.Connected" />
     public event EventHandler<ConnectionEventArgs>? Connected;
 
     /// <inheritdoc cref="IS7UaClient.Disconnecting" />
@@ -225,20 +263,35 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Public Properties
 
+    /// <inheritdoc/>
+    public ApplicationConfiguration? ApplicationConfiguration => _mainClient.ApplicationConfiguration;
+
     /// <inheritdoc cref="IS7UaClient.KeepAliveInterval"/>
-    public int KeepAliveInterval { get; set; } = 5000;
+    public int KeepAliveInterval
+    {
+        get => _mainClient.KeepAliveInterval;
+        set => _mainClient.KeepAliveInterval = value;
+    }
 
     /// <inheritdoc cref="IS7UaClient.ReconnectPeriod"/>
-    public int ReconnectPeriod { get; set; } = 1000;
+    public int ReconnectPeriod
+    {
+        get => _mainClient.ReconnectPeriod;
+        set => _mainClient.ReconnectPeriod = value;
+    }
 
-    /// <inheritdoc cref="IS7UaClient.ReconnectPeriodExponentialBackoff"/>/>
-    public int ReconnectPeriodExponentialBackoff { get; set; } = -1;
+    /// <inheritdoc cref="IS7UaClient.ReconnectPeriodExponentialBackoff"/>
+    public int ReconnectPeriodExponentialBackoff
+    {
+        get => _mainClient.ReconnectPeriodExponentialBackoff;
+        set => _mainClient.ReconnectPeriodExponentialBackoff = value;
+    }
 
     /// <inheritdoc cref="IS7UaClient.UserIdentity"/>
-    public Core.Ua.UserIdentity UserIdentity { get; }
+    public UserIdentity UserIdentity { get; }
 
     /// <inheritdoc cref="IS7UaClient.IsConnected"/>
-    public bool IsConnected => _session?.Connected == true;
+    public bool IsConnected => _mainClient.IsConnected;
 
     #endregion Public Properties
 
@@ -246,124 +299,32 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Configuration Methods
 
-    /// <inheritdoc cref="IS7UaClient.ConfigureAsync(string, string, string, Core.Ua.Configuration.SecurityConfiguration, S7UaLib.Core.Ua.Configuration.ClientConfiguration?, S7UaLib.Core.Ua.Configuration.TransportQuotas?, S7UaLib.Core.Ua.Configuration.OperationLimits?)"/>
-    public async Task ConfigureAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
+    /// <inheritdoc/>
+    public async Task ConfigureAsync(ApplicationConfiguration appConfig)
     {
         ThrowIfDisposed();
-        await BuildClientAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+        await _mainClient.ConfigureAsync(appConfig);
     }
 
     /// <inheritdoc cref="IS7UaClient.SaveConfiguration(string)"/>
     public void SaveConfiguration(string filePath)
     {
         ThrowIfDisposed();
-        ThrowIfNotConfigured();
-        ArgumentException.ThrowIfNullOrWhiteSpace(filePath, nameof(filePath));
-        _appInst?.ApplicationConfiguration.SaveToFile(filePath);
+        _mainClient.SaveConfiguration(filePath);
     }
 
     /// <inheritdoc cref="IS7UaClient.LoadConfigurationAsync(string)"/>
     public async Task LoadConfigurationAsync(string filePath)
     {
         ThrowIfDisposed();
-        ArgumentException.ThrowIfNullOrWhiteSpace(filePath, nameof(filePath));
-        ArgumentNullException.ThrowIfNull(_appInst, nameof(_appInst));
-
-        await _appInst.LoadApplicationConfiguration(filePath, false);
-
-        _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
+        await _mainClient.LoadConfigurationAsync(filePath);
     }
 
     /// <inheritdoc cref="IS7UaClient.AddTrustedCertificateAsync(X509Certificate2, CancellationToken)"/>
     public async Task AddTrustedCertificateAsync(X509Certificate2 certificate, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        ThrowIfNotConfigured();
-
-        await _appInst!.AddOwnCertificateToTrustedStoreAsync(certificate, cancellationToken);
-        _appInst.ApplicationConfiguration.SecurityConfiguration.AddTrustedPeer(certificate.GetRawCertData());
-        await _appInst.ApplicationConfiguration.CertificateValidator.UpdateAsync(_appInst.ApplicationConfiguration.SecurityConfiguration);
-    }
-
-    internal async Task BuildClientAsync(string appName, string appUri, string productUri, Core.Ua.Configuration.SecurityConfiguration securityConfiguration, Core.Ua.Configuration.ClientConfiguration? clientConfig = null, Core.Ua.Configuration.TransportQuotas? transportQuotas = null, Core.Ua.Configuration.OperationLimits? opLimits = null)
-    {
-        _appInst = new()
-        {
-            ApplicationName = appName,
-            ApplicationType = Opc.Ua.ApplicationType.Client
-        };
-
-        var build = _appInst.Build(appUri, productUri);
-
-        if (transportQuotas != null)
-        {
-            build.SetChannelLifetime((int)transportQuotas.ChannelLifetime)
-                .SetMaxStringLength((int)transportQuotas.MaxStringLength)
-                .SetMaxByteStringLength((int)transportQuotas.MaxByteStringLength)
-                .SetMaxArrayLength((int)transportQuotas.MaxArrayLength)
-                .SetMaxBufferSize((int)transportQuotas.MaxBufferSize)
-                .SetMaxDecoderRecoveries((int)transportQuotas.MaxDecoderRecoveries)
-                .SetMaxEncodingNestingLevels((int)transportQuotas.MaxEncodingNestingLevels)
-                .SetMaxMessageSize((int)transportQuotas.MaxMessageSize)
-                .SetOperationTimeout((int)transportQuotas.OperationTimeout)
-                .SetSecurityTokenLifetime((int)transportQuotas.SecurityTokenLifetime);
-        }
-
-        var clientBuild = build.AsClient();
-
-        clientConfig ??= new();
-        foreach (var uri in clientConfig.WellKnownDiscoveryUrls)
-        {
-            clientBuild.AddWellKnownDiscoveryUrls(uri);
-        }
-
-        if (opLimits != null)
-        {
-            clientBuild.SetClientOperationLimits(
-                new Opc.Ua.OperationLimits()
-                {
-                    MaxMonitoredItemsPerCall = opLimits.MaxMonitoredItemsPerCall,
-                    MaxNodesPerBrowse = opLimits.MaxNodesPerBrowse,
-                    MaxNodesPerHistoryReadData = opLimits.MaxNodesPerHistoryReadData,
-                    MaxNodesPerHistoryReadEvents = opLimits.MaxNodesPerHistoryReadEvents,
-                    MaxNodesPerHistoryUpdateData = opLimits.MaxNodesPerHistoryUpdateData,
-                    MaxNodesPerHistoryUpdateEvents = opLimits.MaxNodesPerHistoryUpdateEvents,
-                    MaxNodesPerMethodCall = opLimits.MaxNodesPerMethodCall,
-                    MaxNodesPerNodeManagement = opLimits.MaxNodesPerNodeManagement,
-                    MaxNodesPerRead = opLimits.MaxNodesPerRead,
-                    MaxNodesPerRegisterNodes = opLimits.MaxNodesPerRegisterNodes,
-                    MaxNodesPerTranslateBrowsePathsToNodeIds = opLimits.MaxNodesPerTranslateBrowsePathsToNodeIds,
-                    MaxNodesPerWrite = opLimits.MaxNodesPerWrite
-                });
-        }
-
-        var finalBuild = clientBuild.SetDefaultSessionTimeout((int)clientConfig.SessionTimeout)
-            .SetMinSubscriptionLifetime((int)clientConfig.MinSubscriptionLifetime)
-        .AddSecurityConfigurationStores(
-            securityConfiguration.SecurityConfigurationStores.SubjectName,
-            securityConfiguration.SecurityConfigurationStores.AppRoot,
-            securityConfiguration.SecurityConfigurationStores.TrustedRoot,
-            securityConfiguration.SecurityConfigurationStores.IssuerRoot,
-            securityConfiguration.SecurityConfigurationStores.RejectedRoot)
-        .SetSendCertificateChain(securityConfiguration.SendCertificateChain)
-        .SetAddAppCertToTrustedStore(securityConfiguration.AddAppCertToTrustedStore)
-        .SetAutoAcceptUntrustedCertificates(securityConfiguration.AutoAcceptUntrustedCertificates)
-        .SetMaxRejectedCertificates((int)securityConfiguration.MaxRejectedCertificates)
-        .SetMinimumCertificateKeySize((ushort)securityConfiguration.MinCertificateKeySize)
-        .SetRejectSHA1SignedCertificates(securityConfiguration.RejectSHA1SignedCertificates)
-        .SetRejectUnknownRevocationStatus(securityConfiguration.RejectUnknownRevocationStatus)
-        .SetSuppressNonceValidationErrors(securityConfiguration.SuppressNonceValidationErrors)
-        .SetUseValidatedCertificates(securityConfiguration.UseValidatedCertificates)
-        .AddExtension<Core.Ua.Configuration.DomainValidation>(new XmlQualifiedName("SkipDomainValidation"), securityConfiguration.SkipDomainValidation);
-
-        await finalBuild.Create();
-
-        if (!await _appInst.CheckApplicationInstanceCertificates(false).ConfigureAwait(false))
-        {
-            throw new SystemException("Application instance certificate invalid!");
-        }
-
-        _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation += Client_CertificateValidation;
+        await _mainClient.AddTrustedCertificateAsync(certificate, cancellationToken);
     }
 
     #endregion Configuration Methods
@@ -374,269 +335,92 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public async Task ConnectAsync(string serverUrl, bool useSecurity = true, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        ThrowIfNotConfigured();
-        ArgumentException.ThrowIfNullOrEmpty(serverUrl, nameof(serverUrl));
-
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            if (_session?.Connected == true)
-            {
-                _logger?.LogWarning("Already connected to the server.");
-                return;
-            }
-
-            OnConnecting(ConnectionEventArgs.Empty);
-
-            var endpointDescription = CoreClientUtils.SelectEndpoint(_appInst!.ApplicationConfiguration, serverUrl, useSecurity);
-
-            // Validate server certificate
-            var serverCert = endpointDescription.ServerCertificate;
-            var serverCertId = new CertificateIdentifier(serverCert);
-            await _appInst.ApplicationConfiguration.CertificateValidator.ValidateAsync(serverCertId.Certificate, cancellationToken).ConfigureAwait(false);
-
-            var endpointConfig = EndpointConfiguration.Create(_appInst!.ApplicationConfiguration);
-            var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
-
-            // Optionally validate server domain
-            if (_appInst.ApplicationConfiguration.Extensions.Find(x => x.Name == "DomainValidation") is XmlElement xmlElement)
-            {
-                if(xmlElement.FirstChild is XmlNode skipNode)
-                {
-                    if (bool.TryParse(skipNode.InnerText, out var skipDomainValidation))
-                    {
-                        if (!skipDomainValidation)
-                        {
-                            try
-                            {
-                                _appInst.ApplicationConfiguration.CertificateValidator.ValidateDomains(serverCertId.Certificate, endpoint);
-                            }
-                            catch (ServiceResultException ex)
-                            {
-                                if (ex.StatusCode == Opc.Ua.StatusCodes.BadCertificateHostNameInvalid)
-                                {
-                                    _logger?.LogError("Bad certificate, host name invalid.");
-                                    throw;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Opc.Ua.UserIdentity identity = UserIdentity.Username == null && UserIdentity.Password == null
-                ? new Opc.Ua.UserIdentity()
-                : new Opc.Ua.UserIdentity(UserIdentity.Username, UserIdentity.Password);
-
-            var sessionFactory = TraceableSessionFactory.Instance;
-            var session = await sessionFactory.CreateAsync(
-                _appInst!.ApplicationConfiguration,
-                endpoint,
-                true,
-                false,
-                _appInst!.ApplicationConfiguration.ApplicationName,
-                (uint)_appInst!.ApplicationConfiguration.ClientConfiguration.DefaultSessionTimeout,
-                identity,
-                null,
-                cancellationToken
-            ).ConfigureAwait(false);
-
-            if (session?.Connected != true)
-            {
-                _logger?.LogError("Failed to connect to the S7 UA server.");
-                return;
-            }
-
-            _session = session;
-
-            _session.KeepAliveInterval = KeepAliveInterval;
-            _session.DeleteSubscriptionsOnClose = false;
-            _session.TransferSubscriptionsOnReconnect = true;
-
-            _session.KeepAlive += Session_KeepAlive;
-
-            _reconnectHandler = new SessionReconnectHandler(true, ReconnectPeriodExponentialBackoff);
-
-            OnConnected(ConnectionEventArgs.Empty);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        await _mainClient.ConnectAsync(serverUrl, useSecurity, cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.DisconnectAsync(bool, CancellationToken)"/>
     public async Task DisconnectAsync(bool leaveChannelOpen = false, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            DisconnectCore(leaveChannelOpen);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
-    }
-
-    private void DisconnectCore(bool leaveChannelOpen = false)
-    {
-        if (_session != null)
-        {
-            OnDisconnecting(ConnectionEventArgs.Empty);
-
-            if (_subscription != null)
-            {
-                _session.RemoveSubscription(_subscription);
-                _subscription.Dispose();
-                _subscription = null;
-                _monitoredItems.Clear();
-            }
-
-            _session.KeepAlive -= Session_KeepAlive;
-            _reconnectHandler?.Dispose();
-            _reconnectHandler = null;
-
-            _session.Close(!leaveChannelOpen);
-
-            if (leaveChannelOpen)
-            {
-                _session.DetachChannel();
-            }
-
-            _session.Dispose();
-            _session = null;
-
-            OnDisconnected(ConnectionEventArgs.Empty);
-        }
+        await _mainClient.DisconnectAsync(leaveChannelOpen, cancellationToken);
+        _sessionPool.Dispose();
+        Dispose();
     }
 
     #endregion Connection Methods
 
-    #region Structure Browsing and Discovery Methods
+    #region Structure Browsing and Discovery Methods (delegated to session pool)
 
     /// <inheritdoc cref="IS7UaClient.GetAllGlobalDataBlocksAsync(CancellationToken)"/>
     public async Task<IReadOnlyList<S7DataBlockGlobal>> GetAllGlobalDataBlocksAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return GetAllStructureElementsCore<S7DataBlockGlobal>(_dataBlocksGlobalRootNode, NodeClass.Object);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(GetAllStructureElementsCore<S7DataBlockGlobal>(session, _dataBlocksGlobalRootNode, Opc.Ua.NodeClass.Object)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.GetAllInstanceDataBlocksAsync(CancellationToken)"/>
     public async Task<IReadOnlyList<S7DataBlockInstance>> GetAllInstanceDataBlocksAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        return await _sessionPool.ExecuteWithSessionAsync(session =>
         {
-            if (!IsConnected)
+            if (!session.Connected)
             {
                 _logger?.LogError("Cannot get instance data blocks; session is not connected.");
-                return [];
+                return Task.FromResult<IReadOnlyList<S7DataBlockInstance>>([]);
             }
 
-            var browser = new Browser(_session)
+            var browser = new Opc.Ua.Client.Browser(session)
             {
-                BrowseDirection = BrowseDirection.Forward,
-                NodeClassMask = (int)NodeClass.Object,
-                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
+                BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+                NodeClassMask = (int)Opc.Ua.NodeClass.Object,
+                ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
                 IncludeSubtypes = true
             };
-            ReferenceDescriptionCollection descriptions = browser.Browse(_dataBlocksInstanceRootNode);
+            Opc.Ua.ReferenceDescriptionCollection descriptions = browser.Browse(_dataBlocksInstanceRootNode);
 
-            return descriptions
-                .Select(desc => new S7DataBlockInstance { NodeId = ((NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
+            var result = descriptions
+                .Select(desc => new S7DataBlockInstance { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
                 .ToList()
                 .AsReadOnly();
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+
+            return Task.FromResult<IReadOnlyList<S7DataBlockInstance>>(result);
+        }, cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.GetMemoryAsync(CancellationToken)"/>
     public async Task<IS7Memory?> GetMemoryAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return GetSingletonStructureElementCore<S7Memory>(_memoryRootNode);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(GetSingletonStructureElementCore<S7Memory>(session, _memoryRootNode)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.GetInputsAsync(CancellationToken)"/>
     public async Task<IS7Inputs?> GetInputsAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return GetSingletonStructureElementCore<S7Inputs>(_inputsRootNode);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(GetSingletonStructureElementCore<S7Inputs>(session, _inputsRootNode)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.GetOutputsAsync(CancellationToken)"/>
     public async Task<IS7Outputs?> GetOutputsAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return GetSingletonStructureElementCore<S7Outputs>(_outputsRootNode);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(GetSingletonStructureElementCore<S7Outputs>(session, _outputsRootNode)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.GetTimersAsync(CancellationToken)"/>
     public async Task<IS7Timers?> GetTimersAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return GetSingletonStructureElementCore<S7Timers>(_timersRootNode);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(GetSingletonStructureElementCore<S7Timers>(session, _timersRootNode)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.GetCountersAsync(CancellationToken)"/>
     public async Task<IS7Counters?> GetCountersAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return GetSingletonStructureElementCore<S7Counters>(_countersRootNode);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(GetSingletonStructureElementCore<S7Counters>(session, _countersRootNode)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.DiscoverElementAsync(IUaElement, CancellationToken)"/>
@@ -649,143 +433,26 @@ internal class S7UaClient : IS7UaClient, IDisposable
             return null;
         }
 
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return DiscoverElementCore(elementShell);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
-    }
-
-    private IUaNode? DiscoverElementCore(IUaNode elementShell)
-    {
-        return elementShell switch
-        {
-            S7DataBlockInstance idb => DiscoverInstanceOfDataBlockCore(idb),
-            S7StructureElement simpleElement => DiscoverVariablesOfElementCore((dynamic)simpleElement),
-            _ => new Func<IUaNode?>(() =>
-            {
-                _logger?.LogWarning("DiscoverElement was called with an unsupported element type: {ElementType}", elementShell.GetType().Name);
-                return null;
-            })(),
-        };
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverElementCore(session, elementShell)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.DiscoverVariablesOfElementAsync(T, CancellationToken)"/>
     public async Task<T> DiscoverVariablesOfElementAsync<T>(T element, CancellationToken cancellationToken = default) where T : S7StructureElement
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return DiscoverVariablesOfElementCore(element);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
-    }
-
-    private T DiscoverVariablesOfElementCore<T>(T element) where T : S7StructureElement
-    {
-        if (element?.NodeId is null)
-        {
-            _logger?.LogWarning("Cannot discover variables for element of type {ElementType} because it or its NodeId is null.", typeof(T).Name);
-            return element!;
-        }
-        if (!IsConnected)
-        {
-            _logger?.LogError("Cannot discover variables for '{DisplayName}'; session is not connected.", element.DisplayName);
-            return element;
-        }
-
-        var browser = new Browser(_session)
-        {
-            BrowseDirection = BrowseDirection.Forward,
-            NodeClassMask = (int)NodeClass.Variable,
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
-            IncludeSubtypes = true
-        };
-        ReferenceDescriptionCollection variableDescriptions = browser.Browse(element.NodeId);
-
-        var discoveredVariables = variableDescriptions
-            .Where(desc => desc.DisplayName.Text != "Icon")
-            .Select(desc => new S7Variable { NodeId = ((NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text }).ToList();
-
-        if (element.DisplayName == "Counters")
-        {
-            discoveredVariables = discoveredVariables
-                .ConvertAll(variable => variable with { S7Type = S7DataType.COUNTER })
-;
-        }
-        else if (element.DisplayName == "Timers")
-        {
-            discoveredVariables = discoveredVariables
-                .ConvertAll(variable => variable with { S7Type = S7DataType.S5TIME })
-;
-        }
-
-        return element with { Variables = discoveredVariables };
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverVariablesOfElementCore(session, element)), cancellationToken);
     }
 
     /// <inheritdoc cref="IS7UaClient.DiscoverInstanceOfDataBlockAsync(S7DataBlockInstance, CancellationToken)"/>
     public async Task<IS7DataBlockInstance> DiscoverInstanceOfDataBlockAsync(S7DataBlockInstance instanceDbShell, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return DiscoverInstanceOfDataBlockCore(instanceDbShell);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverInstanceOfDataBlockCore(session, instanceDbShell)), cancellationToken);
     }
 
-    private S7DataBlockInstance DiscoverInstanceOfDataBlockCore(S7DataBlockInstance instanceDbShell)
-    {
-        if (instanceDbShell?.NodeId is null)
-        {
-            _logger?.LogWarning("Cannot discover instance DB because the provided shell or its NodeId is null.");
-            return instanceDbShell ?? new S7DataBlockInstance();
-        }
-        if (!IsConnected)
-        {
-            _logger?.LogError("Cannot discover instance DB '{DisplayName}'; session is not connected.", instanceDbShell.DisplayName);
-            return instanceDbShell;
-        }
+    #endregion Structure Browsing and Discovery Methods (delegated to session pool)
 
-        var browser = new Browser(_session)
-        {
-            BrowseDirection = BrowseDirection.Forward,
-            NodeClassMask = (int)NodeClass.Object,
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
-        };
-        var childNodes = browser.Browse(instanceDbShell.NodeId);
-
-        S7InstanceDbSection? input = null, output = null, inOut = null, stat = null;
-        foreach (var childNode in childNodes)
-        {
-            var sectionShell = new S7InstanceDbSection { NodeId = ((NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
-            var populatedSection = PopulateInstanceSectionCore(sectionShell);
-            switch (populatedSection.DisplayName)
-            {
-                case "Inputs": input = populatedSection; break;
-                case "Outputs": output = populatedSection; break;
-                case "InOuts": inOut = populatedSection; break;
-                case "Static": stat = populatedSection; break;
-            }
-        }
-        return instanceDbShell with { Inputs = input, Outputs = output, InOuts = inOut, Static = stat };
-    }
-
-    #endregion Structure Browsing and Discovery Methods
-
-    #region Reading and Writing Methods
+    #region Reading and Writing Methods (delegated to session pool)
 
     #region Reading Methods
 
@@ -793,182 +460,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public async Task<T> ReadValuesOfElementAsync<T>(T elementWithStructure, string? rootContextName = null, CancellationToken cancellationToken = default) where T : IUaNode
     {
         ThrowIfDisposed();
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return ReadValuesOfElementCore(elementWithStructure, rootContextName);
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
-    }
-
-    private T ReadValuesOfElementCore<T>(T elementWithStructure, string? rootContextName = null) where T : IUaNode
-    {
-        if (elementWithStructure?.NodeId is null)
-        {
-            _logger?.LogWarning("ReadValuesOfElement called with a null element or element with a null NodeId.");
-            return elementWithStructure!;
-        }
-        if (!IsConnected || _session is null)
-        {
-            _logger?.LogError("Cannot read values for '{DisplayName}'; session is not connected.", elementWithStructure.DisplayName);
-            return elementWithStructure;
-        }
-
-        string initialPathPrefix = BuildInitialPath(elementWithStructure, rootContextName);
-
-        var nodesToReadCollector = new Dictionary<NodeId, S7Variable>();
-        CollectNodesToReadRecursivelyCore(elementWithStructure, nodesToReadCollector, initialPathPrefix);
-
-        var readResultsMap = new Dictionary<NodeId, DataValue>();
-        if (nodesToReadCollector.Count > 0)
-        {
-            var nodesToRead = new ReadValueIdCollection(nodesToReadCollector.Keys.Select(nodeId => new ReadValueId { NodeId = nodeId, AttributeId = Attributes.Value }));
-            _session.Read(null, 0, TimestampsToReturn.Neither, nodesToRead, out var results, out _);
-            _validateResponse(results, nodesToRead);
-
-            for (int i = 0; i < nodesToRead.Count; i++)
-            {
-                if (nodesToRead[i].NodeId != null) readResultsMap[nodesToRead[i].NodeId] = results[i];
-            }
-        }
-
-        return (T)RebuildHierarchyWithValuesRecursivelyCore(elementWithStructure, readResultsMap, initialPathPrefix);
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(ReadValuesOfElementCore(session, elementWithStructure, rootContextName)), cancellationToken);
     }
 
     #endregion Reading Methods
-
-    #region Subscription Methods
-
-    /// <inheritdoc cref="IS7UaClient.CreateSubscriptionAsync(int)"/>
-    public async Task<bool> CreateSubscriptionAsync(int publishingInterval = 100)
-    {
-        ThrowIfDisposed();
-        if (!IsConnected || _session is null)
-        {
-            _logger?.LogError("Cannot create subscription; session is not connected.");
-            return false;
-        }
-
-        await _subscriptionSemaphore.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (_subscription != null)
-            {
-                return true;
-            }
-
-            _subscription = CreateNewSubscription(publishingInterval);
-
-            _session.AddSubscription(_subscription);
-            await CreateSubscriptionOnServerAsync(_subscription).ConfigureAwait(false);
-
-            _logger?.LogInformation("Subscription created successfully with PublishingInterval={interval}ms.", publishingInterval);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to create subscription.");
-            return false;
-        }
-        finally
-        {
-            _subscriptionSemaphore.Release();
-        }
-    }
-
-    /// <inheritdoc cref="IS7UaClient.SubscribeToVariableAsync(IS7Variable)"/>
-    public async Task<bool> SubscribeToVariableAsync(IS7Variable variable)
-    {
-        ThrowIfDisposed();
-        if (_subscription is null)
-        {
-            _logger?.LogError("Cannot subscribe variable '{name}'. Subscription does not exist.", variable.DisplayName);
-            return false;
-        }
-        if (variable.NodeId is null)
-        {
-            _logger?.LogWarning("Cannot subscribe variable '{name}'. NodeId is null.", variable.DisplayName);
-            return false;
-        }
-
-        await _subscriptionSemaphore.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (_monitoredItems.ContainsKey(variable.NodeId))
-            {
-                _logger?.LogInformation("Variable '{name}' is already subscribed.", variable.DisplayName);
-                return true;
-            }
-
-            var item = new MonitoredItem(_subscription.DefaultItem)
-            {
-                DisplayName = variable.DisplayName,
-                StartNodeId = variable.NodeId,
-                AttributeId = Attributes.Value,
-                SamplingInterval = (int)variable.SamplingInterval,
-                QueueSize = 1,
-                DiscardOldest = true,
-                MonitoringMode = MonitoringMode.Reporting
-            };
-
-            item.Notification += OnMonitoredItemNotification;
-
-            _monitoredItems.Add(variable.NodeId, item);
-            _subscription.AddItem(item);
-            await ApplySubscriptionChangesAsync(_subscription).ConfigureAwait(false);
-
-            _logger?.LogDebug("Variable '{name}' ({nodeId}) subscribed.", variable.DisplayName, variable.NodeId);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to subscribe to variable '{name}'.", variable.DisplayName);
-            if (variable.NodeId is not null) _monitoredItems.Remove(variable.NodeId);
-            return false;
-        }
-        finally
-        {
-            _subscriptionSemaphore.Release();
-        }
-    }
-
-    /// <inheritdoc cref="IS7UaClient.UnsubscribeFromVariableAsync(IS7Variable)"/>
-    public async Task<bool> UnsubscribeFromVariableAsync(IS7Variable variable)
-    {
-        ThrowIfDisposed();
-        if (_subscription is null || variable.NodeId is null || !_monitoredItems.TryGetValue(variable.NodeId, out var item))
-        {
-            _logger?.LogWarning("Cannot unsubscribe variable '{name}'. It is not currently subscribed.", variable.DisplayName);
-            return false;
-        }
-
-        await _subscriptionSemaphore.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            item.Notification -= OnMonitoredItemNotification;
-
-            _subscription.RemoveItem(item);
-            _monitoredItems.Remove(variable.NodeId);
-            await ApplySubscriptionChangesAsync(_subscription).ConfigureAwait(false);
-
-            _logger?.LogDebug("Variable '{name}' ({nodeId}) unsubscribed.", variable.DisplayName, variable.NodeId);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to unsubscribe from variable '{name}'.", variable.DisplayName);
-            return false;
-        }
-        finally
-        {
-            _subscriptionSemaphore.Release();
-        }
-    }
-
-    #endregion Subscription Methods
 
     #region Writing Methods
 
@@ -976,7 +471,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public async Task<bool> WriteVariableAsync(string nodeId, object value, S7DataType s7Type, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-
         ArgumentNullException.ThrowIfNullOrWhiteSpace(nodeId);
         ArgumentNullException.ThrowIfNull(value);
 
@@ -989,7 +483,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public async Task<bool> WriteVariableAsync(IS7Variable variable, object value, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-
         ArgumentNullException.ThrowIfNull(variable);
         ArgumentNullException.ThrowIfNull(value);
         return variable.NodeId is null
@@ -1001,26 +494,24 @@ internal class S7UaClient : IS7UaClient, IDisposable
     public async Task<bool> WriteRawVariableAsync(string nodeId, object rawValue, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-
         ArgumentNullException.ThrowIfNullOrWhiteSpace(nodeId);
         ArgumentNullException.ThrowIfNull(rawValue);
 
-        await _sessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        return await _sessionPool.ExecuteWithSessionAsync(async session =>
         {
-            if (!IsConnected || _session is null)
+            if (!session.Connected)
             {
                 _logger?.LogError("Cannot write values for node id '{nodeId}'; session is not connected.", nodeId);
                 return false;
             }
 
-            var writeValue = new WriteValue
+            var writeValue = new Opc.Ua.WriteValue
             {
-                NodeId = new NodeId(nodeId),
-                AttributeId = Attributes.Value,
-                Value = new DataValue(new Variant(rawValue))
+                NodeId = new Opc.Ua.NodeId(nodeId),
+                AttributeId = Opc.Ua.Attributes.Value,
+                Value = new Opc.Ua.DataValue(new Opc.Ua.Variant(rawValue))
             };
-            var response = await _session.WriteAsync(null, [writeValue], cancellationToken).ConfigureAwait(false);
+            var response = await session.WriteAsync(null, [writeValue], cancellationToken).ConfigureAwait(false);
             _validateResponse(response.Results, new[] { writeValue });
 
             Opc.Ua.StatusCode writeResult = response.Results[0];
@@ -1031,51 +522,337 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
             _logger?.LogError("Failed to write raw value to node {NodeId}. StatusCode: {StatusCode}", nodeId, writeResult);
             return false;
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
+        }, cancellationToken);
     }
 
     #endregion Writing Methods
 
-    #region Reading and Writing Helpers
+    #region Type Converter Access
 
+    /// <inheritdoc cref="IS7UaClient.GetConverter(S7DataType, Type)"/>
     public IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
         _typeConvertersInstance.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType);
 
-    #endregion Reading and Writing Helpers
+    #endregion Type Converter Access
 
-    #endregion Reading and Writing Methods
+    #endregion Reading and Writing Methods (delegated to session pool)
+
+    #region Subscription Methods (delegated to main client)
+
+    /// <inheritdoc cref="IS7UaClient.CreateSubscriptionAsync(int)"/>
+    public async Task<bool> CreateSubscriptionAsync(int publishingInterval = 100)
+    {
+        ThrowIfDisposed();
+        return await _mainClient.CreateSubscriptionAsync(publishingInterval);
+    }
+
+    /// <inheritdoc cref="IS7UaClient.SubscribeToVariableAsync(IS7Variable)"/>
+    public async Task<bool> SubscribeToVariableAsync(IS7Variable variable)
+    {
+        ThrowIfDisposed();
+        return await _mainClient.SubscribeToVariableAsync(variable);
+    }
+
+    /// <inheritdoc cref="IS7UaClient.UnsubscribeFromVariableAsync(IS7Variable)"/>
+    public async Task<bool> UnsubscribeFromVariableAsync(IS7Variable variable)
+    {
+        ThrowIfDisposed();
+        return await _mainClient.UnsubscribeFromVariableAsync(variable);
+    }
+
+    #endregion Subscription Methods (delegated to main client)
 
     #endregion Public Methods
 
     #region Private Methods
 
-    #region Reading and Writing Helpers
+    #region Event Handlers
+
+    private void OnMainClientConnected(object? sender, ConnectionEventArgs e)
+    {
+        // Initialize session pool synchronously after main client connects
+        // This blocks the Connected event until session pool is ready
+        try
+        {
+            if (_mainClient.OpcApplicationConfiguration != null && _mainClient.ConfiguredEndpoint != null)
+            {
+                var initTask = _sessionPool.InitializeAsync(_mainClient.OpcApplicationConfiguration, _mainClient.ConfiguredEndpoint);
+                initTask.GetAwaiter().GetResult(); // Synchronously wait for initialization
+                _logger?.LogDebug("Session pool initialized after main client connection.");
+            }
+            else
+            {
+                _logger?.LogWarning("Cannot initialize session pool - missing configuration");
+                return; // Don't fire Connected event if initialization failed
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to initialize session pool.");
+            return; // Don't fire Connected event if initialization failed
+        }
+
+        // Only fire Connected event after successful session pool initialization
+        Connected?.Invoke(this, e);
+    }
+
+    private void OnMainClientReconnected(object? sender, ConnectionEventArgs e)
+    {
+        // Re-initialize session pool after reconnection (endpoint might have changed)
+        try
+        {
+            if (_mainClient.OpcApplicationConfiguration != null && _mainClient.ConfiguredEndpoint != null)
+            {
+                var initTask = _sessionPool.InitializeAsync(_mainClient.OpcApplicationConfiguration, _mainClient.ConfiguredEndpoint);
+                initTask.GetAwaiter().GetResult(); // Synchronously wait for initialization
+                _logger?.LogDebug("Session pool re-initialized after main client reconnection.");
+            }
+            else
+            {
+                _logger?.LogWarning("Cannot re-initialize session pool - missing configuration");
+                return; // Don't fire Reconnected event if initialization failed
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to re-initialize session pool after reconnection.");
+            return; // Don't fire Reconnected event if initialization failed
+        }
+
+        // Only fire Reconnected event after successful session pool initialization
+        Reconnected?.Invoke(this, e);
+    }
+
+    #endregion Event Handlers
+
+    #region Helper Methods - Session pool implementation
+
+    private ReadOnlyCollection<T> GetAllStructureElementsCore<T>(Opc.Ua.Client.ISession session, Opc.Ua.NodeId rootNode, Opc.Ua.NodeClass expectedNodeClass) where T : S7StructureElement, new()
+    {
+        if (!session.Connected)
+        {
+            _logger?.LogError("Cannot get structure elements for root {RootNode}; session is not connected.", rootNode);
+            return new ReadOnlyCollection<T>([]);
+        }
+
+        var browser = new Opc.Ua.Client.Browser(session)
+        {
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)expectedNodeClass,
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
+            IncludeSubtypes = true
+        };
+        Opc.Ua.ReferenceDescriptionCollection descriptions = browser.Browse(rootNode);
+
+        return descriptions
+            .Select(desc => new T { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
+            .ToList()
+            .AsReadOnly();
+    }
+
+    private T? GetSingletonStructureElementCore<T>(Opc.Ua.Client.ISession session, Opc.Ua.NodeId node) where T : S7StructureElement, new()
+    {
+        if (!session.Connected)
+        {
+            _logger?.LogError("Cannot get singleton element for node {NodeId}; session is not connected.", node);
+            return null;
+        }
+
+        var nodeToRead = new Opc.Ua.ReadValueId { NodeId = node, AttributeId = Opc.Ua.Attributes.DisplayName };
+        session.Read(null, 0, Opc.Ua.TimestampsToReturn.Neither, [nodeToRead], out var results, out _);
+        _validateResponse(results, new[] { nodeToRead });
+
+        Opc.Ua.DataValue result = results[0];
+        if (Opc.Ua.StatusCode.IsBad(result.StatusCode))
+        {
+            _logger?.LogWarning("Failed to read DisplayName for node {NodeId}. It may not exist on the server. StatusCode: {StatusCode}", node, result.StatusCode);
+            return null;
+        }
+
+        string displayName = (result.Value as Opc.Ua.LocalizedText)?.Text ?? node.ToString();
+        return new T { NodeId = node.ToString(), DisplayName = displayName };
+    }
+
+    private IUaNode? DiscoverElementCore(Opc.Ua.Client.ISession session, IUaNode elementShell)
+    {
+        return elementShell switch
+        {
+            S7DataBlockInstance idb => DiscoverInstanceOfDataBlockCore(session, idb),
+            S7StructureElement simpleElement => DiscoverVariablesOfElementCore(session, (dynamic)simpleElement),
+            _ => new Func<IUaNode?>(() =>
+            {
+                _logger?.LogWarning("DiscoverElement was called with an unsupported element type: {ElementType}", elementShell.GetType().Name);
+                return null;
+            })(),
+        };
+    }
+
+    private T DiscoverVariablesOfElementCore<T>(Opc.Ua.Client.ISession session, T element) where T : S7StructureElement
+    {
+        if (element?.NodeId is null)
+        {
+            _logger?.LogWarning("Cannot discover variables for element of type {ElementType} because it or its NodeId is null.", typeof(T).Name);
+            return element!;
+        }
+        if (!session.Connected)
+        {
+            _logger?.LogError("Cannot discover variables for '{DisplayName}'; session is not connected.", element.DisplayName);
+            return element;
+        }
+
+        var browser = new Opc.Ua.Client.Browser(session)
+        {
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)Opc.Ua.NodeClass.Variable,
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
+            IncludeSubtypes = true
+        };
+        Opc.Ua.ReferenceDescriptionCollection variableDescriptions = browser.Browse(element.NodeId);
+
+        var discoveredVariables = variableDescriptions
+            .Where(desc => desc.DisplayName.Text != "Icon")
+            .Select(desc => new S7Variable { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text }).ToList();
+
+        if (element.DisplayName == "Counters")
+        {
+            discoveredVariables = discoveredVariables
+                .ConvertAll(variable => variable with { S7Type = S7DataType.COUNTER });
+        }
+        else if (element.DisplayName == "Timers")
+        {
+            discoveredVariables = discoveredVariables
+                .ConvertAll(variable => variable with { S7Type = S7DataType.S5TIME });
+        }
+
+        return element with { Variables = discoveredVariables };
+    }
+
+    private S7DataBlockInstance DiscoverInstanceOfDataBlockCore(Opc.Ua.Client.ISession session, S7DataBlockInstance instanceDbShell)
+    {
+        if (instanceDbShell?.NodeId is null)
+        {
+            _logger?.LogWarning("Cannot discover instance DB because the provided shell or its NodeId is null.");
+            return instanceDbShell ?? new S7DataBlockInstance();
+        }
+        if (!session.Connected)
+        {
+            _logger?.LogError("Cannot discover instance DB '{DisplayName}'; session is not connected.", instanceDbShell.DisplayName);
+            return instanceDbShell;
+        }
+
+        var browser = new Opc.Ua.Client.Browser(session)
+        {
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)Opc.Ua.NodeClass.Object,
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences
+        };
+        var childNodes = browser.Browse(instanceDbShell.NodeId);
+
+        S7InstanceDbSection? input = null, output = null, inOut = null, stat = null;
+        foreach (var childNode in childNodes)
+        {
+            var sectionShell = new S7InstanceDbSection { NodeId = ((Opc.Ua.NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
+            var populatedSection = PopulateInstanceSectionCore(session, sectionShell);
+            switch (populatedSection.DisplayName)
+            {
+                case "Inputs": input = populatedSection; break;
+                case "Outputs": output = populatedSection; break;
+                case "InOuts": inOut = populatedSection; break;
+                case "Static": stat = populatedSection; break;
+            }
+        }
+        return instanceDbShell with { Inputs = input, Outputs = output, InOuts = inOut, Static = stat };
+    }
+
+    private S7InstanceDbSection PopulateInstanceSectionCore(Opc.Ua.Client.ISession session, S7InstanceDbSection sectionShell)
+    {
+        if (sectionShell?.NodeId is null) return sectionShell ?? new S7InstanceDbSection();
+        if (!session.Connected) return sectionShell;
+
+#pragma warning disable RCS1130
+        var browser = new Opc.Ua.Client.Browser(session)
+        {
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)(Opc.Ua.NodeClass.Variable | Opc.Ua.NodeClass.Object),
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
+        };
+#pragma warning restore RCS1130
+        Opc.Ua.ReferenceDescriptionCollection childNodes = browser.Browse(sectionShell.NodeId);
+
+        var variables = new List<S7Variable>();
+        var nestedInstances = new List<S7DataBlockInstance>();
+        foreach (var childNode in childNodes)
+        {
+            //Filter out the Icon variable and process others
+            if (childNode.NodeClass == Opc.Ua.NodeClass.Variable && childNode.DisplayName.Text != "Icon")
+            {
+                variables.Add(new S7Variable { NodeId = ((Opc.Ua.NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text });
+            }
+            else if (childNode.NodeClass == Opc.Ua.NodeClass.Object)
+            {
+                var nestedShell = new S7DataBlockInstance { NodeId = ((Opc.Ua.NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
+                nestedInstances.Add(DiscoverInstanceOfDataBlockCore(session, nestedShell));
+            }
+        }
+        return sectionShell with { Variables = variables, NestedInstances = nestedInstances };
+    }
+
+    private T ReadValuesOfElementCore<T>(Opc.Ua.Client.ISession session, T elementWithStructure, string? rootContextName = null) where T : IUaNode
+    {
+        if (elementWithStructure?.NodeId is null)
+        {
+            _logger?.LogWarning("ReadValuesOfElement called with a null element or element with a null NodeId.");
+            return elementWithStructure!;
+        }
+        if (!session.Connected)
+        {
+            _logger?.LogError("Cannot read values for '{DisplayName}'; session is not connected.", elementWithStructure.DisplayName);
+            return elementWithStructure;
+        }
+
+        string initialPathPrefix = BuildInitialPath(elementWithStructure, rootContextName);
+
+        var nodesToReadCollector = new Dictionary<Opc.Ua.NodeId, S7Variable>();
+        CollectNodesToReadRecursivelyCore(session, elementWithStructure, nodesToReadCollector, initialPathPrefix);
+
+        var readResultsMap = new Dictionary<Opc.Ua.NodeId, Opc.Ua.DataValue>();
+        if (nodesToReadCollector.Count > 0)
+        {
+            var nodesToRead = new Opc.Ua.ReadValueIdCollection(nodesToReadCollector.Keys.Select(nodeId => new Opc.Ua.ReadValueId { NodeId = nodeId, AttributeId = Opc.Ua.Attributes.Value }));
+            session.Read(null, 0, Opc.Ua.TimestampsToReturn.Neither, nodesToRead, out var results, out _);
+            _validateResponse(results, nodesToRead);
+
+            for (int i = 0; i < nodesToRead.Count; i++)
+            {
+                if (nodesToRead[i].NodeId != null) readResultsMap[nodesToRead[i].NodeId] = results[i];
+            }
+        }
+
+        return (T)RebuildHierarchyWithValuesRecursivelyCore(session, elementWithStructure, readResultsMap, initialPathPrefix);
+    }
 
     private IUaNode RebuildHierarchyWithValuesRecursivelyCore(
+        Opc.Ua.Client.ISession session,
         IUaNode templateElement,
-        IReadOnlyDictionary<NodeId, DataValue> readResultsMap,
+        IReadOnlyDictionary<Opc.Ua.NodeId, Opc.Ua.DataValue> readResultsMap,
         string currentPath)
     {
         switch (templateElement)
         {
             case S7DataBlockInstance idb:
-                var newInput = idb.Inputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(idb.Inputs, readResultsMap, $"{currentPath}.{idb.Inputs.DisplayName}") : null;
-                var newOutput = idb.Outputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(idb.Outputs, readResultsMap, $"{currentPath}.{idb.Outputs.DisplayName}") : null;
-                var newInOut = idb.InOuts != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(idb.InOuts, readResultsMap, $"{currentPath}.{idb.InOuts.DisplayName}") : null;
-                var newStatic = idb.Static != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(idb.Static, readResultsMap, $"{currentPath}.{idb.Static.DisplayName}") : null;
+                var newInput = idb.Inputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.Inputs, readResultsMap, $"{currentPath}.{idb.Inputs.DisplayName}") : null;
+                var newOutput = idb.Outputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.Outputs, readResultsMap, $"{currentPath}.{idb.Outputs.DisplayName}") : null;
+                var newInOut = idb.InOuts != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.InOuts, readResultsMap, $"{currentPath}.{idb.InOuts.DisplayName}") : null;
+                var newStatic = idb.Static != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.Static, readResultsMap, $"{currentPath}.{idb.Static.DisplayName}") : null;
                 return idb with { Inputs = newInput, Outputs = newOutput, InOuts = newInOut, Static = newStatic };
 
             case S7InstanceDbSection section:
-                var newVars = section.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(v, readResultsMap, currentPath)).ToList();
-                var newNested = section.NestedInstances.Select(n => (S7DataBlockInstance)RebuildHierarchyWithValuesRecursivelyCore(n, readResultsMap, $"{currentPath}.{n.DisplayName}")).ToList();
+                var newVars = section.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(session, v, readResultsMap, currentPath)).ToList();
+                var newNested = section.NestedInstances.Select(n => (S7DataBlockInstance)RebuildHierarchyWithValuesRecursivelyCore(session, n, readResultsMap, $"{currentPath}.{n.DisplayName}")).ToList();
                 return section with { Variables = newVars, NestedInstances = newNested };
 
             case S7StructureElement simpleElement:
-                var newSimpleVars = simpleElement.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(v, readResultsMap, currentPath)).ToList();
+                var newSimpleVars = simpleElement.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(session, v, readResultsMap, currentPath)).ToList();
                 return simpleElement with { Variables = newSimpleVars };
 
             case S7Variable variable:
@@ -1083,7 +860,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
                 if (variable.S7Type == S7DataType.STRUCT)
                 {
-                    var discoveredMembers = DiscoverVariablesOfElementCore(new S7StructureElement { NodeId = variable.NodeId }).Variables;
+                    var discoveredMembers = DiscoverVariablesOfElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
 
                     var templateMembersByName = variable.StructMembers
                         .Where(m => m.DisplayName is not null)
@@ -1101,10 +878,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     });
 
                     var processedMembers = membersToProcess
-                        .Select(m => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(m, readResultsMap, fullPath))
+                        .Select(m => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(session, m, readResultsMap, fullPath))
                         .ToList();
 
-                    return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = UaStatusCodeConverter.Convert(StatusCodes.Good) };
+                    return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good) };
                 }
 
                 if (variable.NodeId != null && readResultsMap.TryGetValue(variable.NodeId, out var dataValue))
@@ -1123,7 +900,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     };
                 }
 
-                return variable with { FullPath = fullPath, StatusCode = UaStatusCodeConverter.Convert(StatusCodes.BadWaitingForInitialData) };
+                return variable with { FullPath = fullPath, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.BadWaitingForInitialData) };
 
             default:
                 _logger?.LogWarning("RebuildHierarchy encountered an unhandled element type: {ElementType}", templateElement.GetType().Name);
@@ -1131,31 +908,31 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
     }
 
-    private void CollectNodesToReadRecursivelyCore(IUaNode currentElement, IDictionary<NodeId, S7Variable> collectedNodes, string currentPath)
+    private void CollectNodesToReadRecursivelyCore(Opc.Ua.Client.ISession session, IUaNode currentElement, IDictionary<Opc.Ua.NodeId, S7Variable> collectedNodes, string currentPath)
     {
         switch (currentElement)
         {
             case S7DataBlockInstance idb:
-                if (idb.Inputs != null) CollectNodesToReadRecursivelyCore(idb.Inputs, collectedNodes, $"{currentPath}.{idb.Inputs.DisplayName}");
-                if (idb.Outputs != null) CollectNodesToReadRecursivelyCore(idb.Outputs, collectedNodes, $"{currentPath}.{idb.Outputs.DisplayName}");
-                if (idb.InOuts != null) CollectNodesToReadRecursivelyCore(idb.InOuts, collectedNodes, $"{currentPath}.{idb.InOuts.DisplayName}");
-                if (idb.Static != null) CollectNodesToReadRecursivelyCore(idb.Static, collectedNodes, $"{currentPath}.{idb.Static.DisplayName}");
+                if (idb.Inputs != null) CollectNodesToReadRecursivelyCore(session, idb.Inputs, collectedNodes, $"{currentPath}.{idb.Inputs.DisplayName}");
+                if (idb.Outputs != null) CollectNodesToReadRecursivelyCore(session, idb.Outputs, collectedNodes, $"{currentPath}.{idb.Outputs.DisplayName}");
+                if (idb.InOuts != null) CollectNodesToReadRecursivelyCore(session, idb.InOuts, collectedNodes, $"{currentPath}.{idb.InOuts.DisplayName}");
+                if (idb.Static != null) CollectNodesToReadRecursivelyCore(session, idb.Static, collectedNodes, $"{currentPath}.{idb.Static.DisplayName}");
                 break;
 
             case S7InstanceDbSection section:
-                foreach (var variable in section.Variables) CollectNodesToReadRecursivelyCore(variable, collectedNodes, currentPath);
-                foreach (var nestedIdb in section.NestedInstances) CollectNodesToReadRecursivelyCore(nestedIdb, collectedNodes, $"{currentPath}.{nestedIdb.DisplayName}");
+                foreach (var variable in section.Variables) CollectNodesToReadRecursivelyCore(session, variable, collectedNodes, currentPath);
+                foreach (var nestedIdb in section.NestedInstances) CollectNodesToReadRecursivelyCore(session, nestedIdb, collectedNodes, $"{currentPath}.{nestedIdb.DisplayName}");
                 break;
 
             case S7StructureElement simpleElement:
-                foreach (var variable in simpleElement.Variables) CollectNodesToReadRecursivelyCore(variable, collectedNodes, currentPath);
+                foreach (var variable in simpleElement.Variables) CollectNodesToReadRecursivelyCore(session, variable, collectedNodes, currentPath);
                 break;
 
             case S7Variable variable:
                 string fullPath = $"{currentPath}.{variable.DisplayName}";
                 if (variable.S7Type == S7DataType.STRUCT)
                 {
-                    var discoveredMembers = DiscoverVariablesOfElementCore(new S7StructureElement { NodeId = variable.NodeId }).Variables;
+                    var discoveredMembers = DiscoverVariablesOfElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
 
                     if (variable.StructMembers.Any())
                     {
@@ -1170,11 +947,11 @@ internal class S7UaClient : IS7UaClient, IDisposable
                                     S7Type = templateMember.S7Type,
                                     StructMembers = templateMember.StructMembers
                                 };
-                                CollectNodesToReadRecursivelyCore(memberToRecurse, collectedNodes, fullPath);
+                                CollectNodesToReadRecursivelyCore(session, memberToRecurse, collectedNodes, fullPath);
                             }
                             else
                             {
-                                CollectNodesToReadRecursivelyCore(discoveredMember, collectedNodes, fullPath);
+                                CollectNodesToReadRecursivelyCore(session, discoveredMember, collectedNodes, fullPath);
                             }
                         }
                     }
@@ -1182,7 +959,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     {
                         foreach (var member in discoveredMembers)
                         {
-                            CollectNodesToReadRecursivelyCore(member, collectedNodes, fullPath);
+                            CollectNodesToReadRecursivelyCore(session, member, collectedNodes, fullPath);
                         }
                     }
                 }
@@ -1203,284 +980,52 @@ internal class S7UaClient : IS7UaClient, IDisposable
             : $"{rootContextName}.{element.DisplayName}";
     }
 
-    #endregion Reading and Writing Helpers
-
-    #region Structure Browsing and Discovery Helpers
-
-    private T? GetSingletonStructureElementCore<T>(NodeId node) where T : S7StructureElement, new()
+    private void ThrowIfDisposed()
     {
-        if (!IsConnected || _session is null)
-        {
-            _logger?.LogError("Cannot get singleton element for node {NodeId}; session is not connected.", node);
-            return null;
-        }
-
-        var nodeToRead = new ReadValueId { NodeId = node, AttributeId = Attributes.DisplayName };
-        _session.Read(null, 0, TimestampsToReturn.Neither, [nodeToRead], out var results, out _);
-        _validateResponse(results, new[] { nodeToRead });
-
-        DataValue result = results[0];
-        if (Opc.Ua.StatusCode.IsBad(result.StatusCode))
-        {
-            _logger?.LogWarning("Failed to read DisplayName for node {NodeId}. It may not exist on the server. StatusCode: {StatusCode}", node, result.StatusCode);
-            return null;
-        }
-
-        string displayName = (result.Value as LocalizedText)?.Text ?? node.ToString();
-        return new T { NodeId = node.ToString(), DisplayName = displayName };
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
-    private ReadOnlyCollection<T> GetAllStructureElementsCore<T>(NodeId rootNode, NodeClass expectedNodeClass) where T : S7StructureElement, new()
-    {
-        if (!IsConnected || _session is null)
-        {
-            _logger?.LogError("Cannot get structure elements for root {RootNode}; session is not connected.", rootNode);
-            return new ReadOnlyCollection<T>([]);
-        }
-
-        var browser = new Browser(_session)
-        {
-            BrowseDirection = BrowseDirection.Forward,
-            NodeClassMask = (int)expectedNodeClass,
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
-            IncludeSubtypes = true
-        };
-        ReferenceDescriptionCollection descriptions = browser.Browse(rootNode);
-
-        return descriptions
-            .Select(desc => new T { NodeId = ((NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text })
-            .ToList()
-            .AsReadOnly();
-    }
-
-    private S7InstanceDbSection PopulateInstanceSectionCore(S7InstanceDbSection sectionShell)
-    {
-        if (sectionShell?.NodeId is null) return sectionShell ?? new S7InstanceDbSection();
-        if (!IsConnected || _session is null) return sectionShell;
-
-#pragma warning disable RCS1130
-        var browser = new Browser(_session)
-        {
-            BrowseDirection = BrowseDirection.Forward,
-            NodeClassMask = (int)(NodeClass.Variable | NodeClass.Object),
-            ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
-        };
-#pragma warning restore RCS1130
-        ReferenceDescriptionCollection childNodes = browser.Browse(sectionShell.NodeId);
-
-        var variables = new List<S7Variable>();
-        var nestedInstances = new List<S7DataBlockInstance>();
-        foreach (var childNode in childNodes)
-        {
-            //Filter out the Icon variable and process others
-            if (childNode.NodeClass == NodeClass.Variable && childNode.DisplayName.Text != "Icon")
-            {
-                variables.Add(new S7Variable { NodeId = ((NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text });
-            }
-            else if (childNode.NodeClass == NodeClass.Object)
-            {
-                var nestedShell = new S7DataBlockInstance { NodeId = ((NodeId)childNode.NodeId).ToString(), DisplayName = childNode.DisplayName.Text };
-                nestedInstances.Add(DiscoverInstanceOfDataBlockCore(nestedShell));
-            }
-        }
-        return sectionShell with { Variables = variables, NestedInstances = nestedInstances };
-    }
-
-    #endregion Structure Browsing and Discovery Helpers
-
-    #region Subscription Helpers
-
-    protected virtual Task CreateSubscriptionOnServerAsync(Subscription subscription)
-    {
-        return subscription.CreateAsync();
-    }
-
-    protected virtual Subscription CreateNewSubscription(int publishingInterval)
-    {
-        return _session is null
-            ? throw new InvalidOperationException("Session is not available to create a subscription.")
-            : new Subscription(_session.DefaultSubscription)
-            {
-                PublishingInterval = publishingInterval,
-                LifetimeCount = 600,
-                MaxNotificationsPerPublish = 1000,
-                TimestampsToReturn = TimestampsToReturn.Both
-            };
-    }
-
-    protected virtual Task ApplySubscriptionChangesAsync(Subscription subscription)
-    {
-        return subscription.ApplyChangesAsync();
-    }
-
-    #endregion Subscription Helpers
-
-    #region Event Callbacks
-
-    private void Session_KeepAlive(ISession session, KeepAliveEventArgs e)
-    {
-        if (_session?.Equals(session) != true)
-        {
-            return;
-        }
-
-        if (ServiceResult.IsBad(e.Status))
-        {
-            if (ReconnectPeriod <= 0)
-            {
-                return;
-            }
-
-            OnReconnecting(new ConnectionEventArgs(UaStatusCodeConverter.Convert(e.Status.StatusCode)));
-
-            var state = _reconnectHandler?.BeginReconnect(_session, ReconnectPeriod, Client_ReconnectComplete);
-
-            switch (state)
-            {
-                case SessionReconnectHandler.ReconnectState.Triggered:
-                    _logger?.LogInformation("Reconnection triggered.");
-                    break;
-
-                case SessionReconnectHandler.ReconnectState.Ready:
-                    _logger?.LogWarning("Reconnection handler is in 'Ready' state after BeginReconnect attempt. This might indicate automatic reconnection could not be triggered.");
-                    break;
-
-                case SessionReconnectHandler.ReconnectState.Reconnecting:
-                    _logger?.LogWarning("Reconnection in progress...");
-                    break;
-            }
-
-            e.CancelKeepAlive = true;
-        }
-    }
-
-    private void Client_ReconnectComplete(object? sender, EventArgs e)
-    {
-        if (!Object.ReferenceEquals(sender, _reconnectHandler))
-        {
-            return;
-        }
-
-        _sessionSemaphore.Wait();
-        try
-        {
-            if (_reconnectHandler?.Session != null)
-            {
-                if (!Object.ReferenceEquals(_session, _reconnectHandler.Session))
-                {
-                    //reconnected to a new session
-                    _logger?.LogInformation("Reconnected to S7 UA server with a new session.");
-                    var oldSession = _session;
-                    _session = _reconnectHandler.Session;
-                    Utils.SilentDispose(oldSession);
-                }
-                else
-                {
-                    //reconnected to the same session
-                    _logger?.LogInformation("Reconnected to S7 UA server with the same session.");
-                }
-            }
-            else
-            {
-                //reconnection stopped
-                _logger?.LogInformation("KeepAlive recovered - Reconnection stopped.");
-            }
-
-            OnReconnected(new ConnectionEventArgs());
-        }
-        finally
-        {
-            _sessionSemaphore.Release();
-        }
-    }
-
-    private void Client_CertificateValidation(Opc.Ua.CertificateValidator certificateValidator, CertificateValidationEventArgs e)
-    {
-        var accepted = false;
-
-        Opc.Ua.ServiceResult error = e.Error;
-        _logger?.LogWarning("Certificate validation error: {error}", error.ToLongString());
-
-        if (error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted)
-        {
-            if (_appInst!.ApplicationConfiguration.SecurityConfiguration.AutoAcceptUntrustedCertificates)
-            {
-                accepted = true;
-            }
-        }
-
-        if (accepted)
-        {
-            _logger?.LogWarning("Accepting untrusted certificate. Subject: {subject}", e.Certificate.Subject);
-            e.Accept = true;
-        }
-        else
-        {
-            _logger?.LogWarning("Rejecting untrusted certificate. Subject: {subject}", e.Certificate.Subject);
-            e.Accept = false;
-            _appInst!.ApplicationConfiguration.SecurityConfiguration.RejectedCertificateStore.OpenStore().Add(e.Certificate);
-        }
-    }
-
-    #endregion Event Callbacks
-
-    #region Event Dispatchers
-
-    private void OnConnecting(ConnectionEventArgs e)
-    {
-        _logger?.LogInformation("Connecting to S7 UA server...");
-        Connecting?.Invoke(this, e);
-    }
-
-    private void OnConnected(ConnectionEventArgs e)
-    {
-        _logger?.LogInformation("Connected to S7 UA server successfully.");
-        Connected?.Invoke(this, e);
-    }
-
-    private void OnDisconnecting(ConnectionEventArgs e)
-    {
-        _logger?.LogInformation("Disconnecting from S7 UA server...");
-        Disconnecting?.Invoke(this, e);
-    }
-
-    private void OnDisconnected(ConnectionEventArgs e)
-    {
-        _logger?.LogInformation("Disconnected from S7 UA server.");
-        Disconnected?.Invoke(this, e);
-    }
-
-    private void OnReconnecting(ConnectionEventArgs e)
-    {
-        Reconnecting?.Invoke(this, e);
-    }
-
-    private void OnReconnected(ConnectionEventArgs e)
-    {
-        Reconnected?.Invoke(this, e);
-    }
-
-    private void OnMonitoredItemNotification(MonitoredItem monitoredItem, MonitoredItemNotificationEventArgs e)
-    {
-        if (e.NotificationValue is MonitoredItemNotification notification)
-        {
-            MonitoredItemChanged?.Invoke(this, new MonitoredItemChangedEventArgs(monitoredItem, notification));
-        }
-    }
-
-    #endregion Event Dispatchers
-
-    #region Helpers
-
-    private void ThrowIfNotConfigured()
-    {
-        ArgumentNullException.ThrowIfNull(_appInst);
-        ArgumentNullException.ThrowIfNullOrWhiteSpace(_appInst.ApplicationConfiguration.ApplicationName);
-        ArgumentNullException.ThrowIfNullOrWhiteSpace(_appInst.ApplicationConfiguration.ApplicationUri);
-        ArgumentNullException.ThrowIfNullOrWhiteSpace(_appInst.ApplicationConfiguration.ProductUri);
-    }
-
-    #endregion Helpers
+    #endregion Helper Methods - Session pool implementation
 
     #endregion Private Methods
+
+    #region Dispose
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+        {
+            // Unsubscribe from main client events to prevent race conditions
+            if (_mainClient != null)
+            {
+                _mainClient.Connecting -= _connectingHandler;
+                _mainClient.Connected -= _connectedHandler;
+                _mainClient.Disconnecting -= _disconnectingHandler;
+                _mainClient.Disconnected -= _disconnectedHandler;
+                _mainClient.Reconnecting -= _reconnectingHandler;
+                _mainClient.Reconnected -= OnMainClientReconnected;
+                _mainClient.MonitoredItemChanged -= _monitoredItemChangedHandler;
+            }
+
+            _disposed = true;
+            _mainClient?.Dispose();
+            _sessionPool?.Dispose();
+        }
+    }
+
+    ~S7UaClient()
+    {
+        Dispose(false);
+    }
+
+    #endregion Dispose
 }

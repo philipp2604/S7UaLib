@@ -2,6 +2,7 @@
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 
 namespace S7UaLib.Infrastructure.DataStore;
@@ -26,7 +27,7 @@ internal class S7DataStore : IS7DataStore
         Counters = new S7Counters { DisplayName = "Counters", FullPath = "Counters", NodeId = S7StructureConstants._s7CountersNamespaceIdentifier };
     }
 
-    private readonly Dictionary<string, IS7Variable> _variableCacheByPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, IS7Variable> _variableCacheByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger? _logger;
 
 #if NET8_0
@@ -56,8 +57,49 @@ internal class S7DataStore : IS7DataStore
     /// <inheritdoc cref="IS7DataStore.Counters"/>
     public IS7Counters Counters { get; private set; }
 
-    /// <inheritdoc cref="IS7DataStore.AddVariableToCache(IS7Variable)"/>
-    public bool AddVariableToCache(IS7Variable newVariable)
+    /// <inheritdoc cref="IS7DataStore.RegisterGlobalDataBlock(IS7DataBlockGlobal)"/>
+    public bool RegisterGlobalDataBlock(IS7DataBlockGlobal newDataBlock)
+    {
+        lock (_lock)
+        {
+            if (DataBlocksGlobal.Any(db => db.FullPath == newDataBlock.FullPath))
+            {
+                _logger?.LogWarning("Cannot add data block: A data block with path '{Path}' already exists.", newDataBlock.FullPath!);
+                return false;
+            }
+
+            var pathSegments = newDataBlock.FullPath!.Split('.');
+            if (pathSegments.Length != 2)
+            {
+                _logger?.LogWarning("Cannot add data block: The path '{Path}' is not valid. It must contain at a root and a data block name.", newDataBlock.FullPath!);
+                return false;
+            }
+
+            var rootName = pathSegments[0];
+            bool added = false;
+
+            if (rootName.Equals("DataBlocksGlobal", StringComparison.OrdinalIgnoreCase))
+            {
+                DataBlocksGlobal = DataBlocksGlobal.Append(newDataBlock).ToList().AsReadOnly();
+                added = true;
+            }
+            else
+            {
+                _logger?.LogWarning("Cannot add data block: The root name is invalid.");
+            }
+
+            if (added)
+            {
+                _logger?.LogDebug("Global data block '{FullPath}' added to data store. Rebuilding cache.", newDataBlock.FullPath!);
+                BuildCache();
+            }
+
+            return added;
+        }
+    }
+
+    /// <inheritdoc cref="IS7DataStore.RegisterVariable(IS7Variable)"/>
+    public bool RegisterVariable(IS7Variable newVariable)
     {
         lock (_lock)
         {
@@ -173,55 +215,43 @@ internal class S7DataStore : IS7DataStore
     /// <inheritdoc cref="IS7DataStore.FindVariablesWhere(Func{IS7Variable, bool})"/>
     public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)
     {
-        lock (_lock)
-        {
-            return [.. _variableCacheByPath.Values.Where(predicate)];
-        }
+        return [.. _variableCacheByPath.Values.Where(predicate)];
     }
 
     /// <inheritdoc cref="IS7DataStore.TryGetVariableByPath(string, out IS7Variable)"/>
     public bool TryGetVariableByPath(string fullPath, [MaybeNullWhen(false)] out IS7Variable variable)
     {
-        lock (_lock)
-        {
-            return _variableCacheByPath.TryGetValue(fullPath, out variable);
-        }
+        return _variableCacheByPath.TryGetValue(fullPath, out variable);
     }
 
     /// <inheritdoc cref="IS7DataStore.GetAllVariables"/>
     public IReadOnlyDictionary<string, IS7Variable> GetAllVariables()
     {
-        lock (_lock)
-        {
-            return new Dictionary<string, IS7Variable>(_variableCacheByPath, StringComparer.OrdinalIgnoreCase);
-        }
+        return new Dictionary<string, IS7Variable>(_variableCacheByPath, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <inheritdoc cref="IS7DataStore.BuildCache"/>
     public void BuildCache()
     {
-        lock (_lock)
+        _logger?.LogDebug("Starting to build variable cache.");
+        _variableCacheByPath.Clear();
+
+        foreach (var db in DataBlocksGlobal)
         {
-            _logger?.LogDebug("Starting to build variable cache.");
-            _variableCacheByPath.Clear();
-
-            foreach (var db in DataBlocksGlobal)
-            {
-                AddVariablesToCacheRecursively(db, "DataBlocksGlobal");
-            }
-            foreach (var db in DataBlocksInstance)
-            {
-                AddVariablesToCacheRecursively(db, "DataBlocksInstance");
-            }
-
-            if (Inputs is not null) AddVariablesToCacheRecursively(Inputs, null);
-            if (Outputs is not null) AddVariablesToCacheRecursively(Outputs, null);
-            if (Memory is not null) AddVariablesToCacheRecursively(Memory, null);
-            if (Timers is not null) AddVariablesToCacheRecursively(Timers, null);
-            if (Counters is not null) AddVariablesToCacheRecursively(Counters, null);
-
-            _logger?.LogDebug("Variable cache build completed. Cached {Count} variables.", _variableCacheByPath.Count);
+            AddVariablesToCacheRecursively(db, "DataBlocksGlobal");
         }
+        foreach (var db in DataBlocksInstance)
+        {
+            AddVariablesToCacheRecursively(db, "DataBlocksInstance");
+        }
+
+        if (Inputs is not null) AddVariablesToCacheRecursively(Inputs, null);
+        if (Outputs is not null) AddVariablesToCacheRecursively(Outputs, null);
+        if (Memory is not null) AddVariablesToCacheRecursively(Memory, null);
+        if (Timers is not null) AddVariablesToCacheRecursively(Timers, null);
+        if (Counters is not null) AddVariablesToCacheRecursively(Counters, null);
+
+        _logger?.LogDebug("Variable cache build completed. Cached {Count} variables.", _variableCacheByPath.Count);
     }
 
     /// <inheritdoc cref="IS7DataStore.UpdateVariable(string, IS7Variable)"/>
@@ -508,7 +538,6 @@ internal class S7DataStore : IS7DataStore
         var nextSegment = pathSegments[0];
         var remainingPath = string.Join(".", pathSegments.Skip(1));
 
-        // ... (Der Rest der Methode bleibt exakt gleich wie in der vorherigen Antwort) ...
         switch (element)
         {
             case S7Variable variable when variable.S7Type == S7DataType.STRUCT:

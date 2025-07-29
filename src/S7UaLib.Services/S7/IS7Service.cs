@@ -14,7 +14,7 @@ namespace S7UaLib.Services.S7;
 /// <remarks>This interface provides methods and events for working with S7 PLCs, including reading and writing
 /// variable values,  discovering the server structure, and updating variable types. Implementations of this interface
 /// are expected to  handle communication with the PLC and manage the internal data store.</remarks>
-internal interface IS7Service : IDisposable
+public interface IS7Service : IDisposable
 {
     #region Public Events
 
@@ -74,7 +74,7 @@ internal interface IS7Service : IDisposable
 
     /// <summary>
     /// Gets or sets the time interval, in milliseconds, between automatic reconnection attempts.
-    /// <remarks></remarks>A value of -1 disables automatic reconnection.</remarks>
+    /// <remarks>A value of -1 disables automatic reconnection.</remarks>
     /// </summary>
     public int ReconnectPeriod { get; set; }
 
@@ -112,9 +112,8 @@ internal interface IS7Service : IDisposable
     /// <summary>
     /// Disconnects from the S7 UA server.
     /// </summary>
-    /// <param name="leaveChannelOpen">If <c>true</c>, the underlying communication channel is left open;
+    /// <param name="leaveChannelOpen">If <c>true</c>, the underlying communication channel is left open; otherwise, it is closed.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// otherwise, it is closed.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous disconnect operation.</returns>
     public Task DisconnectAsync(bool leaveChannelOpen = false, CancellationToken cancellationToken = default);
 
@@ -125,15 +124,9 @@ internal interface IS7Service : IDisposable
     /// <summary>
     /// Configures the client for first use.
     /// </summary>
-    /// <param name="appName">The OPC-UA application name.</param>
-    /// <param name="appUri">The OPC UA application uri.</param>
-    /// <param name="productUri">The OPC UA product uri.</param>
-    /// <param name="securityConfiguration">The <see cref="Core.Ua.Configuration.SecurityConfiguration"/> used for configuring security settings.</param>
-    /// <param name="clientConfig">The <see cref="Core.Ua.Configuration.ClientConfiguration"/>, optionally used for configuring client related settings.</param>
-    /// <param name="transportQuotas">The <see cref="Core.Ua.Configuration.TransportQuotas"/>, optionally used for configuring transport quotas.</param>
-    /// <param name="opLimits">The <see cref="Core.Ua.Configuration.OperationLimits"/>, optionally used for configuring operation limits.</param>
+    /// <param name="appConfig">The <see cref="ApplicationConfiguration"/> to use for the client.</param>
     /// <returns>A task indicating the state of the async function.</returns>
-    public Task ConfigureAsync(string appName, string appUri, string productUri, SecurityConfiguration securityConfiguration, ClientConfiguration? clientConfig = null, TransportQuotas? transportQuotas = null, OperationLimits? opLimits = null);
+    public Task ConfigureAsync(ApplicationConfiguration appConfig);
 
     /// <summary>
     /// Saves the client's currently used configuration to a file.
@@ -163,10 +156,9 @@ internal interface IS7Service : IDisposable
     /// <summary>
     /// Discovers the entire structure of the OPC UA server and populates the internal data store.
     /// This includes all data blocks, I/O areas, and their variables.
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// otherwise, it is closed.</param>
-    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     /// </summary>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     public Task DiscoverStructureAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -180,6 +172,16 @@ internal interface IS7Service : IDisposable
     /// <returns>A task that returns true if the registration was successful; otherwise, false (e.g., if the parent path does not exist or the variable already exists).</returns>
     Task<bool> RegisterVariableAsync(IS7Variable variable, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Registers a new global data block manually in the data store's structure.
+    /// The parent element of the variable must already exist. This method will not create parent elements.
+    /// After successful registration, the internal cache is rebuilt.
+    /// </summary>
+    /// <param name="dataBlock">The <see cref="IS7DataBlockGlobal"/> instance to register. It must contain the FullPath, NodeId and other relevant information.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task that returns true if the registration was successful; otherwise, false (e.g., if the parent path does not exist or the variable already exists).</returns>
+    Task<bool> RegisterGlobalDataBlockAsync(IS7DataBlockGlobal dataBlock, CancellationToken cancellationToken = default);
+
     #endregion Structure Discovery and Registration Methods
 
     #region Variables Access and Manipulation Methods
@@ -192,31 +194,31 @@ internal interface IS7Service : IDisposable
     public IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate);
 
     /// <summary>
-    /// Gets the cached <see cref="IS7Inputs"./>
+    /// Gets the cached <see cref="IS7Inputs"/>.
     /// </summary>
     /// <returns>The cached <see cref="IS7Inputs"/>.</returns>
     public IS7Inputs? GetInputs();
 
     /// <summary>
-    /// Gets the cached <see cref="IS7Outputs"./>
+    /// Gets the cached <see cref="IS7Outputs"/>.
     /// </summary>
     /// <returns>The cached <see cref="IS7Outputs"/>.</returns>
     public IS7Outputs? GetOutputs();
 
     /// <summary>
-    /// Gets the cached <see cref="IS7Memory"./>
+    /// Gets the cached <see cref="IS7Memory"/>.
     /// </summary>
     /// <returns>The cached <see cref="IS7Memory"/>.</returns>
     public IS7Memory? GetMemory();
 
     /// <summary>
-    /// Gets the cached <see cref="IS7Counters"./>
+    /// Gets the cached <see cref="IS7Counters"/>.
     /// </summary>
     /// <returns>The cached <see cref="IS7Counters"/>.</returns>
     public IS7Counters? GetCounters();
 
     /// <summary>
-    /// Gets the cached <see cref="IS7Timers"./>
+    /// Gets the cached <see cref="IS7Timers"/>.
     /// </summary>
     /// <returns>The cached <see cref="IS7Timers"/>.</returns>
     public IS7Timers? GetTimers();
@@ -236,11 +238,10 @@ internal interface IS7Service : IDisposable
     /// <summary>
     /// Reads the values of all discovered variables from the PLC.
     /// Raises the VariableValueChanged event for any variable whose value has changed.
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// otherwise, it is closed.</param>
-    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     /// </summary>
-    public Task ReadAllVariablesAsync(CancellationToken cancellationToken);
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    public Task ReadAllVariablesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes a value to a variable specified by its full symbolic path.
@@ -259,7 +260,7 @@ internal interface IS7Service : IDisposable
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.
     /// The TaskResult is true if the variable was found and the type was updated; otherwise, false.</returns>
-    public Task<bool> UpdateVariableTypeAsync(string fullPath, S7DataType newType, CancellationToken cancellationToken);
+    public Task<bool> UpdateVariableTypeAsync(string fullPath, S7DataType newType, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves a variable from the data store by its full symbolic path.

@@ -64,11 +64,11 @@ public class S7Service : IS7Service
     /// <param name="userIdentity">The <see cref="Core.Ua.UserIdentity"/> used for authentification. If <see langword="null"/>, anonymous login will be used.</param>
     /// <param name="validateResponse">A delegate that validates the response. This parameter cannot be <see langword="null"/>.</param>
     /// <param name="loggerFactory">An optional factory for creating loggers. If <see langword="null"/>, logging will not be enabled.</param>
-    public S7Service(UserIdentity? userIdentity, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
+    public S7Service(UserIdentity? userIdentity, int maxSessions = 5, Action<IList, IList>? validateResponse = null, ILoggerFactory? loggerFactory = null)
     {
         _client = validateResponse != null
-            ? new S7UaClient(userIdentity, validateResponse, loggerFactory)
-            : new S7UaClient(userIdentity, loggerFactory);
+            ? new S7UaClient(userIdentity, maxSessions, validateResponse, loggerFactory)
+            : new S7UaClient(userIdentity, maxSessions, loggerFactory);
         _dataStore = new S7DataStore(loggerFactory);
         _fileSystem = new FileSystem();
 
@@ -108,6 +108,8 @@ public class S7Service : IS7Service
 
         if (disposing)
         {
+            _disposed = true;
+
             _client.Connecting -= Client_Connecting;
             _client.Connected -= Client_Connected;
             _client.Disconnecting -= Client_Disconnecting;
@@ -117,8 +119,6 @@ public class S7Service : IS7Service
             _client.MonitoredItemChanged -= Client_MonitoredItemChanged;
 
             _client.Dispose();
-
-            _disposed = true;
         }
     }
 
@@ -170,7 +170,7 @@ public class S7Service : IS7Service
     /// <inheritdoc cref="IS7Service.ReconnectPeriod"/>
     public int ReconnectPeriod { get => _client.ReconnectPeriod; set => _client.ReconnectPeriod = value; }
 
-    /// <inheritdoc cref="IS7Service.ReconnectPeriodExponentialBackoff"/>/>
+    /// <inheritdoc cref="IS7Service.ReconnectPeriodExponentialBackoff"/>
     public int ReconnectPeriodExponentialBackoff { get => _client.ReconnectPeriodExponentialBackoff; set => _client.ReconnectPeriodExponentialBackoff = value; }
 
     /// <inheritdoc cref="IS7Service.UserIdentity"/>
@@ -197,17 +197,10 @@ public class S7Service : IS7Service
         await _client.LoadConfigurationAsync(filePath);
     }
 
-    /// <inheritdoc cref="IS7Service.ConfigureAsync(string, string, string, SecurityConfiguration, ClientConfiguration?, TransportQuotas?, OperationLimits?)"/>
-    public async Task ConfigureAsync(string appName,
-        string appUri,
-        string productUri,
-        SecurityConfiguration
-        securityConfiguration,
-        ClientConfiguration? clientConfig = null,
-        TransportQuotas? transportQuotas = null,
-        OperationLimits? opLimits = null)
+    /// <inheritdoc cref="IS7Service.ConfigureAsync(ApplicationConfiguration)"/>
+    public async Task ConfigureAsync(ApplicationConfiguration appConfig)
     {
-        await _client.ConfigureAsync(appName, appUri, productUri, securityConfiguration, clientConfig, transportQuotas, opLimits);
+        await _client.ConfigureAsync(appConfig);
     }
 
     /// <inheritdoc cref="IS7Service.AddTrustedCertificateAsync(X509Certificate2, CancellationToken)"/>
@@ -238,6 +231,22 @@ public class S7Service : IS7Service
 
     #region Structure Discovery and Registration Methods
 
+    /// <inheritdoc cref="IS7Service.RegisterGlobalDataBlockAsync(IS7DataBlockGlobal, CancellationToken)"/>
+    public Task<bool> RegisterGlobalDataBlockAsync(IS7DataBlockGlobal dataBlock, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (dataBlock is null || string.IsNullOrWhiteSpace(dataBlock.FullPath))
+        {
+            _logger?.LogWarning("Cannot register variable: FullPath or variable is null.");
+            return Task.FromResult(false);
+        }
+
+        bool success = _dataStore.RegisterGlobalDataBlock(dataBlock);
+
+        return Task.FromResult(success);
+    }
+
     /// <inheritdoc cref="IS7Service.RegisterVariableAsync(IS7Variable, CancellationToken)"/>
     public Task<bool> RegisterVariableAsync(IS7Variable variable, CancellationToken cancellationToken = default)
     {
@@ -249,7 +258,7 @@ public class S7Service : IS7Service
             return Task.FromResult(false);
         }
 
-        bool success = _dataStore.AddVariableToCache(variable);
+        bool success = _dataStore.RegisterVariable(variable);
 
         if (success && variable.NodeId is not null)
         {
@@ -287,10 +296,10 @@ public class S7Service : IS7Service
         var instanceDbShells = await instanceDbShellsTask.ConfigureAwait(false);
 
         var globalDbDiscoveryTasks = (globalDbShells ?? [])
-            .Select(shell => _client.DiscoverElementAsync(shell, cancellationToken));
+            .Select(shell => _client.DiscoverElementAsync(shell, cancellationToken)).ToList();
 
         var instanceDbDiscoveryTasks = (instanceDbShells ?? [])
-            .Select(shell => _client.DiscoverElementAsync(shell, cancellationToken));
+            .Select(shell => _client.DiscoverElementAsync(shell, cancellationToken)).ToList();
 
         await Task.WhenAll(globalDbDiscoveryTasks.Concat(instanceDbDiscoveryTasks)).ConfigureAwait(false);
 
@@ -397,7 +406,6 @@ public class S7Service : IS7Service
 
         var oldVariables = _dataStore.GetAllVariables();
 
-        // Schritt 1: Erstellen Sie Listen von Tasks für die Leseoperationen.
         var readTasks = new List<Task>();
 
         var globalDbReadTasks = _dataStore.DataBlocksGlobal
@@ -630,6 +638,7 @@ public class S7Service : IS7Service
         return success;
     }
 
+    /// <inheritdoc cref="IS7Service.UnsubscribeFromVariableAsync(string, CancellationToken)"/>
     public async Task<bool> UnsubscribeFromVariableAsync(string fullPath, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -685,7 +694,7 @@ public class S7Service : IS7Service
         }
     }
 
-    /// <inheritdoc cref="IS7Service.SaveStructureAsync(string)"/>
+    /// <inheritdoc cref="IS7Service.LoadStructureAsync(string)"/>
     public async Task LoadStructureAsync(string filePath)
     {
         ThrowIfDisposed();
