@@ -694,13 +694,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => new S7Variable 
-            { 
-                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), 
-                DisplayName = desc.DisplayName.Text 
+            desc => new S7Variable
+            {
+                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                DisplayName = desc.DisplayName.Text
             }
         );
-        
+
         var variables = BrowseAndCreateNodes(session, globalDb.NodeId!, context).Cast<S7Variable>().ToList();
         return globalDb with { Variables = variables };
     }
@@ -712,20 +712,20 @@ internal class S7UaClient : IS7UaClient, IDisposable
     {
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Object,
-            desc => true,
-            desc => new S7InstanceDbSection 
-            { 
-                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), 
-                DisplayName = desc.DisplayName.Text 
+            _ => true,
+            desc => new S7InstanceDbSection
+            {
+                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                DisplayName = desc.DisplayName.Text
             }
         );
-        
+
         var sections = BrowseAndCreateNodes(session, instanceDb.NodeId!, context)
             .Cast<S7InstanceDbSection>()
             .Select(section => (S7InstanceDbSection)DiscoverNodeCore(session, section))
             .ToArray();
-        
-        return instanceDb with 
+
+        return instanceDb with
         {
             Inputs = sections.FirstOrDefault(s => s.DisplayName == "Inputs"),
             Outputs = sections.FirstOrDefault(s => s.DisplayName == "Outputs"),
@@ -739,29 +739,31 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// </summary>
     private S7InstanceDbSection DiscoverSectionCore(Opc.Ua.Client.ISession session, S7InstanceDbSection section)
     {
+#pragma warning disable RCS1130 // Bitwise operation on enum without Flags attribute
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable | Opc.Ua.NodeClass.Object,
             desc => desc.DisplayName.Text != "Icon",
             desc => desc.NodeClass == Opc.Ua.NodeClass.Variable
-                ? new S7Variable 
-                { 
-                    NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), 
-                    DisplayName = desc.DisplayName.Text 
+                ? new S7Variable
+                {
+                    NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                    DisplayName = desc.DisplayName.Text
                 }
-                : new S7DataBlockInstance 
-                { 
-                    NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), 
-                    DisplayName = desc.DisplayName.Text 
+                : new S7DataBlockInstance
+                {
+                    NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                    DisplayName = desc.DisplayName.Text
                 }
         );
-        
+#pragma warning restore RCS1130 // Bitwise operation on enum without Flags attribute
+
         var children = BrowseAndCreateNodes(session, section.NodeId!, context).ToList();
-        
+
         var variables = children.OfType<S7Variable>().ToList();
         var nestedInstances = children.OfType<S7DataBlockInstance>()
             .Select(nested => (S7DataBlockInstance)DiscoverNodeCore(session, nested))
             .ToList();
-        
+
         return section with { Variables = variables, NestedInstances = nestedInstances };
     }
 
@@ -773,13 +775,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => new S7Variable 
-            { 
-                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), 
-                DisplayName = desc.DisplayName.Text 
+            desc => new S7Variable
+            {
+                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                DisplayName = desc.DisplayName.Text
             }
         );
-        
+
         var variables = BrowseAndCreateNodes(session, element.NodeId!, context).Cast<S7Variable>().ToList();
 
         // Apply special type handling for Counters and Timers
@@ -843,60 +845,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         string displayName = (result.Value as Opc.Ua.LocalizedText)?.Text ?? node.ToString();
         return new T { NodeId = node.ToString(), DisplayName = displayName };
-    }
-
-    private IUaNode? DiscoverElementCore(Opc.Ua.Client.ISession session, IUaNode elementShell)
-    {
-        return elementShell switch
-        {
-            S7DataBlockInstance idb => DiscoverInstanceOfDataBlockCore(session, idb),
-            S7StructureElement simpleElement => DiscoverVariablesOfElementCore(session, (dynamic)simpleElement),
-            _ => new Func<IUaNode?>(() =>
-            {
-                _logger?.LogWarning("DiscoverElement was called with an unsupported element type: {ElementType}", elementShell.GetType().Name);
-                return null;
-            })(),
-        };
-    }
-
-    private T DiscoverVariablesOfElementCore<T>(Opc.Ua.Client.ISession session, T element) where T : S7StructureElement
-    {
-        if (element?.NodeId is null)
-        {
-            _logger?.LogWarning("Cannot discover variables for element of type {ElementType} because it or its NodeId is null.", typeof(T).Name);
-            return element!;
-        }
-        if (!session.Connected)
-        {
-            _logger?.LogError("Cannot discover variables for '{DisplayName}'; session is not connected.", element.DisplayName);
-            return element;
-        }
-
-        var browser = new Opc.Ua.Client.Browser(session)
-        {
-            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
-            NodeClassMask = (int)Opc.Ua.NodeClass.Variable,
-            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
-            IncludeSubtypes = true
-        };
-        Opc.Ua.ReferenceDescriptionCollection variableDescriptions = browser.Browse(element.NodeId);
-
-        var discoveredVariables = variableDescriptions
-            .Where(desc => desc.DisplayName.Text != "Icon")
-            .Select(desc => new S7Variable { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text }).ToList();
-
-        if (element.DisplayName == "Counters")
-        {
-            discoveredVariables = discoveredVariables
-                .ConvertAll(variable => variable with { S7Type = S7DataType.COUNTER });
-        }
-        else if (element.DisplayName == "Timers")
-        {
-            discoveredVariables = discoveredVariables
-                .ConvertAll(variable => variable with { S7Type = S7DataType.S5TIME });
-        }
-
-        return element with { Variables = discoveredVariables };
     }
 
     private S7DataBlockInstance DiscoverInstanceOfDataBlockCore(Opc.Ua.Client.ISession session, S7DataBlockInstance instanceDbShell)

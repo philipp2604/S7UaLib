@@ -32,10 +32,10 @@ internal class PathBuilder
         if (string.IsNullOrEmpty(segment))
             return this;
 
-        var newPath = string.IsNullOrEmpty(_currentPath) 
-            ? segment 
+        var newPath = string.IsNullOrEmpty(_currentPath)
+            ? segment
             : $"{_currentPath}.{segment}";
-        
+
         return new PathBuilder(_rootContext, newPath);
     }
 
