@@ -13,11 +13,13 @@ A modern, high-level .NET library designed to simplify communication with Siemen
 
 - **High-Level API**: Interact with your PLC through the simple and powerful `S7Service`.
 - **🔌 Effortless Connection Management**: Handles connecting, disconnecting, and automatic reconnection with configurable keep-alive and backoff strategies.
+- **⚡️ High-Performance Session Pooling**: Utilizes a pool of OPC UA sessions for stateless operations (read, write, browse), dramatically reducing overhead and increasing throughput for high-frequency tasks.
 - **🌳 Full Structure Discovery**: Automatically browses and maps the entire S7 OPC UA server structure, including:
   - Global Data Blocks (`DB`)
   - Instance Data Blocks (`iDB`), including nested structures
   - Inputs (`I`), Outputs (`Q`), and Memory (`M`)
   - Timers (`T`) and Counters (`C`)
+- **✍️ Manual Registration**: Manually define variables and data blocks that are not browsable on the OPC UA server, enabling access to any tag.
 - **🔄 Automatic S7 Data Type Conversion**: Seamlessly converts complex S7 data types to and from standard .NET types. No more manual byte-wrangling!
   - `DATE_AND_TIME` ↔ `System.DateTime`
   - `DTL` ↔ `System.DateTime` (with nanosecond precision)
@@ -30,7 +32,7 @@ A modern, high-level .NET library designed to simplify communication with Siemen
 - **🔔 Event-Driven Value Changes**: React to data changes in your application through two powerful mechanisms:
   - **Polling:** Use `ReadAllVariablesAsync()` to get a snapshot and trigger `VariableValueChanged` for any changes since the last read.
   - **Subscriptions:** Use `SubscribeToVariableAsync()` to receive real-time updates from the PLC, which also trigger the `VariableValueChanged` event.
-- **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations ensures your application remains responsive. Built from the ground up to be thread-safe, allowing you to reliably use a single `S7Service` instance across multiple concurrent tasks.
+- **🚀 Async & Thread-Safe**: Fully asynchronous API (`async`/`await`) for all network operations. A central `S7Service` instance is thread-safe and can be shared across your application, managing a persistent connection for subscriptions and a high-performance session pool for other tasks.
 - **🏗️ Modern & Immutable**: Built with modern C# features, using immutable records for data structures to ensure thread safety and predictability.
 
 ## 🏛️ Architecture
@@ -40,6 +42,8 @@ The library is designed with a clean, modular architecture, split into several k
 -   **`S7UaLib.Core`**: The foundational library. It defines all shared interfaces, enumerations, and data models (`IS7Variable`, `S7DataType`, etc.). It's the "vocabulary" of the ecosystem.
 -   **`S7UaLib.Infrastructure`**: The implementation engine. This library contains the concrete logic for communicating via OPC UA, converting data types, and caching the PLC structure. It's the internal "machinery".
 -   **`S7UaLib` (S7UaLib.Services)**: The high-level public API. It exposes the simple `S7Service`, which orchestrates the underlying components to provide the easy-to-use functionality you see in the features list.
+
+The `S7UaClient` within the Infrastructure layer is intelligently composed of two parts: a main client that maintains a persistent, stateful connection for handling subscriptions and connection status, and a high-performance session pool for all other stateless operations like browsing, reading, and writing. This design ensures both robust event handling and high-throughput communication.
 
 As an end-user, you only need to install the main `philipp2604.S7UaLib` NuGet package. The others will be included automatically as dependencies.
 
@@ -62,6 +66,7 @@ Here's a simple example demonstrating the main workflow: connect, discover, subs
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.Ua;
+using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Services.S7;
 
 // --- Configuration ---
@@ -75,24 +80,26 @@ const string appName = "S7UaLib Example";
 const string appUri = "urn:localhost:UA:S7UaLib:Example";
 const string productUri = "uri:philipp2604:S7UaLib:Example";
 
-const UserIdentity userIdentity = new UserIdentity(); // Anonymous user
+// Use an empty constructor for anonymous user, or new UserIdentity("user", "pass")
+var userIdentity = new UserIdentity(); 
 
 // 1. Initialize S7Service
 var service = new S7Service(userIdentity);
 
 // 2. Configure Service / Client
-await service.ConfigureAsync(
-    new ApplicationConfiguration(
-        ApplicationName = _appName,
-        ApplicationUri = _appUri,
-        ProductUri = _productUri,
-        SecurityConfiguration = new SecurityConfiguration(new SecurityConfigurationStores())
-        {
-            AutoAcceptUntrustedCertificates = true,
-            SkipDomainValidation = new() { Skip = true
-        }
-    )
-);
+var appConfig = new ApplicationConfiguration
+{
+    ApplicationName = appName,
+    ApplicationUri = appUri,
+    ProductUri = productUri,
+    SecurityConfiguration = new SecurityConfiguration(new SecurityConfigurationStores())
+    {
+        AutoAcceptUntrustedCertificates = true,
+        SkipDomainValidation = new() { Skip = true },
+        RejectSHA1SignedCertificates = new() { Reject = false }
+    }
+};
+await service.ConfigureAsync(appConfig);
 
 // Optional: Subscribe to value changes
 service.VariableValueChanged += OnVariableValueChanged;
@@ -137,12 +144,11 @@ try
     Console.ReadLine();
 
     // 7. Write a new value to the variable
-    var success = false;
     if (service.GetVariable(myIntVarPath)?.Value is short intVal)
     {
         intVal = (short)(intVal + 1);
         Console.WriteLine($"Writing '{intVal}' to '{myIntVarPath}'...");
-        success = await service.WriteVariableAsync(myIntVarPath, intVal);
+        bool success = await service.WriteVariableAsync(myIntVarPath, intVal);
         if (success)
         {
             Console.WriteLine($"Write to {myIntVarPath} successful! A new value change event should have been triggered.");
@@ -155,7 +161,7 @@ try
     // 8. Write a string value
     string newValue = $"Hello from S7UaLib at {DateTime.Now:T}";
     Console.WriteLine($"Writing '{newValue}' to '{myStringVarPath}'...");
-    success = await service.WriteVariableAsync(myStringVarPath, newValue);
+    bool success = await service.WriteVariableAsync(myStringVarPath, newValue);
 
     if (success)
     {
@@ -177,6 +183,7 @@ finally
         await service.DisconnectAsync();
     }
     service.VariableValueChanged -= OnVariableValueChanged;
+    service.Dispose();
 }
 
 // Event handler for value changes (from polling or subscriptions)
