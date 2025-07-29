@@ -199,9 +199,9 @@ void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
 ```
 
 ## 📖 Documentation
-- **[Manual](./MANUAL.md)**: A small manual on how to use this library.
-- **[IS7Service Reference](./src/S7UaLib.Services/S7/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
-- **[Integration Tests](./tests/S7UaLib.Services.Tests/Integration/S7ServiceIntegrationTests.cs)**: These tests showcase real-world usage patterns against a live S7-1500 PLC and serve as excellent, practical examples.
+- **[Manual](../MANUAL.md)**: A small manual on how to use this library.
+- **[IS7Service Reference](../src/S7UaLib.Services/S7/IS7Service.cs)**: The `IS7Service` interface is the primary entry point and contract for all top-level operations.
+- **[Integration Tests](../tests/S7UaLib.Services.Tests/Integration/S7ServiceIntegrationTests.cs)**: These tests showcase real-world usage patterns against a live S7-1500 PLC and serve as excellent, practical examples.
 
 ## 🤝 Contributing
 
