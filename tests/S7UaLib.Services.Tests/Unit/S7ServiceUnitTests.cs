@@ -159,12 +159,12 @@ public class S7ServiceUnitTests
         var instanceDbShell = new S7DataBlockInstance { DisplayName = "InstanceDB" };
         var inputsShell = new S7Inputs { DisplayName = "Inputs" };
 
-        var globalDbFull = globalDbShell with { Variables = new[] { new S7Variable { DisplayName = "GlobalVar" } } };
+        var globalDbFull = globalDbShell with { Variables = [new S7Variable { DisplayName = "GlobalVar" }] };
         var instanceDbFull = instanceDbShell with { Static = new S7InstanceDbSection() };
-        var inputsFull = inputsShell with { Variables = new[] { new S7Variable { DisplayName = "InputVar" } } };
+        var inputsFull = inputsShell with { Variables = [new S7Variable { DisplayName = "InputVar" }] };
 
-        _mockClient.Setup(c => c.GetAllGlobalDataBlocksAsync(default)).ReturnsAsync(new[] { globalDbShell });
-        _mockClient.Setup(c => c.GetAllInstanceDataBlocksAsync(default)).ReturnsAsync(new[] { instanceDbShell });
+        _mockClient.Setup(c => c.GetAllGlobalDataBlocksAsync(default)).ReturnsAsync([globalDbShell]);
+        _mockClient.Setup(c => c.GetAllInstanceDataBlocksAsync(default)).ReturnsAsync([instanceDbShell]);
         _mockClient.Setup(c => c.GetInputsAsync(default)).ReturnsAsync(inputsShell);
         _mockClient.Setup(c => c.GetOutputsAsync(default)).ReturnsAsync((S7Outputs?)null);
         _mockClient.Setup(c => c.GetMemoryAsync(default)).ReturnsAsync((S7Memory?)null);
@@ -416,12 +416,12 @@ public class S7ServiceUnitTests
         var sut = CreateSut();
 
         var oldVar = new S7Variable { DisplayName = "TestArray", FullPath = "DataBlocksGlobal.DB1.TestArray", Value = new byte[] { 1, 2, 3 } };
-        var initialDb = new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1", Variables = new[] { oldVar } };
-        _realDataStore.SetStructure(new[] { initialDb }, Array.Empty<S7DataBlockInstance>(), null, null, null, null, null);
+        var initialDb = new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1", Variables = [oldVar] };
+        _realDataStore.SetStructure([initialDb], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
         var newVar = new S7Variable { DisplayName = "TestArray", FullPath = "DataBlocksGlobal.DB1.TestArray", Value = new byte[] { 1, 2, 4 } };
-        var updatedDb = new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1", Variables = new[] { newVar } };
+        var updatedDb = new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1", Variables = [newVar] };
         _mockClient.Setup(c => c.ReadValuesOfElementAsync(It.IsAny<IS7DataBlockGlobal>(), "DataBlocksGlobal", It.IsAny<CancellationToken>())).ReturnsAsync(updatedDb);
 
         VariableValueChangedEventArgs? eventArgs = null;
@@ -975,9 +975,9 @@ public class S7ServiceUnitTests
     {
         // Arrange
         var sut = CreateSut();
-        var nodeId = "ns=3;s=MyStructVar";
+        const string nodeId = "ns=3;s=MyStructVar";
         var oldVar = new S7Variable { DisplayName = "TestVar", NodeId = nodeId, S7Type = S7DataType.UNKNOWN };
-        _realDataStore.SetStructure(new[] { new S7DataBlockGlobal { DisplayName = "DB1", Variables = new[] { oldVar } } }, Array.Empty<S7DataBlockInstance>(), null, null, null, null, null);
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [oldVar] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
         var discoveredMembers = new List<IS7Variable>
@@ -1181,7 +1181,7 @@ public class S7ServiceUnitTests
         var sut = CreateSut();
         const string path = "DataBlocksGlobal.DB1.TestVar";
         var variable = new S7Variable { NodeId = "ns=1;s=Var" };
-        _realDataStore.SetStructure(new[] { new S7DataBlockGlobal { DisplayName = "DB1", Variables = new[] { variable } } }, Array.Empty<S7DataBlockInstance>(), null, null, null, null, null);
+        _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
         _mockClient.Setup(c => c.IsConnected).Returns(true);

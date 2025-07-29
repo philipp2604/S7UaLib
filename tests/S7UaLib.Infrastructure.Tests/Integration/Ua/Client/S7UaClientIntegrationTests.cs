@@ -469,7 +469,7 @@ public class S7UaClientIntegrationTests : IDisposable
                 S7Type = S7DataType.STRUCT,
                 StructMembers = new List<S7Variable> { new() { DisplayName = "TestStructInt", S7Type = S7DataType.INT } }
             };
-            var dbToRead = dbWithVars with { Variables = new[] { typedStruct } };
+            var dbToRead = dbWithVars with { Variables = [typedStruct] };
 
             // Act 1: Read the initial value
             var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbToRead);
@@ -521,7 +521,7 @@ public class S7UaClientIntegrationTests : IDisposable
 
             var variableToType = dbWithVars.Variables.First(v => v.DisplayName == "TestCharArray") as S7Variable;
             var typedVariable = variableToType! with { S7Type = S7DataType.ARRAY_OF_CHAR };
-            var dbToRead = dbWithVars with { Variables = new[] { typedVariable } };
+            var dbToRead = dbWithVars with { Variables = [typedVariable] };
 
             // Act 1: Read initial value
             var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbToRead);
@@ -645,7 +645,7 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(testVar);
             testVar = testVar with { S7Type = S7DataType.DINT, SamplingInterval = 100 };
 
-            var dbWithOriginalValue = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = new[] { testVar } });
+            var dbWithOriginalValue = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
             originalValue = dbWithOriginalValue.Variables[0].Value;
             Assert.NotNull(originalValue);
 
