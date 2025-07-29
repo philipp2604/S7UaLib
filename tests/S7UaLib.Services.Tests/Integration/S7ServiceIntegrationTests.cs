@@ -79,7 +79,7 @@ public class S7ServiceIntegrationTests : IDisposable
             ApplicationUri = _appUri,
             ProductUri = _productUri,
             SecurityConfiguration = CreateTestSecurityConfig(),
-            ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
+            ClientConfiguration = new ClientConfiguration(),
             TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
             OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
         };
@@ -528,8 +528,14 @@ public class S7ServiceIntegrationTests : IDisposable
         }
         finally
         {
-            await service1!.DisconnectAsync();
-            await service2!.DisconnectAsync();
+            try
+            {
+                await service1!.DisconnectAsync();
+                await service2!.DisconnectAsync();
+            }
+            catch (ObjectDisposedException)
+            { }
+
             if (_fileSystem.File.Exists(tempFile))
             {
                 _fileSystem.File.Delete(tempFile);
@@ -610,6 +616,9 @@ public class S7ServiceIntegrationTests : IDisposable
             Assert.True(await service.UnsubscribeFromVariableAsync(varPath), "Unsubscribing from the variable failed.");
             var unsubscribedVar = service.GetVariable(varPath);
             Assert.False(unsubscribedVar?.IsSubscribed, "Variable should no longer be marked as 'IsSubscribed' after unsubscribing.");
+
+            // 7. Reset value
+            await service.WriteVariableAsync(varPath, originalValue);
         }
         catch (Opc.Ua.ServiceResultException ex)
         {

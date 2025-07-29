@@ -341,6 +341,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     {
         ThrowIfDisposed();
         await _mainClient.DisconnectAsync(leaveChannelOpen, cancellationToken);
+        _sessionPool.Dispose();
+        Dispose();
     }
 
     #endregion Connection Methods
