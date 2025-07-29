@@ -24,6 +24,42 @@ public class S7DataStoreUnitTests
         return new S7DataStore(_mockLoggerFactory.Object);
     }
 
+    #region SetStructure Tests
+
+    [Fact]
+    public void SetStructure_WithNulls_CorrectlyResetsAndInitializesAreas()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.SetStructure(
+            [new S7DataBlockGlobal { DisplayName = "DB1" }],
+            [new S7DataBlockInstance { DisplayName = "FB_DB1" }],
+            new S7Inputs { Variables = [new S7Variable { DisplayName = "I0.0" }] },
+            null, null, null, null);
+        sut.BuildCache();
+
+        Assert.NotEmpty(sut.DataBlocksGlobal);
+        Assert.NotEmpty(sut.Inputs.Variables);
+
+        // Act
+        sut.SetStructure([], [], null, null, null, null, null);
+        sut.BuildCache();
+
+        // Assert
+        Assert.Empty(sut.DataBlocksGlobal);
+        Assert.Empty(sut.DataBlocksInstance);
+
+        Assert.NotNull(sut.Inputs);
+        Assert.Equal("Inputs", sut.Inputs.DisplayName);
+        Assert.Empty(sut.Inputs.Variables);
+
+        Assert.NotNull(sut.Outputs);
+        Assert.Equal("Outputs", sut.Outputs.DisplayName);
+        Assert.Empty(sut.Outputs.Variables);
+    }
+
+    #endregion
+
     #region BuildCache Tests
 
     [Fact]
@@ -511,9 +547,135 @@ public class S7DataStoreUnitTests
         Assert.False(success);
     }
 
-    #endregion AddVariable Tests
+    #endregion RegisterVariable Tests
+
+    #region RegisterGlobalDataBlock Tests
+
+    [Fact]
+    public void RegisterGlobalDataBlock_WithValidNewDataBlock_AddsToStoreAndRebuildsCache()
+    {
+        // Arrange
+        var sut = CreateSut();
+        sut.BuildCache();
+
+        var newDb = new S7DataBlockGlobal
+        {
+            DisplayName = "DB5",
+            FullPath = "DataBlocksGlobal.DB5",
+            Variables = [new S7Variable { DisplayName = "MyVar" }]
+        };
+
+        // Act
+        var success = sut.RegisterGlobalDataBlock(newDb);
+
+        // Assert
+        Assert.True(success);
+        Assert.Single(sut.DataBlocksGlobal);
+        Assert.Equal("DB5", sut.DataBlocksGlobal[0].DisplayName);
+        Assert.True(sut.TryGetVariableByPath("DataBlocksGlobal.DB5.MyVar", out var foundVar));
+        Assert.NotNull(foundVar);
+        Assert.Equal("MyVar", foundVar.DisplayName);
+    }
+
+    [Fact]
+    public void RegisterGlobalDataBlock_WithExistingPath_ReturnsFalseAndDoesNotModifyStore()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var initialDb = new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksGlobal.DB1" };
+        sut.SetStructure([initialDb], [], null, null, null, null, null);
+        sut.BuildCache();
+
+        var duplicateDb = new S7DataBlockGlobal { DisplayName = "DB1_DUPLICATE", FullPath = "DataBlocksGlobal.DB1" };
+
+        // Act
+        var success = sut.RegisterGlobalDataBlock(duplicateDb);
+
+        // Assert
+        Assert.False(success);
+        Assert.Single(sut.DataBlocksGlobal);
+        Assert.Same(initialDb, sut.DataBlocksGlobal[0]);
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("A data block with path 'DataBlocksGlobal.DB1' already exists.")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void RegisterGlobalDataBlock_WithInvalidPath_WrongRootName_ReturnsFalse()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var invalidDb = new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DataBlocksInstance.DB1" };
+
+        // Act
+        var success = sut.RegisterGlobalDataBlock(invalidDb);
+
+        // Assert
+        Assert.False(success);
+        Assert.Empty(sut.DataBlocksGlobal);
+        _mockLogger.Verify(
+           x => x.Log(
+               LogLevel.Warning,
+               It.IsAny<EventId>(),
+               It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("The root name is invalid.")),
+               null,
+               It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+           Times.Once);
+    }
+
+    [Fact]
+    public void RegisterGlobalDataBlock_WithInvalidPath_TooFewSegments_ReturnsFalse()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var invalidDb = new S7DataBlockGlobal { DisplayName = "DB1", FullPath = "DB1" };
+
+        // Act
+        var success = sut.RegisterGlobalDataBlock(invalidDb);
+
+        // Assert
+        Assert.False(success);
+        Assert.Empty(sut.DataBlocksGlobal);
+        _mockLogger.Verify(
+          x => x.Log(
+              LogLevel.Warning,
+              It.IsAny<EventId>(),
+              It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("The path 'DB1' is not valid.")),
+              null,
+              It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+          Times.Once);
+    }
+
+    #endregion RegisterGlobalDataBlock Tests
 
     #region UpdateVariable Tests
+
+    [Fact]
+    public void UpdateVariable_PathCaseInsensitivity_SuccessfullyUpdates()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var oldVar = new S7Variable { DisplayName = "MyVar", Value = "Initial" };
+        sut.SetStructure([new S7DataBlockGlobal { DisplayName = "Db1", Variables = [oldVar] }], [], null, null, null, null, null);
+        sut.BuildCache();
+
+        var newVar = new S7Variable { DisplayName = "MyVar", Value = "Updated" };
+        const string path = "DATABLOCKSGLOBAL.db1.MYVAR";
+
+        // Act
+        var success = sut.UpdateVariable(path, newVar);
+
+        // Assert
+        Assert.True(success, "Update should succeed with a case-insensitive path.");
+        Assert.Equal("Updated", sut.DataBlocksGlobal[0].Variables[0].Value);
+        Assert.True(sut.TryGetVariableByPath("DataBlocksGlobal.Db1.MyVar", out var updatedVar));
+        Assert.Equal("Updated", updatedVar?.Value);
+    }
 
     [Fact]
     public void UpdateVariable_InGlobalDb_SuccessfullyReplacesVariable()

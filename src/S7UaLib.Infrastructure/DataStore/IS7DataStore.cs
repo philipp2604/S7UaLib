@@ -48,6 +48,14 @@ internal interface IS7DataStore
     public IS7Counters? Counters { get; }
 
     /// <summary>
+    /// Adds a new global data block to the store at the specified full path. This modifies the
+    /// immutable hierarchy and rebuilds the cache.
+    /// </summary>
+    /// <param name="newDataBlock">The new global data block to add.</param>
+    /// <returns>True if the data block was added successfully; otherwise, false.</returns>
+    public bool RegisterGlobalDataBlock(IS7DataBlockGlobal newDataBlock);
+
+    /// <summary>
     /// Adds a new variable to the store at the specified full path. This modifies the
     /// immutable hierarchy and rebuilds the cache. The parent element must exist.
     /// </summary>

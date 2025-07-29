@@ -1,15 +1,12 @@
 ﻿using Microsoft.Extensions.Logging;
-using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
+using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
-using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
-using S7UaLib.TestHelpers;
 using System.Collections;
 using System.IO.Abstractions;
-using System.Security.Cryptography.X509Certificates;
 
 namespace S7UaLib.Services.Tests.Integration;
 
@@ -24,6 +21,7 @@ public class S7ServiceIntegrationTests : IDisposable
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
+    private const int _maxSessions = 8;
     private readonly UserIdentity _userIdentity = new();
 
     private readonly TempDirectory _tempDir = new();
@@ -58,7 +56,7 @@ public class S7ServiceIntegrationTests : IDisposable
     {
         var certStores = new SecurityConfigurationStores
         {
-            AppRoot = Path.Combine(_tempDir.Path, "pki"),
+            AppRoot = Path.Combine(_tempDir.Path, "pki", "app"),
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
             IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
             RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
@@ -66,16 +64,29 @@ public class S7ServiceIntegrationTests : IDisposable
         };
 
         Directory.CreateDirectory(certStores.AppRoot);
-        return new SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true } };
+        return new SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true }, RejectSHA1SignedCertificates = new() { Reject = false } };
+    }
+
+    private ApplicationConfiguration CreateTestAppConfig()
+    {
+        return new ApplicationConfiguration
+        {
+            ApplicationName = _appName,
+            ApplicationUri = _appUri,
+            ProductUri = _productUri,
+            SecurityConfiguration = CreateTestSecurityConfig(),
+            ClientConfiguration = new ClientConfiguration(),
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 }
+        };
     }
 
     private async Task<S7Service> CreateAndConnectServiceAsync()
     {
-        var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+        var service = new S7Service(_userIdentity, _maxSessions, _validateResponse, _loggerFactory);
         _servicesToDispose.Add(service);
 
-        var securityConfig = CreateTestSecurityConfig();
-        await service.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        var appConfig = CreateTestAppConfig();
+        await service.ConfigureAsync(appConfig);
 
         try
         {
@@ -92,8 +103,10 @@ public class S7ServiceIntegrationTests : IDisposable
 
     public void Dispose()
     {
+        var serviceIndex = 0;
         foreach (var service in _servicesToDispose)
         {
+            serviceIndex++;
             service.Dispose();
         }
         _tempDir.Dispose();
@@ -105,45 +118,41 @@ public class S7ServiceIntegrationTests : IDisposable
     #region Configuration Workflow Tests
 
     [Fact]
-    public async Task SaveAndLoadConfiguration_Succeeds()
+    public async Task SaveAndLoadConfiguration_AllowsSuccessfulConnection()
     {
         // Arrange
         var configFilePath = Path.Combine(_tempDir.Path, "S7Service.Config.xml");
-        var securityConfig = CreateTestSecurityConfig();
 
-        // 1. Create and configure a service with specific, non-default values.
-        var saveService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-        _servicesToDispose.Add(saveService);
+        // 1. Create, configure, and connect a service to generate certs and trust the server.
+        var setupService = await CreateAndConnectServiceAsync();
+        setupService.SaveConfiguration(configFilePath);
+        await setupService.DisconnectAsync();
+        setupService.Dispose(); // Dispose to ensure no lingering connections.
+        _servicesToDispose.Remove(setupService);
 
-        await saveService.ConfigureAsync(
-            "SaveLoadTestApp",
-            "urn:saveload",
-            "urn:saveload:prod",
-            securityConfig,
-            new ClientConfiguration { SessionTimeout = 98765 });
-
-        // 2. Save the configuration to a file.
-        saveService.SaveConfiguration(configFilePath);
         Assert.True(_fileSystem.File.Exists(configFilePath), "Configuration file was not created.");
 
-        // 3. Create a new service instance with a *different* initial configuration.
-        var loadService = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
+        // 2. Create a new, unconfigured service instance.
+        var loadService = new S7Service(_userIdentity, _maxSessions, _validateResponse, _loggerFactory);
         _servicesToDispose.Add(loadService);
-        await loadService.ConfigureAsync("InitialApp", "urn:initial", "urn:initial:prod", CreateTestSecurityConfig());
 
-        // Act: Load the previously saved configuration into the new service.
-        await loadService.LoadConfigurationAsync(configFilePath);
+        // Act & Assert
+        try
+        {
+            // 3. Load the configuration and attempt to connect. A successful connection proves
+            //    that security settings, certificates, and other configs were loaded correctly.
+            await loadService.LoadConfigurationAsync(configFilePath);
+            await loadService.ConnectAsync(_serverUrl, useSecurity: true);
 
-        // Assert: Verify that the configuration of the loading client was updated.
-        // We need to use reflection to inspect the private internal state.
-        var internalClient = PrivateFieldHelpers.GetPrivateField(loadService, "_client") as IS7UaClient;
-        var appInst = PrivateFieldHelpers.GetPrivateField(internalClient!, "_appInst") as ApplicationInstance;
-        Assert.NotNull(appInst);
-
-        var loadedConfig = appInst.ApplicationConfiguration;
-        Assert.Equal("SaveLoadTestApp", loadedConfig.ApplicationName);
-        Assert.Equal("urn:saveload", loadedConfig.ApplicationUri);
-        Assert.Equal(98765, loadedConfig.ClientConfiguration.DefaultSessionTimeout);
+            Assert.True(loadService.IsConnected, "Service should be able to connect using the loaded configuration.");
+        }
+        finally
+        {
+            if (loadService.IsConnected)
+            {
+                await loadService.DisconnectAsync();
+            }
+        }
     }
 
     #endregion Configuration Workflow Tests
@@ -154,9 +163,9 @@ public class S7ServiceIntegrationTests : IDisposable
     public async Task ConnectAndDisconnect_Successfully()
     {
         // Arrange
-        var service = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-        var securityConfig = CreateTestSecurityConfig();
-        await service.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        var service = new S7Service(_userIdentity, _maxSessions, _validateResponse, _loggerFactory);
+        var appConfig = CreateTestAppConfig();
+        await service.ConfigureAsync(appConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -362,6 +371,107 @@ public class S7ServiceIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task WriteVariableAsync_ToDeeplyNestedStructMember_Succeeds()
+    {
+        S7Service? service = null;
+        const string varPath = "DataBlocksInstance.FunctionBlock_InstDB.Static.AnotherNestedStruct.ANestedStructInsideANestedStruct.AVeryNestedBool";
+        object? originalValue = null;
+
+        try
+        {
+            // Arrange
+            service = await CreateAndConnectServiceAsync();
+            await service.DiscoverStructureAsync();
+            await UpdateAllVariableTypesAsync(service);
+            await service.ReadAllVariablesAsync();
+
+            var testVar = service.GetVariable(varPath);
+            Assert.NotNull(testVar);
+            originalValue = testVar.Value;
+            Assert.NotNull(originalValue);
+
+            // Act: Write the inverse value
+            bool newValue = !(bool)originalValue;
+            bool success = await service.WriteVariableAsync(varPath, newValue);
+            Assert.True(success, "WriteVariableAsync should return true on success.");
+
+            await service.ReadAllVariablesAsync();
+            var updatedVar = service.GetVariable(varPath);
+
+            // Assert
+            Assert.NotNull(updatedVar);
+            Assert.Equal(newValue, updatedVar.Value);
+        }
+        finally
+        {
+            // Cleanup
+            if (service?.IsConnected == true && originalValue is not null)
+            {
+                await service.WriteVariableAsync(varPath, originalValue);
+            }
+            await service!.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task RegisterVariableAsync_ThenReadAndWrite_Succeeds()
+    {
+        S7Service? service = null;
+        const string registeredPath = "DataBlocksGlobal.NonBrowsableDB.MyHiddenInt";
+        object? originalValue = null;
+
+        try
+        {
+            // Arrange
+            service = await CreateAndConnectServiceAsync();
+
+            // This variable should NOT exist yet
+            Assert.Null(service.GetVariable(registeredPath));
+
+            // Manually register the non-browsable DB and Variable
+            var dbToRegister = new S7DataBlockGlobal { DisplayName = "NonBrowsableDB", FullPath = "DataBlocksGlobal.NonBrowsableDB", NodeId = "ns=3;s=\"NonBrowsableDB\"" };
+            var varToRegister = new S7Variable
+            {
+                DisplayName = "MyHiddenInt",
+                FullPath = registeredPath,
+                NodeId = $"ns=3;s=\"NonBrowsableDB\".\"MyHiddenInt\"",
+                S7Type = S7DataType.INT
+            };
+            Assert.True(await service.RegisterGlobalDataBlockAsync(dbToRegister));
+            Assert.True(await service.RegisterVariableAsync(varToRegister));
+
+            // Act 1: Read the value of the manually registered variable
+            await service.ReadAllVariablesAsync();
+            var testVar = service.GetVariable(registeredPath);
+            Assert.NotNull(testVar);
+            Assert.Equal(StatusCode.Good, testVar.StatusCode);
+            originalValue = testVar.Value;
+            Assert.IsType<short>(originalValue);
+
+            // Act 2: Write a new value and read it back
+            short newValue = (short)((short)originalValue + 1);
+            Assert.True(await service.WriteVariableAsync(registeredPath, newValue));
+            await service.ReadAllVariablesAsync();
+            var updatedVar = service.GetVariable(registeredPath);
+
+            // Reset value for next test
+            await service.WriteVariableAsync(registeredPath, originalValue);
+
+            // Assert
+            Assert.NotNull(updatedVar);
+            Assert.Equal(newValue, updatedVar.Value);
+        }
+        finally
+        {
+            if (service?.IsConnected == true && originalValue is not null)
+            {
+                await service.WriteVariableAsync(registeredPath, originalValue);
+            }
+            await service!.DisconnectAsync();
+        }
+    }
+
+    [Fact]
     public async Task SaveAndLoadStructure_Succeeds()
     {
         S7Service? service1 = null;
@@ -381,9 +491,9 @@ public class S7ServiceIntegrationTests : IDisposable
             await service1.DisconnectAsync();
 
             // Act: Create new service and load
-            service2 = new S7Service(_userIdentity, _validateResponse, _loggerFactory);
-            var securityConfig = CreateTestSecurityConfig();
-            await service2.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+            service2 = new S7Service(_userIdentity, _maxSessions, _validateResponse, _loggerFactory);
+            var appConfig = CreateTestAppConfig();
+            await service2.ConfigureAsync(appConfig);
             await service2.LoadStructureAsync(tempFile);
 
             // Assert: Structure is loaded before connection
@@ -412,8 +522,14 @@ public class S7ServiceIntegrationTests : IDisposable
         }
         finally
         {
-            await service1!.DisconnectAsync();
-            await service2!.DisconnectAsync();
+            try
+            {
+                await service1!.DisconnectAsync();
+                await service2!.DisconnectAsync();
+            }
+            catch (ObjectDisposedException)
+            { }
+
             if (_fileSystem.File.Exists(tempFile))
             {
                 _fileSystem.File.Delete(tempFile);
@@ -494,6 +610,9 @@ public class S7ServiceIntegrationTests : IDisposable
             Assert.True(await service.UnsubscribeFromVariableAsync(varPath), "Unsubscribing from the variable failed.");
             var unsubscribedVar = service.GetVariable(varPath);
             Assert.False(unsubscribedVar?.IsSubscribed, "Variable should no longer be marked as 'IsSubscribed' after unsubscribing.");
+
+            // 7. Reset value
+            await service.WriteVariableAsync(varPath, originalValue);
         }
         catch (Opc.Ua.ServiceResultException ex)
         {

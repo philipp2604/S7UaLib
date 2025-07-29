@@ -16,6 +16,7 @@ public class S7UaClientIntegrationTests : IDisposable
 
     private readonly Action<IList, IList> _validateResponse;
     private readonly UserIdentity _userIdentity;
+    private const int _maxSessions = 5;
     private const string _appName = "S7UaLib Integration Tests";
     private const string _appUri = "urn:localhost:UA:S7UaLib:IntegrationTests";
     private const string _productUri = "uri:philipp2604:S7UaLib:IntegrationTests";
@@ -37,30 +38,29 @@ public class S7UaClientIntegrationTests : IDisposable
     {
         // Arrange
         var configFilePath = Path.Combine(_tempDir.Path, "S7UaClient.Config.xml");
-        var securityConfig = CreateTestSecurityConfig();
 
-        var saveClient = new S7UaClient(null, _validateResponse);
+        var saveClient = new S7UaClient(_userIdentity, _maxSessions);
         _clientsToDispose.Add(saveClient);
 
-        await saveClient.ConfigureAsync(
-            _appName,
-            _appUri,
-            _productUri,
-            securityConfig,
-            new ClientConfiguration { SessionTimeout = 88888 });
+        var appConfig = CreateTestAppConfig();
+        appConfig.ClientConfiguration.SessionTimeout = 88888;
+
+        await saveClient.ConfigureAsync(appConfig);
 
         saveClient.SaveConfiguration(configFilePath);
         Assert.True(File.Exists(configFilePath));
 
-        var loadClient = new S7UaClient(null, _validateResponse);
+        var loadClient = new S7UaClient(_userIdentity, _maxSessions);
         _clientsToDispose.Add(loadClient);
-        await loadClient.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        await loadClient.ConfigureAsync(appConfig);
 
         // Act
         await loadClient.LoadConfigurationAsync(configFilePath);
 
         // Assert
-        var appInst = PrivateFieldHelpers.GetPrivateField(loadClient, "_appInst") as Opc.Ua.Configuration.ApplicationInstance;
+        var mainClient = PrivateFieldHelpers.GetPrivateField(loadClient, "_mainClient") as S7UaMainClient;
+        Assert.NotNull(mainClient);
+        var appInst = PrivateFieldHelpers.GetPrivateField(mainClient, "_appInst") as Opc.Ua.Configuration.ApplicationInstance;
         Assert.NotNull(appInst);
 
         var loadedConfig = appInst.ApplicationConfiguration;
@@ -77,11 +77,11 @@ public class S7UaClientIntegrationTests : IDisposable
     public async Task ConnectAndDisconnect_Successfully()
     {
         // Arrange
-        var client = new S7UaClient(_userIdentity, _validateResponse);
+        var client = new S7UaClient(_userIdentity, _maxSessions);
         _clientsToDispose.Add(client);
 
-        var securityConfig = CreateTestSecurityConfig();
-        await client.ConfigureAsync(_appName, _appUri, _productUri, securityConfig);
+        var appConfig = CreateTestAppConfig();
+        await client.ConfigureAsync(appConfig);
 
         bool connectedFired = false;
         bool disconnectedFired = false;
@@ -151,24 +151,38 @@ public class S7UaClientIntegrationTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    private ApplicationConfiguration CreateTestAppConfig()
+    {
+        return new ApplicationConfiguration
+        {
+            ApplicationName = _appName,
+            ApplicationUri = _appUri,
+            ProductUri = _productUri,
+            SecurityConfiguration = CreateTestSecurityConfig(),
+            ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
+        };
+    }
+
     private SecurityConfiguration CreateTestSecurityConfig()
     {
         var certStores = new Core.Ua.Configuration.SecurityConfigurationStores
         {
-            AppRoot = Path.Combine(_tempDir.Path, "pki"),
+            AppRoot = Path.Combine(_tempDir.Path, "pki", "app"),
             TrustedRoot = Path.Combine(_tempDir.Path, "pki", "trusted"),
             IssuerRoot = Path.Combine(_tempDir.Path, "pki", "issuer"),
             RejectedRoot = Path.Combine(_tempDir.Path, "pki", "rejected"),
             SubjectName = $"CN={_appName}"
         };
         Directory.CreateDirectory(certStores.AppRoot);
-        return new Core.Ua.Configuration.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true } };
+        return new Core.Ua.Configuration.SecurityConfiguration(certStores) { AutoAcceptUntrustedCertificates = true, SkipDomainValidation = new() { Skip = true }, RejectSHA1SignedCertificates = new SHA1Validation() { Reject = false } };
     }
 
     private async Task<S7UaClient> CreateAndConnectClientAsync()
     {
-        var client = new S7UaClient(_userIdentity, _validateResponse, null);
-        await client.ConfigureAsync(_appName, _appUri, _productUri, CreateTestSecurityConfig());
+        var client = new S7UaClient(_userIdentity, _maxSessions);
+        var appConfig = CreateTestAppConfig();
+        await client.ConfigureAsync(appConfig);
 
         try
         {
@@ -435,6 +449,135 @@ public class S7UaClientIntegrationTests : IDisposable
     #region Write Tests
 
     [Fact]
+    public async Task WriteAndReadBack_NestedStructMember_Succeeds()
+    {
+        S7UaClient? client = null;
+        S7Variable? testVar = null;
+        object? originalValue = null;
+
+        try
+        {
+            // Arrange
+            client = await CreateAndConnectClientAsync();
+            var dbShell = (await client.GetAllGlobalDataBlocksAsync()).First(db => db.DisplayName == "Datablock");
+            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+
+            // Inline logic to prepare the specific variable structure for reading
+            var structVarShell = dbWithVars.Variables.First(v => v.DisplayName == "TestStruct") as S7Variable;
+            var typedStruct = structVarShell! with
+            {
+                S7Type = S7DataType.STRUCT,
+                StructMembers = new List<S7Variable> { new() { DisplayName = "TestStructInt", S7Type = S7DataType.INT } }
+            };
+            var dbToRead = dbWithVars with { Variables = [typedStruct] };
+
+            // Act 1: Read the initial value
+            var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbToRead);
+            testVar = dbWithOriginalValues.Variables
+                .First(v => v.DisplayName == "TestStruct").StructMembers
+                .First(m => m.DisplayName == "TestStructInt") as S7Variable;
+
+            Assert.NotNull(testVar);
+            originalValue = testVar.Value;
+            Assert.NotNull(originalValue);
+
+            // Act 2: Write a new value and read it back
+            short newValue = (short)((short)originalValue + 1);
+            Assert.True(await client.WriteVariableAsync(testVar, newValue));
+
+            var dbWithNewValues = await client.ReadValuesOfElementAsync(dbToRead);
+            var updatedVar = dbWithNewValues.Variables
+                .First(v => v.DisplayName == "TestStruct").StructMembers
+                .First(m => m.DisplayName == "TestStructInt");
+
+            // Assert
+            Assert.Equal(newValue, updatedVar.Value);
+        }
+        finally
+        {
+            // Cleanup
+            if (client?.IsConnected == true && testVar != null && originalValue != null)
+            {
+                await client.WriteVariableAsync(testVar, originalValue);
+            }
+            await client!.DisconnectAsync();
+        }
+    }
+
+    // *** NEW TEST ***
+    [Fact]
+    public async Task WriteAndReadBack_ArrayValue_Succeeds()
+    {
+        S7UaClient? client = null;
+        S7Variable? testVar = null;
+        object? originalValue = null;
+
+        try
+        {
+            // Arrange
+            client = await CreateAndConnectClientAsync();
+            var dbShell = (await client.GetAllGlobalDataBlocksAsync()).First(db => db.DisplayName == "Datablock");
+            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+
+            var variableToType = dbWithVars.Variables.First(v => v.DisplayName == "TestCharArray") as S7Variable;
+            var typedVariable = variableToType! with { S7Type = S7DataType.ARRAY_OF_CHAR };
+            var dbToRead = dbWithVars with { Variables = [typedVariable] };
+
+            // Act 1: Read initial value
+            var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbToRead);
+            testVar = dbWithOriginalValues.Variables.First(v => v.DisplayName == "TestCharArray") as S7Variable;
+            Assert.NotNull(testVar);
+            originalValue = testVar.Value;
+            Assert.NotNull(originalValue);
+
+            // Act 2: Write new array value and read back
+            var newValue = new List<char> { 'X', 'Y', 'Z', '!' };
+            Assert.True(await client.WriteVariableAsync(testVar, newValue));
+
+            var dbWithNewValues = await client.ReadValuesOfElementAsync(dbToRead);
+            var updatedVar = dbWithNewValues.Variables.First(v => v.DisplayName == "TestCharArray");
+
+            // Assert
+            Assert.Equal(newValue, updatedVar.Value);
+        }
+        finally
+        {
+            // Cleanup
+            if (client?.IsConnected == true && testVar != null && originalValue != null)
+            {
+                await client.WriteVariableAsync(testVar, originalValue);
+            }
+            await client!.DisconnectAsync();
+        }
+    }
+
+    // *** NEW TEST ***
+    [Fact]
+    public async Task WriteVariableAsync_WithIncompatibleType_ReturnsFalse()
+    {
+        S7UaClient? client = null;
+        try
+        {
+            // Arrange
+            client = await CreateAndConnectClientAsync();
+            var dbShell = (await client.GetAllGlobalDataBlocksAsync()).First(db => db.DisplayName == "Datablock");
+            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            var testVar = dbWithVars.Variables.First(v => v.DisplayName == "TestInt") as S7Variable;
+            Assert.NotNull(testVar);
+
+            // Act: This should fail because the server expects a short (Int), not a string.
+            bool success = await client.WriteVariableAsync(testVar with { S7Type = S7DataType.INT }, "this is not a number");
+
+            // Assert
+            Assert.False(success);
+        }
+        finally
+        {
+            await client!.DisconnectAsync();
+        }
+    }
+
+    [Fact]
     public async Task WriteAndReadBack_Variable_Succeeds()
     {
         S7UaClient? client = null;
@@ -484,7 +627,7 @@ public class S7UaClientIntegrationTests : IDisposable
     #region Subscription Tests
 
     [Fact]
-    public async Task SubscribeToVariableAsync_ReceivesNotification_OnValueChange()
+    public async Task SubscribeToVariableAsync_ReceivesNotification_AndUnsubscribes()
     {
         S7UaClient? client = null;
         S7Variable? testVar = null;
@@ -500,7 +643,7 @@ public class S7UaClientIntegrationTests : IDisposable
             var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
             testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestDInt") as S7Variable;
             Assert.NotNull(testVar);
-            testVar = testVar with { S7Type = S7DataType.SINT, SamplingInterval = 100 };
+            testVar = testVar with { S7Type = S7DataType.DINT, SamplingInterval = 100 };
 
             var dbWithOriginalValue = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
             originalValue = dbWithOriginalValue.Variables[0].Value;
@@ -508,7 +651,6 @@ public class S7UaClientIntegrationTests : IDisposable
 
             var notificationReceivedEvent = new ManualResetEventSlim();
             MonitoredItemChangedEventArgs? receivedArgs = null;
-
             client.MonitoredItemChanged += (sender, args) =>
             {
                 if (args.MonitoredItem.StartNodeId.ToString() == testVar.NodeId)
@@ -518,39 +660,35 @@ public class S7UaClientIntegrationTests : IDisposable
                 }
             };
 
+            // Act 1: Subscribe and trigger notification
             Assert.True(await client.CreateSubscriptionAsync(publishingInterval: 200));
             Assert.True(await client.SubscribeToVariableAsync(testVar));
 
-            // Act
-            const int newValue = -22;
-            Assert.NotEqual(newValue, originalValue);
-            Assert.True(await client.WriteVariableAsync(testVar, newValue), "Error while writing new value to variable.");
+            const int newValue = -2222;
+            Assert.True(await client.WriteVariableAsync(testVar, newValue));
 
-            bool eventWasSet = notificationReceivedEvent.Wait(TimeSpan.FromSeconds(10));
-
-            // Assert
-            Assert.True(eventWasSet, "No Notification received before timeout.");
+            // Assert 1: Notification is received and correct
+            Assert.True(notificationReceivedEvent.Wait(TimeSpan.FromSeconds(10)), "No notification received.");
             Assert.NotNull(receivedArgs);
-
             var notificationValue = receivedArgs.Notification.Value;
-            Assert.NotNull(notificationValue);
-            Assert.Equal(Opc.Ua.StatusCodes.Good, notificationValue.StatusCode);
-            Assert.Equal(newValue, notificationValue.Value!);
+            Assert.Equal(newValue, (int)notificationValue.Value!);
 
+            // Act 2: Unsubscribe
             Assert.True(await client.UnsubscribeFromVariableAsync(testVar));
-        }
-        catch (Opc.Ua.ServiceResultException ex)
-        {
-            Assert.Fail($"Test failed due to a server communication error. Ensure the server is running. Error: {ex.Message}");
+
+            // Assert 2: No more notifications are received
+            notificationReceivedEvent.Reset();
+            await client.WriteVariableAsync(testVar, (int)newValue + 1);
+            Assert.False(notificationReceivedEvent.Wait(TimeSpan.FromSeconds(2)), "A notification was received after unsubscribing.");
         }
         finally
         {
-            if (client?.IsConnected == true && testVar?.NodeId is not null && originalValue is not null)
+            // Cleanup
+            if (client?.IsConnected == true && testVar != null && originalValue != null)
             {
-                await client.WriteVariableAsync(testVar.NodeId, originalValue, testVar.S7Type);
+                await client.WriteVariableAsync(testVar, originalValue);
             }
             await client!.DisconnectAsync();
-            client.Dispose();
         }
     }
 

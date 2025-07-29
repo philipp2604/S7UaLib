@@ -57,6 +57,47 @@ internal class S7DataStore : IS7DataStore
     /// <inheritdoc cref="IS7DataStore.Counters"/>
     public IS7Counters Counters { get; private set; }
 
+    /// <inheritdoc cref="IS7DataStore.RegisterGlobalDataBlock(IS7DataBlockGlobal)"/>
+    public bool RegisterGlobalDataBlock(IS7DataBlockGlobal newDataBlock)
+    {
+        lock (_lock)
+        {
+            if (DataBlocksGlobal.Any(db => db.FullPath == newDataBlock.FullPath))
+            {
+                _logger?.LogWarning("Cannot add data block: A data block with path '{Path}' already exists.", newDataBlock.FullPath!);
+                return false;
+            }
+
+            var pathSegments = newDataBlock.FullPath!.Split('.');
+            if (pathSegments.Length != 2)
+            {
+                _logger?.LogWarning("Cannot add data block: The path '{Path}' is not valid. It must contain at a root and a data block name.", newDataBlock.FullPath!);
+                return false;
+            }
+
+            var rootName = pathSegments[0];
+            bool added = false;
+
+            if (rootName.Equals("DataBlocksGlobal", StringComparison.OrdinalIgnoreCase))
+            {
+                DataBlocksGlobal = DataBlocksGlobal.Append(newDataBlock).ToList().AsReadOnly();
+                added = true;
+            }
+            else
+            {
+                _logger?.LogWarning("Cannot add data block: The root name is invalid.");
+            }
+
+            if (added)
+            {
+                _logger?.LogDebug("Global data block '{FullPath}' added to data store. Rebuilding cache.", newDataBlock.FullPath!);
+                BuildCache();
+            }
+
+            return added;
+        }
+    }
+
     /// <inheritdoc cref="IS7DataStore.RegisterVariable(IS7Variable)"/>
     public bool RegisterVariable(IS7Variable newVariable)
     {
