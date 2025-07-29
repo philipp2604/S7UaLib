@@ -241,7 +241,8 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.False(inputsShell.Variables?.Any(), "Variables list should be empty before discovery.");
 
             // Act
-            var populatedInputs = await client.DiscoverVariablesOfElementAsync((S7Inputs)inputsShell);
+            var populatedInputs = (S7Inputs?)await client.DiscoverNodeAsync((S7Inputs)inputsShell);
+            Assert.NotNull(populatedInputs);
 
             // Assert
             Assert.NotNull(populatedInputs);
@@ -270,12 +271,11 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.Null(dbShell.Inputs);
 
             // Act
-            var discoveredElement = await client.DiscoverElementAsync(dbShell);
+            var discoveredElement = (S7DataBlockInstance?)await client.DiscoverNodeAsync(dbShell);
 
             // Assert
             Assert.NotNull(discoveredElement);
-            Assert.IsType<S7DataBlockInstance>(discoveredElement);
-            var populatedDb = (S7DataBlockInstance)discoveredElement;
+            var populatedDb = discoveredElement;
             Assert.NotNull(populatedDb.Outputs);
             Assert.NotNull(populatedDb.Inputs);
             Assert.NotEmpty(populatedDb.Outputs.Variables);
@@ -308,18 +308,21 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(memoryShell);
 
             // Act
-            var populatedInputs = await client.DiscoverVariablesOfElementAsync((S7Inputs)inputsShell);
-            var populatedOutputs = await client.DiscoverVariablesOfElementAsync((S7Outputs)outputsShell);
-            var populatedMemory = await client.DiscoverVariablesOfElementAsync((S7Memory)memoryShell);
+            var populatedInputs = (S7Inputs?)await client.DiscoverNodeAsync((S7Inputs)inputsShell);
+            Assert.NotNull(populatedInputs);
+            var populatedOutputs = (S7Outputs?)await client.DiscoverNodeAsync((S7Outputs)outputsShell);
+            Assert.NotNull(populatedOutputs);
+            var populatedMemory = (S7Memory?)await client.DiscoverNodeAsync((S7Memory)memoryShell);
+            Assert.NotNull(populatedMemory);
             var correctlyTypedInputs = populatedInputs.Variables.Cast<S7Variable>().Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
             var correctlyTypedOutputs = populatedOutputs.Variables.Cast<S7Variable>().Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
             var correctlyTypedMemory = populatedMemory.Variables.Cast<S7Variable>().Select(v => v with { S7Type = S7DataType.BOOL }).ToList();
             var inputsToRead = populatedInputs with { Variables = correctlyTypedInputs };
             var outputsToRead = populatedOutputs with { Variables = correctlyTypedOutputs };
             var memoryToRead = populatedMemory with { Variables = correctlyTypedMemory };
-            var inputsWithValues = await client.ReadValuesOfElementAsync(inputsToRead, "Inputs");
-            var outputsWithValues = await client.ReadValuesOfElementAsync(outputsToRead, "Outputs");
-            var memoryWithValues = await client.ReadValuesOfElementAsync(memoryToRead, "Memory");
+            var inputsWithValues = await client.ReadNodeValuesAsync(inputsToRead, "Inputs");
+            var outputsWithValues = await client.ReadNodeValuesAsync(outputsToRead, "Outputs");
+            var memoryWithValues = await client.ReadNodeValuesAsync(memoryToRead, "Memory");
 
             // Assert
             var inputVar = inputsWithValues.Variables.First(v => v.DisplayName == "TestInput");
@@ -353,7 +356,7 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(dbShell);
 
             // Act
-            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
             Assert.NotNull(dbWithVars?.Variables);
             var correctlyTypedVars = dbWithVars.Variables.Cast<S7Variable>().Select(variable => variable with
             {
@@ -406,7 +409,7 @@ public class S7UaClientIntegrationTests : IDisposable
             var dbToRead = dbWithVars with { Variables = correctlyTypedVars };
 
             // Act
-            var dbWithValues = await client.ReadValuesOfElementAsync(dbToRead, "DataBlocksGlobal");
+            var dbWithValues = await client.ReadNodeValuesAsync(dbToRead, "DataBlocksGlobal");
 
             // Assert
             void AssertVar(string name, object? expected)
@@ -460,7 +463,8 @@ public class S7UaClientIntegrationTests : IDisposable
             // Arrange
             client = await CreateAndConnectClientAsync();
             var dbShell = (await client.GetAllGlobalDataBlocksAsync()).First(db => db.DisplayName == "Datablock");
-            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
+            Assert.NotNull(dbWithVars);
 
             // Inline logic to prepare the specific variable structure for reading
             var structVarShell = dbWithVars.Variables.First(v => v.DisplayName == "TestStruct") as S7Variable;
@@ -472,7 +476,7 @@ public class S7UaClientIntegrationTests : IDisposable
             var dbToRead = dbWithVars with { Variables = [typedStruct] };
 
             // Act 1: Read the initial value
-            var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbToRead);
+            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbToRead);
             testVar = dbWithOriginalValues.Variables
                 .First(v => v.DisplayName == "TestStruct").StructMembers
                 .First(m => m.DisplayName == "TestStructInt") as S7Variable;
@@ -485,7 +489,7 @@ public class S7UaClientIntegrationTests : IDisposable
             short newValue = (short)((short)originalValue + 1);
             Assert.True(await client.WriteVariableAsync(testVar, newValue));
 
-            var dbWithNewValues = await client.ReadValuesOfElementAsync(dbToRead);
+            var dbWithNewValues = await client.ReadNodeValuesAsync(dbToRead);
             var updatedVar = dbWithNewValues.Variables
                 .First(v => v.DisplayName == "TestStruct").StructMembers
                 .First(m => m.DisplayName == "TestStructInt");
@@ -517,14 +521,15 @@ public class S7UaClientIntegrationTests : IDisposable
             // Arrange
             client = await CreateAndConnectClientAsync();
             var dbShell = (await client.GetAllGlobalDataBlocksAsync()).First(db => db.DisplayName == "Datablock");
-            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
+            Assert.NotNull(dbWithVars);
 
             var variableToType = dbWithVars.Variables.First(v => v.DisplayName == "TestCharArray") as S7Variable;
             var typedVariable = variableToType! with { S7Type = S7DataType.ARRAY_OF_CHAR };
             var dbToRead = dbWithVars with { Variables = [typedVariable] };
 
             // Act 1: Read initial value
-            var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbToRead);
+            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbToRead);
             testVar = dbWithOriginalValues.Variables.First(v => v.DisplayName == "TestCharArray") as S7Variable;
             Assert.NotNull(testVar);
             originalValue = testVar.Value;
@@ -534,7 +539,7 @@ public class S7UaClientIntegrationTests : IDisposable
             var newValue = new List<char> { 'X', 'Y', 'Z', '!' };
             Assert.True(await client.WriteVariableAsync(testVar, newValue));
 
-            var dbWithNewValues = await client.ReadValuesOfElementAsync(dbToRead);
+            var dbWithNewValues = (S7DataBlockGlobal)await client.ReadNodeValuesAsync(dbToRead);
             var updatedVar = dbWithNewValues.Variables.First(v => v.DisplayName == "TestCharArray");
 
             // Assert
@@ -561,7 +566,8 @@ public class S7UaClientIntegrationTests : IDisposable
             // Arrange
             client = await CreateAndConnectClientAsync();
             var dbShell = (await client.GetAllGlobalDataBlocksAsync()).First(db => db.DisplayName == "Datablock");
-            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
+            Assert.NotNull(dbWithVars);
             var testVar = dbWithVars.Variables.First(v => v.DisplayName == "TestInt") as S7Variable;
             Assert.NotNull(testVar);
 
@@ -591,13 +597,14 @@ public class S7UaClientIntegrationTests : IDisposable
             var globalDbs = await client.GetAllGlobalDataBlocksAsync();
             var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "Datablock");
             Assert.NotNull(dbShell);
-            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
+            Assert.NotNull(dbWithVars);
             testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestInt") as S7Variable;
             Assert.NotNull(testVar);
             testVar = testVar with { S7Type = S7DataType.INT };
 
             // Act & Assert
-            var dbWithOriginalValues = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
+            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbWithVars with { Variables = [testVar] });
             originalValue = dbWithOriginalValues.Variables[0].Value;
             Assert.NotNull(originalValue);
 
@@ -606,7 +613,7 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.True(writeSuccess, "Writing the new value failed.");
 
             // Act & Assert
-            var dbWithNewValues = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
+            var dbWithNewValues = await client.ReadNodeValuesAsync(dbWithVars with { Variables = [testVar] });
             Assert.Equal(newValue, dbWithNewValues.Variables[0].Value);
         }
         finally
@@ -640,12 +647,13 @@ public class S7UaClientIntegrationTests : IDisposable
             var globalDbs = await client.GetAllGlobalDataBlocksAsync();
             var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "Datablock");
             Assert.NotNull(dbShell);
-            var dbWithVars = await client.DiscoverVariablesOfElementAsync(dbShell);
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
+            Assert.NotNull(dbWithVars);
             testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestDInt") as S7Variable;
             Assert.NotNull(testVar);
             testVar = testVar with { S7Type = S7DataType.DINT, SamplingInterval = 100 };
 
-            var dbWithOriginalValue = await client.ReadValuesOfElementAsync(dbWithVars with { Variables = [testVar] });
+            var dbWithOriginalValue = await client.ReadNodeValuesAsync(dbWithVars with { Variables = [testVar] });
             originalValue = dbWithOriginalValue.Variables[0].Value;
             Assert.NotNull(originalValue);
 
