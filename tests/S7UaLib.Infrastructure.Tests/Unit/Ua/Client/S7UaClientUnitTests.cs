@@ -8,14 +8,7 @@ using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.S7.Converters;
 using S7UaLib.Infrastructure.Ua.Client;
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Runtime.Intrinsics.X86;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Infrastructure.Tests.Unit.Ua.Client;
 
@@ -29,6 +22,7 @@ public class S7UaClientUnitTests
 
     // Helper delegates for mocking complex OPC UA calls
     private delegate void BrowseCallback(Opc.Ua.RequestHeader rh, Opc.Ua.ViewDescription v, uint m, Opc.Ua.BrowseDescriptionCollection bdc, out Opc.Ua.BrowseResultCollection brc, out Opc.Ua.DiagnosticInfoCollection dic);
+
     private delegate void ReadCallback(Opc.Ua.RequestHeader rh, double a, Opc.Ua.TimestampsToReturn t, Opc.Ua.ReadValueIdCollection r, out Opc.Ua.DataValueCollection dvc, out Opc.Ua.DiagnosticInfoCollection dic);
 
     public S7UaClientUnitTests()
@@ -79,7 +73,7 @@ public class S7UaClientUnitTests
         Assert.Throws<ObjectDisposedException>(() => _sut.SaveConfiguration("path"));
     }
 
-    #endregion
+    #endregion Constructor and Dispose Tests
 
     #region Event Coordination Logic Tests
 
@@ -166,7 +160,7 @@ public class S7UaClientUnitTests
         _mockLogger.Verify(log => log.Log(LogLevel.Error, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(), ex, It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
     }
 
-    #endregion
+    #endregion Event Coordination Logic Tests
 
     #region Event Forwarding and Property Delegation Tests
 
@@ -240,7 +234,7 @@ public class S7UaClientUnitTests
         _mockMainClient.VerifyGet(m => m.KeepAliveInterval, Times.Exactly(2));
     }
 
-    #endregion
+    #endregion Event Forwarding and Property Delegation Tests
 
     #region Stateful Method Delegation (to Main Client)
 
@@ -261,7 +255,7 @@ public class S7UaClientUnitTests
         _mockMainClient.Verify(m => m.CreateSubscriptionAsync(100), Times.Once);
     }
 
-    #endregion
+    #endregion Stateful Method Delegation (to Main Client)
 
     #region Method-Specific Logic Tests (Conversion, etc.)
 
@@ -307,7 +301,7 @@ public class S7UaClientUnitTests
         Assert.Equal(typeof(Guid), defaultConverter.TargetType);
     }
 
-    #endregion
+    #endregion Method-Specific Logic Tests (Conversion, etc.)
 
     #region Structure, Discovery, and Reading Logic Tests
 
@@ -436,5 +430,5 @@ public class S7UaClientUnitTests
         Assert.Equal("MyRoot.MyDb.MyStruct.MemberInt", member2.FullPath);
     }
 
-    #endregion
+    #endregion Structure, Discovery, and Reading Logic Tests
 }

@@ -1,16 +1,12 @@
 ﻿using Microsoft.Extensions.Logging;
-using Opc.Ua.Configuration;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
-using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
-using S7UaLib.TestHelpers;
 using System.Collections;
 using System.IO.Abstractions;
-using System.Security.Cryptography.X509Certificates;
 
 namespace S7UaLib.Services.Tests.Integration;
 
@@ -80,8 +76,7 @@ public class S7ServiceIntegrationTests : IDisposable
             ProductUri = _productUri,
             SecurityConfiguration = CreateTestSecurityConfig(),
             ClientConfiguration = new ClientConfiguration(),
-            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
-            OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 }
         };
     }
 
@@ -429,7 +424,6 @@ public class S7ServiceIntegrationTests : IDisposable
         {
             // Arrange
             service = await CreateAndConnectServiceAsync();
-
 
             // This variable should NOT exist yet
             Assert.Null(service.GetVariable(registeredPath));

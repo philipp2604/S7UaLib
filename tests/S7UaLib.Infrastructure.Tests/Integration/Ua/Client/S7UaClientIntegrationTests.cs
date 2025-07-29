@@ -9,8 +9,6 @@ using System.Collections;
 
 namespace S7UaLib.Infrastructure.Tests.Integration.Ua.Client;
 
-
-
 [Trait("Category", "Integration")]
 public class S7UaClientIntegrationTests : IDisposable
 {
@@ -163,7 +161,6 @@ public class S7UaClientIntegrationTests : IDisposable
             SecurityConfiguration = CreateTestSecurityConfig(),
             ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
             TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
-            OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
         };
     }
 

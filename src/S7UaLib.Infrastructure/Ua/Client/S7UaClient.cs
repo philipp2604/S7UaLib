@@ -30,6 +30,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     // Event handler references for proper cleanup
     private readonly EventHandler<ConnectionEventArgs> _connectingHandler;
+
     private readonly EventHandler<ConnectionEventArgs> _connectedHandler;
     private readonly EventHandler<ConnectionEventArgs> _disconnectingHandler;
     private readonly EventHandler<ConnectionEventArgs> _disconnectedHandler;
@@ -38,6 +39,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     // Static node references
     private static readonly Opc.Ua.NodeId _dataBlocksGlobalRootNode = new(S7StructureConstants._s7DataBlocksGlobalNamespaceIdentifier);
+
     private static readonly Opc.Ua.NodeId _dataBlocksInstanceRootNode = new(S7StructureConstants._s7DataBlocksInstanceNamespaceIdentifier);
     private static readonly Opc.Ua.NodeId _memoryRootNode = new(S7StructureConstants._s7MemoryNamespaceIdentifier);
     private static readonly Opc.Ua.NodeId _inputsRootNode = new(S7StructureConstants._s7InputsNamespaceIdentifier);
@@ -448,7 +450,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverInstanceOfDataBlockCore(session, instanceDbShell)), cancellationToken);
     }
 
-    #endregion Structure Browsing and Discovery Methods
+    #endregion Structure Browsing and Discovery Methods (delegated to session pool)
 
     #region Reading and Writing Methods (delegated to session pool)
 
@@ -533,7 +535,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Type Converter Access
 
-    #endregion Reading and Writing Methods
+    #endregion Reading and Writing Methods (delegated to session pool)
 
     #region Subscription Methods (delegated to main client)
 
@@ -558,7 +560,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return await _mainClient.UnsubscribeFromVariableAsync(variable);
     }
 
-    #endregion Subscription Methods
+    #endregion Subscription Methods (delegated to main client)
 
     #endregion Public Methods
 
@@ -983,7 +985,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
-    #endregion Helper Methods
+    #endregion Helper Methods - Session pool implementation
 
     #endregion Private Methods
 

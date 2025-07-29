@@ -62,7 +62,7 @@ internal class S7DataStore : IS7DataStore
     {
         lock (_lock)
         {
-            if(DataBlocksGlobal.Any(db => db.FullPath == newDataBlock.FullPath))
+            if (DataBlocksGlobal.Any(db => db.FullPath == newDataBlock.FullPath))
             {
                 _logger?.LogWarning("Cannot add data block: A data block with path '{Path}' already exists.", newDataBlock.FullPath!);
                 return false;

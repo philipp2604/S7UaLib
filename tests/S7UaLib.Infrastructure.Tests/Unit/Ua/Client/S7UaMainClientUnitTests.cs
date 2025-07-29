@@ -6,14 +6,10 @@ using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.TestHelpers;
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Infrastructure.Tests.Unit.Ua.Client;
+
 [Trait("Category", "Unit")]
 public class S7UaMainClientUnitTests
 {
@@ -35,6 +31,7 @@ public class S7UaMainClientUnitTests
     {
         return new S7UaMainClient(_userIdentity, _validateResponse, _mockLoggerFactory.Object);
     }
+
     private class TempDirectory : IDisposable
     {
         public string Path { get; }
@@ -155,7 +152,7 @@ public class S7UaMainClientUnitTests
         Assert.Equal("urn:saved", loadClient.OpcApplicationConfiguration!.ApplicationUri);
     }
 
-    #endregion
+    #endregion Configuration Tests
 
     #region Connection and Reconnection Tests
 
@@ -240,7 +237,7 @@ public class S7UaMainClientUnitTests
         Assert.False(client.IsConnected, "Should not be connected when session is disconnected.");
     }
 
-    #endregion
+    #endregion Connection and Reconnection Tests
 
     #region Subscription Tests
 
@@ -373,5 +370,5 @@ public class S7UaMainClientUnitTests
         Assert.Equal(123, (int)receivedArgs.Notification.Value.Value!);
     }
 
-    #endregion
+    #endregion Subscription Tests
 }

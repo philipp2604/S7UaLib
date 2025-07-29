@@ -186,21 +186,21 @@ internal class S7UaMainClient : IS7UaMainClient
                 WellKnownDiscoveryUrls = [.. _appInst.ApplicationConfiguration.ClientConfiguration.WellKnownDiscoveryUrls],
                 SessionTimeout = (uint)_appInst.ApplicationConfiguration.ClientConfiguration.DefaultSessionTimeout,
                 MinSubscriptionLifetime = (uint)_appInst.ApplicationConfiguration.ClientConfiguration.MinSubscriptionLifetime,
-            },
-            OperationLimits = new OperationLimits()
-            {
-                MaxMonitoredItemsPerCall = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxMonitoredItemsPerCall,
-                MaxNodesPerBrowse = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerBrowse,
-                MaxNodesPerHistoryReadData = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadData,
-                MaxNodesPerHistoryReadEvents = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadEvents,
-                MaxNodesPerHistoryUpdateData = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateData,
-                MaxNodesPerHistoryUpdateEvents = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateEvents,
-                MaxNodesPerMethodCall = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerMethodCall,
-                MaxNodesPerNodeManagement = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerNodeManagement,
-                MaxNodesPerRead = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerRead,
-                MaxNodesPerRegisterNodes = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerRegisterNodes,
-                MaxNodesPerTranslateBrowsePathsToNodeIds = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds,
-                MaxNodesPerWrite = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerWrite
+                OperationLimits = new OperationLimits()
+                {
+                    MaxMonitoredItemsPerCall = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxMonitoredItemsPerCall,
+                    MaxNodesPerBrowse = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerBrowse,
+                    MaxNodesPerHistoryReadData = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadData,
+                    MaxNodesPerHistoryReadEvents = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryReadEvents,
+                    MaxNodesPerHistoryUpdateData = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateData,
+                    MaxNodesPerHistoryUpdateEvents = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerHistoryUpdateEvents,
+                    MaxNodesPerMethodCall = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerMethodCall,
+                    MaxNodesPerNodeManagement = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerNodeManagement,
+                    MaxNodesPerRead = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerRead,
+                    MaxNodesPerRegisterNodes = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerRegisterNodes,
+                    MaxNodesPerTranslateBrowsePathsToNodeIds = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds,
+                    MaxNodesPerWrite = _appInst.ApplicationConfiguration.ClientConfiguration.OperationLimits.MaxNodesPerWrite
+                }
             },
             SecurityConfiguration = new SecurityConfiguration(
                 new SecurityConfigurationStores(
@@ -738,7 +738,7 @@ internal class S7UaMainClient : IS7UaMainClient
         }
     }
 
-    #endregion Event Callbacks
+    #endregion Event Callbacks - Copied exactly from original S7UaClient
 
     #region Event Dispatchers
 

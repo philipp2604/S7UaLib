@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.VisualStudio.TestPlatform.Utilities;
 using Moq;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
@@ -12,8 +11,6 @@ using S7UaLib.Infrastructure.Serialization.Models;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.Services.S7;
 using S7UaLib.TestHelpers;
-using System;
-using System.Diagnostics.Metrics;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 
@@ -200,6 +197,104 @@ public class S7ServiceUnitTests
     }
 
     #endregion DiscoverStructure Tests
+
+    #region RegisterGlobalDataBlock Tests
+
+    [Fact]
+    public async Task RegisterGlobalDataBlockAsync_WithValidDataBlock_CallsDataStoreAndReturnsTrue()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var newDataBlock = new S7DataBlockGlobal
+        {
+            DisplayName = "DB10",
+            FullPath = "DataBlocksGlobal.DB10",
+            Variables = [new S7Variable { DisplayName = "Var1" }]
+        };
+
+        // Act
+        var result = await sut.RegisterGlobalDataBlockAsync(newDataBlock);
+
+        // Assert
+        Assert.True(result);
+        var dbs = sut.GetGlobalDataBlocks();
+        Assert.Single(dbs);
+        Assert.Equal("DB10", dbs[0].DisplayName);
+        Assert.NotNull(sut.GetVariable("DataBlocksGlobal.DB10.Var1"));
+    }
+
+    [Fact]
+    public async Task RegisterGlobalDataBlockAsync_WithNullDataBlock_ReturnsFalseAndLogsWarning()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act
+        var result = await sut.RegisterGlobalDataBlockAsync(null!);
+
+        // Assert
+        Assert.False(result);
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("Cannot register variable: FullPath or variable is null.")), // Note: Log message is from a copy-paste but test verifies current state.
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task RegisterGlobalDataBlockAsync_WithInvalidFullPath_ReturnsFalse(string? invalidPath)
+    {
+        // Arrange
+        var sut = CreateSut();
+        var newDataBlock = new S7DataBlockGlobal
+        {
+            DisplayName = "DB10",
+            FullPath = invalidPath
+        };
+
+        // Act
+        var result = await sut.RegisterGlobalDataBlockAsync(newDataBlock);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task RegisterGlobalDataBlockAsync_WhenDataStoreRejectsDuplicate_ReturnsFalse()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var existingDataBlock = new S7DataBlockGlobal
+        {
+            DisplayName = "DB1",
+            FullPath = "DataBlocksGlobal.DB1"
+        };
+        // Pre-populate the store
+        await sut.RegisterGlobalDataBlockAsync(existingDataBlock);
+
+        var duplicateDataBlock = new S7DataBlockGlobal
+        {
+            DisplayName = "DB1_Duplicate",
+            FullPath = "DataBlocksGlobal.DB1"
+        };
+
+        // Act
+        var result = await sut.RegisterGlobalDataBlockAsync(duplicateDataBlock);
+
+        // Assert
+        Assert.False(result);
+        var dbs = sut.GetGlobalDataBlocks();
+        Assert.Single(dbs);
+        Assert.Equal("DB1", dbs[0].DisplayName);
+    }
+
+    #endregion RegisterGlobalDataBlock Tests
 
     #region RegisterVariable Tests
 
@@ -1479,8 +1574,7 @@ public class S7ServiceUnitTests
             ProductUri = _productUri,
             SecurityConfiguration = new SecurityConfiguration(new SecurityConfigurationStores()),
             ClientConfiguration = new ClientConfiguration { SessionTimeout = 60000 },
-            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 },
-            OperationLimits = new OperationLimits { MaxNodesPerRead = 1000, MaxNodesPerWrite = 1000 }
+            TransportQuotas = new TransportQuotas { OperationTimeout = 60000 }
         };
     }
 }

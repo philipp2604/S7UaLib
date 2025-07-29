@@ -3,15 +3,11 @@ using Moq;
 using S7UaLib.Core.Ua;
 using S7UaLib.Infrastructure.Ua.Client;
 using S7UaLib.TestHelpers;
-using System;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace S7UaLib.Infrastructure.Tests.Unit.Ua.Client;
+
 [Trait("Category", "Unit")]
 public class S7UaSessionPoolUnitTests
 {
@@ -20,11 +16,6 @@ public class S7UaSessionPoolUnitTests
     private readonly Action<IList, IList> _validateResponse;
     private readonly Opc.Ua.ApplicationConfiguration _opcAppConfig;
     private readonly Opc.Ua.ConfiguredEndpoint _endpoint;
-
-    // =============================================================================================
-    // THIS IS THE DEFINITIVE FIX: A test-specific subclass to control the virtual method.
-    // This pattern is 100% reliable and avoids all Moq proxy issues.
-    // =============================================================================================
     private class TestableS7UaSessionPool : S7UaSessionPool
     {
         public Queue<Opc.Ua.Client.ISession> MockSessionsToCreate { get; } = new();
@@ -33,9 +24,6 @@ public class S7UaSessionPoolUnitTests
         public TestableS7UaSessionPool(UserIdentity userIdentity, int maxPoolSize, Action<IList, IList> validateResponse, ILogger<S7UaSessionPool>? logger = null)
             : base(userIdentity, maxPoolSize, validateResponse, logger) { }
 
-        // THIS LOGIC IS NOW CORRECT:
-        // It prioritizes returning a configured mock session. Only if the queue is empty
-        // will it then check if it should throw an exception.
         internal override Task<Opc.Ua.Client.ISession> CreateNewSessionAsync(CancellationToken cancellationToken)
         {
             if (MockSessionsToCreate.TryDequeue(out var session))
@@ -88,7 +76,7 @@ public class S7UaSessionPoolUnitTests
         Assert.Contains("must be initialized", ex.Message);
     }
 
-    #endregion
+    #endregion Constructor and Pre-condition Tests
 
     #region Initialization Tests
 
@@ -119,21 +107,17 @@ public class S7UaSessionPoolUnitTests
         var sut = new TestableS7UaSessionPool(_userIdentity, maxPoolSize, _validateResponse, _mockLogger.Object);
 
         var successfulSession = CreateMockSession();
-        // The corrected helper will dequeue this first...
         sut.MockSessionsToCreate.Enqueue(successfulSession.Object);
-        // ...and then throw this exception on the next attempt when the queue is empty.
         sut.ExceptionToThrowOnCreate = new Exception("Creation failed");
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => sut.InitializeAsync(_opcAppConfig, _endpoint));
-
-        // This assertion will now pass because one session was successfully created before the failure.
         Assert.Contains("Could only create 1 out of 3", ex.Message);
 
         successfulSession.Verify(s => s.Dispose(), Times.Once);
     }
 
-    #endregion
+    #endregion Initialization Tests
 
     #region Execution Logic Tests
 
@@ -193,7 +177,7 @@ public class S7UaSessionPoolUnitTests
         oldSession.Verify(s => s.Dispose(), Times.Once);
     }
 
-    #endregion
+    #endregion Execution Logic Tests
 
     #region Concurrency and Dispose Tests
 
@@ -245,5 +229,5 @@ public class S7UaSessionPoolUnitTests
         }
     }
 
-    #endregion
+    #endregion Concurrency and Dispose Tests
 }

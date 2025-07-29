@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace S7UaLib.Core.S7.Structure;
 
-namespace S7UaLib.Core.S7.Structure;
 internal static class S7StructureConstants
 {
     internal const int _s7NamespaceIndex = 3;

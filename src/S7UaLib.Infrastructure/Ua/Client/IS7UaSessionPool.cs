@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace S7UaLib.Infrastructure.Ua.Client;
 
-namespace S7UaLib.Infrastructure.Ua.Client;
 internal interface IS7UaSessionPool : IDisposable
 {
     #region Public Methods

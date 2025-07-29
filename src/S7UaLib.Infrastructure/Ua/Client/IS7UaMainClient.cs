@@ -3,15 +3,10 @@ using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml;
 
 namespace S7UaLib.Infrastructure.Ua.Client;
+
 internal interface IS7UaMainClient : IDisposable
 {
     #region Public Events - Delegated to Implementation
