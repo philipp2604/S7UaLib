@@ -364,3 +364,9 @@ FodyWeavers.xsd
 
 # Claude
 CLAUDE.md
+.claude/
+
+# Certificates
+*.cer
+*.pfx
+*.der

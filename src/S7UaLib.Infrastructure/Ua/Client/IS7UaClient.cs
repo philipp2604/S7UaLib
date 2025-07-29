@@ -14,7 +14,7 @@ namespace S7UaLib.Infrastructure.Ua.Client;
 /// </summary>
 internal interface IS7UaClient : IDisposable
 {
-    #region Public Events
+    #region Public Events - Delegated to Implementation
 
     #region Connection Events
 
@@ -73,9 +73,9 @@ internal interface IS7UaClient : IDisposable
 
     #endregion Subscription Events
 
-    #endregion Public Events
+    #endregion Public Events - Delegated to Implementation
 
-    #region Public Properties
+    #region Public Properties - Delegated to Implementation
 
     /// <summary>
     /// Gets the <see cref="Core.Ua.Configuration.ApplicationConfiguration"/> used by the client."/>
@@ -109,9 +109,9 @@ internal interface IS7UaClient : IDisposable
     /// </summary>
     public bool IsConnected { get; }
 
-    #endregion Public Properties
+    #endregion Public Properties - Delegated to Implementation
 
-    #region Public Methods
+    #region Public Methods - Delegated to Implementation
 
     #region Configuration Methods
 
@@ -335,5 +335,5 @@ internal interface IS7UaClient : IDisposable
 
     #endregion Reading and Writing Methods
 
-    #endregion Public Methods
+    #endregion Public Methods - Delegated to Implementation
 }

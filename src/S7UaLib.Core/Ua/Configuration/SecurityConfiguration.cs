@@ -7,8 +7,8 @@ public class SecurityConfiguration(SecurityConfigurationStores stores)
     public uint MaxRejectedCertificates { get; set; }
     public bool AutoAcceptUntrustedCertificates { get; set; }
     public DomainValidation SkipDomainValidation { get; set; } = new DomainValidation();
+    public SHA1Validation RejectSHA1SignedCertificates { get; set; } = new SHA1Validation();
     public string UserRoleDirectory { get; set; } = string.Empty;
-    public bool RejectSHA1SignedCertificates { get; set; }
     public bool RejectUnknownRevocationStatus { get; set; }
     public ushort MinCertificateKeySize { get; set; }
     public bool UseValidatedCertificates { get; set; }
@@ -19,5 +19,10 @@ public class SecurityConfiguration(SecurityConfigurationStores stores)
 
 public class DomainValidation
 {
-    public bool Skip { get; set; }
+    public bool Skip { get; set; } = false;
+}
+
+public class SHA1Validation
+{
+    public bool Reject { get; set; } = true;
 }
