@@ -813,29 +813,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// Detects if a variable represents a UDT based on its OPC UA metadata.
     /// </summary>
     /// <param name="session">The OPC UA session.</param>
-    /// <param name="referenceDescription">The reference description of the variable.</param>
+    /// <param name="dataTypeNodeId">The <see cref="Opc.Ua.NodeId"> of the data type.</param>
     /// <returns>The UDT type name if detected, otherwise null.</returns>
-    private string? DetectUdtTypeName(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription)
+    private string? DetectUdtTypeName(Opc.Ua.Client.ISession session, Opc.Ua.NodeId dataTypeNodeId)
     {
-        try
+        if (dataTypeNodeId.IdType == Opc.Ua.IdType.String)
         {
-            // For now, use a simplified approach - check display name patterns
-            // This will be enhanced later with proper OPC UA DataType inspection
-            var displayName = referenceDescription.DisplayName?.Text;
-
-            // Simple heuristic: if the display name contains certain patterns, it might be a UDT
-            // This is a placeholder implementation
-            if (!string.IsNullOrEmpty(displayName) &&
-                (displayName.Contains("UDT") || displayName.Contains("STRUCT") || displayName.Contains("TYPE")))
-            {
-                return displayName;
-            }
+            return dataTypeNodeId.Identifier as string;
         }
-        catch (Exception ex)
-        {
-            _logger?.LogDebug(ex, "Failed to detect UDT type for variable '{DisplayName}'", referenceDescription.DisplayName?.Text);
-        }
-
         return null;
     }
 
@@ -1025,7 +1010,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             // Handle UDT-specific logic if it's a UDT
             if (s7DataType == S7DataType.UDT)
             {
-                var udtTypeName = DetectUdtTypeName(session, referenceDescription);
+                var udtTypeName = DetectUdtTypeName(session, dataTypeNodeId);
                 if (!string.IsNullOrEmpty(udtTypeName))
                 {
                     variable = variable with { UdtTypeName = udtTypeName };
