@@ -369,9 +369,9 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public async Task ReadNodeValuesAsync_WithNestedStruct_CorrectlyDiscoversAndReadsValues()
+    public async Task ReadNodeValuesAsync_WithNestedStruct_CorrectlyReadsValues()
     {
-        // Arrange
+        // Arrange - In the new architecture, struct members are already discovered during initial discovery
         var elementToRead = new S7DataBlockGlobal
         {
             NodeId = "ns=3;s=\"MyDb\"",
@@ -379,7 +379,13 @@ public class S7UaClientUnitTests
             Variables =
             [
                 new S7Variable() {
-                    NodeId = "ns=3;s=\"MyDb.MyStruct\"", DisplayName = "MyStruct", S7Type = S7DataType.STRUCT
+                    NodeId = "ns=3;s=\"MyDb.MyStruct\"",
+                    DisplayName = "MyStruct",
+                    S7Type = S7DataType.UDT,
+                    StructMembers = [
+                        new S7Variable { NodeId = "ns=3;s=\"MyDb.MyStruct.MemberBool\"", DisplayName = "MemberBool", S7Type = S7DataType.BOOL },
+                        new S7Variable { NodeId = "ns=3;s=\"MyDb.MyStruct.MemberInt\"", DisplayName = "MemberInt", S7Type = S7DataType.INT }
+                    ]
                 }
             ]
         };
@@ -387,18 +393,7 @@ public class S7UaClientUnitTests
         var mockSession = new Mock<Opc.Ua.Client.ISession>();
         mockSession.Setup(s => s.Connected).Returns(true);
 
-        var structMemberRefs = new Opc.Ua.ReferenceDescriptionCollection
-        {
-            new() { NodeId = new Opc.Ua.NodeId("ns=3;s=\"MyDb.MyStruct.MemberBool\""), DisplayName = "MemberBool", NodeClass = Opc.Ua.NodeClass.Variable},
-            new() { NodeId = new Opc.Ua.NodeId("ns=3;s=\"MyDb.MyStruct.MemberInt\""), DisplayName = "MemberInt", NodeClass = Opc.Ua.NodeClass.Variable },
-        };
-        mockSession.Setup(s => s.Browse(null, null, It.IsAny<uint>(), It.Is<Opc.Ua.BrowseDescriptionCollection>(c => c[0].NodeId.ToString() == "ns=3;s=\"MyDb.MyStruct\""), out It.Ref<Opc.Ua.BrowseResultCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
-            .Callback(new BrowseCallback((Opc.Ua.RequestHeader _, Opc.Ua.ViewDescription _, uint _, Opc.Ua.BrowseDescriptionCollection _, out Opc.Ua.BrowseResultCollection brc, out Opc.Ua.DiagnosticInfoCollection dic) =>
-            {
-                brc = [new() { References = structMemberRefs, StatusCode = Opc.Ua.StatusCodes.Good }];
-                dic = [];
-            }));
-
+        // Setup Read method to return values for the struct members
         mockSession.Setup(s => s.Read(null, 0, Opc.Ua.TimestampsToReturn.Neither, It.Is<Opc.Ua.ReadValueIdCollection>(c => c.Count == 2), out It.Ref<Opc.Ua.DataValueCollection>.IsAny, out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
              .Callback(new ReadCallback((Opc.Ua.RequestHeader _, double _, Opc.Ua.TimestampsToReturn _, Opc.Ua.ReadValueIdCollection _, out Opc.Ua.DataValueCollection dvc, out Opc.Ua.DiagnosticInfoCollection dic) =>
              {

@@ -132,7 +132,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         _s5TimeConverterInstance = new S7S5TimeConverter();
         _dtlConverterInstance = new S7DTLConverter();
         _counterConverterInstance = new S7CounterConverter();
-        
+
         // Initialize UDT support
         _udtTypeRegistry = new UdtTypeRegistry();
         _udtConverterInstance = new S7UdtConverter(loggerFactory?.CreateLogger<S7UdtConverter>());
@@ -207,7 +207,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         _s5TimeConverterInstance = new S7S5TimeConverter();
         _dtlConverterInstance = new S7DTLConverter();
         _counterConverterInstance = new S7CounterConverter();
-        
+
         // Initialize UDT support
         _udtTypeRegistry = new UdtTypeRegistry();
         _udtConverterInstance = new S7UdtConverter();
@@ -546,8 +546,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
     {
         // Check for UDT type - use generic UDT converter
         // Custom UDT converters are handled separately via the UDT registry
-        return _typeConvertersInstance.TryGetValue(s7Type, out var converter) 
-            ? converter 
+        return _typeConvertersInstance.TryGetValue(s7Type, out var converter)
+            ? converter
             : new DefaultConverter(fallbackType);
     }
 
@@ -714,7 +714,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => CreateS7VariableWithUdtDetection(session, desc)
+            desc => CreateS7VariableWithRecursiveDiscovery(session, desc)
         );
 
         var variables = BrowseAndCreateNodes(session, globalDb.NodeId!, context).Cast<S7Variable>().ToList();
@@ -760,7 +760,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             Opc.Ua.NodeClass.Variable | Opc.Ua.NodeClass.Object,
             desc => desc.DisplayName.Text != "Icon",
             desc => desc.NodeClass == Opc.Ua.NodeClass.Variable
-                ? CreateS7VariableWithUdtDetection(session, desc)
+                ? CreateS7VariableWithRecursiveDiscovery(session, desc)
                 : new S7DataBlockInstance
                 {
                     NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
@@ -787,7 +787,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => CreateS7VariableWithUdtDetection(session, desc)
+            desc => CreateS7VariableWithRecursiveDiscovery(session, desc)
         );
 
         var variables = BrowseAndCreateNodes(session, element.NodeId!, context).Cast<S7Variable>().ToList();
@@ -822,10 +822,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
             // For now, use a simplified approach - check display name patterns
             // This will be enhanced later with proper OPC UA DataType inspection
             var displayName = referenceDescription.DisplayName?.Text;
-            
+
             // Simple heuristic: if the display name contains certain patterns, it might be a UDT
             // This is a placeholder implementation
-            if (!string.IsNullOrEmpty(displayName) && 
+            if (!string.IsNullOrEmpty(displayName) &&
                 (displayName.Contains("UDT") || displayName.Contains("STRUCT") || displayName.Contains("TYPE")))
             {
                 return displayName;
@@ -840,156 +840,327 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     /// <summary>
-    /// Checks if a NodeId represents a built-in OPC UA data type.
-    /// </summary>
-    /// <param name="dataTypeNodeId">The data type NodeId to check.</param>
-    /// <returns>True if it's a built-in type, false if it's a custom UDT.</returns>
-    private bool IsBuiltInOpcUaType(Opc.Ua.NodeId dataTypeNodeId)
-    {
-        // Built-in OPC UA types have namespace index 0 and specific identifier ranges
-        if (dataTypeNodeId.NamespaceIndex != 0)
-            return false;
-
-        // Check for standard OPC UA built-in types (rough range check)
-        if (dataTypeNodeId.IdType == Opc.Ua.IdType.Numeric)
-        {
-            var id = (uint)dataTypeNodeId.Identifier;
-            // Built-in types are typically in the range 1-30 for basic types
-            // and some extended ranges for structures
-            return id <= 30 || (id >= 256 && id <= 290);
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Discovers the structure definition of a UDT from the OPC UA server.
-    /// </summary>
-    /// <param name="session">The OPC UA session.</param>
-    /// <param name="udtTypeName">The name of the UDT.</param>
-    /// <param name="dataTypeNodeId">The NodeId of the UDT's data type.</param>
-    /// <returns>The discovered UDT definition, or null if discovery failed.</returns>
-    private async Task<UdtDefinition?> DiscoverUdtDefinitionAsync(Opc.Ua.Client.ISession session, string udtTypeName, Opc.Ua.NodeId dataTypeNodeId)
-    {
-        try
-        {
-            // Simplified implementation - create a basic definition
-            var definition = new UdtDefinition
-            {
-                Name = udtTypeName,
-                Members = new List<UdtMemberDefinition>().AsReadOnly(),
-                DataTypeNodeId = dataTypeNodeId.ToString(),
-                Description = $"Auto-discovered UDT: {udtTypeName}"
-            };
-
-            // Register the discovered UDT definition
-            _udtTypeRegistry.RegisterDiscoveredUdt(definition);
-            _logger?.LogDebug("Created basic UDT definition for '{UdtName}'", udtTypeName);
-
-            await Task.CompletedTask;
-
-            return definition;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to discover UDT definition for '{UdtName}'", udtTypeName);
-            return null;
-        }
-    }
-
-    /// <summary>
     /// Maps an OPC UA data type NodeId to the corresponding S7DataType enum value.
     /// </summary>
     /// <param name="opcUaTypeNodeId">The OPC UA data type NodeId.</param>
+    /// <param name="valueRank">The ValueRank attribute indicating if it's an array.</param>
     /// <returns>The corresponding S7DataType enum value.</returns>
-    private S7DataType MapOpcUaTypeToS7DataType(Opc.Ua.NodeId? opcUaTypeNodeId)
+    private S7DataType MapOpcUaTypeToS7DataType(Opc.Ua.NodeId? opcUaTypeNodeId, int? valueRank = null)
     {
         if (opcUaTypeNodeId == null)
             return S7DataType.UNKNOWN;
 
-        // Check if it's a custom UDT first
-        if (!IsBuiltInOpcUaType(opcUaTypeNodeId))
-            return S7DataType.UDT;
-
         // Map built-in OPC UA types to S7 types
-        if (opcUaTypeNodeId.IdType == Opc.Ua.IdType.Numeric && opcUaTypeNodeId.NamespaceIndex == 0)
+        if (opcUaTypeNodeId.IdType == Opc.Ua.IdType.Numeric)
         {
-            return (uint)opcUaTypeNodeId.Identifier switch
+            if (opcUaTypeNodeId.NamespaceIndex == 0)
             {
-                1 => S7DataType.BOOL,           // Boolean
-                2 => S7DataType.SINT,           // SByte  
-                3 => S7DataType.USINT,          // Byte
-                4 => S7DataType.INT,            // Int16
-                5 => S7DataType.UINT,           // UInt16
-                6 => S7DataType.DINT,           // Int32
-                7 => S7DataType.UDINT,          // UInt32
-                8 => S7DataType.LINT,           // Int64
-                9 => S7DataType.ULINT,          // UInt64
-                10 => S7DataType.REAL,          // Float
-                11 => S7DataType.LREAL,         // Double
-                12 => S7DataType.STRING,        // String
-                13 => S7DataType.DATE_AND_TIME, // DateTime
-                _ => S7DataType.UNKNOWN
-            };
+                if (valueRank == -1)
+                {
+                    return (uint)opcUaTypeNodeId.Identifier switch
+                    {
+                        1 => S7DataType.BOOL,
+                        2 => S7DataType.SINT,
+                        3 => S7DataType.USINT,
+                        4 => S7DataType.INT,
+                        5 => S7DataType.UINT,
+                        6 => S7DataType.DINT,
+                        7 => S7DataType.UDINT,
+                        8 => S7DataType.LINT,
+                        9 => S7DataType.ULINT,
+                        10 => S7DataType.REAL,
+                        11 => S7DataType.LREAL,
+                        12 => S7DataType.WSTRING,
+                        13 => S7DataType.LDT,
+                        _ => S7DataType.UNKNOWN
+                    };
+                }
+                else if (valueRank == 1)
+                {
+                    return (uint)opcUaTypeNodeId.Identifier switch
+                    {
+                        1 => S7DataType.ARRAY_OF_BOOL,
+                        2 => S7DataType.ARRAY_OF_SINT,
+                        3 => S7DataType.ARRAY_OF_USINT,
+                        4 => S7DataType.ARRAY_OF_INT,
+                        5 => S7DataType.ARRAY_OF_UINT,
+                        6 => S7DataType.ARRAY_OF_DINT,
+                        7 => S7DataType.ARRAY_OF_UDINT,
+                        8 => S7DataType.ARRAY_OF_LINT,
+                        9 => S7DataType.ARRAY_OF_ULINT,
+                        10 => S7DataType.ARRAY_OF_REAL,
+                        11 => S7DataType.ARRAY_OF_LREAL,
+                        12 => S7DataType.ARRAY_OF_WSTRING,
+                        13 => S7DataType.ARRAY_OF_LDT,
+                        _ => S7DataType.UNKNOWN
+                    };
+                }
+            }
+            else if (opcUaTypeNodeId.NamespaceIndex == 3)
+            {
+                if (valueRank == -1)
+                {
+                    return (uint)opcUaTypeNodeId.Identifier switch
+                    {
+                        3001 => S7DataType.BYTE,
+                        3002 => S7DataType.WORD,
+                        3003 => S7DataType.DWORD,
+                        3004 => S7DataType.LWORD,
+                        3005 => S7DataType.S5TIME,
+                        3006 => S7DataType.TIME,
+                        3007 => S7DataType.LTIME,
+                        3008 => S7DataType.DATE,
+                        3009 => S7DataType.TIME_OF_DAY,
+                        3010 => S7DataType.LTIME_OF_DAY,
+                        3012 => S7DataType.CHAR,
+                        3013 => S7DataType.WCHAR,
+                        3014 => S7DataType.STRING,
+                        _ => S7DataType.UNKNOWN
+                    };
+                }
+                else if (valueRank == 1)
+                {
+                    return (uint)opcUaTypeNodeId.Identifier switch
+                    {
+                        3001 => S7DataType.ARRAY_OF_BYTE,
+                        3002 => S7DataType.ARRAY_OF_WORD,
+                        3003 => S7DataType.ARRAY_OF_DWORD,
+                        3004 => S7DataType.ARRAY_OF_LWORD,
+                        3005 => S7DataType.ARRAY_OF_S5TIME,
+                        3006 => S7DataType.ARRAY_OF_TIME,
+                        3007 => S7DataType.ARRAY_OF_LTIME,
+                        3008 => S7DataType.ARRAY_OF_DATE,
+                        3009 => S7DataType.ARRAY_OF_TIME_OF_DAY,
+                        3010 => S7DataType.ARRAY_OF_LTIME_OF_DAY,
+                        3011 => S7DataType.DATE_AND_TIME,
+                        3012 => S7DataType.ARRAY_OF_CHAR,
+                        3013 => S7DataType.ARRAY_OF_WCHAR,
+                        3014 => S7DataType.ARRAY_OF_STRING,
+                        _ => S7DataType.UNKNOWN
+                    };
+                }
+                else if (valueRank == 2)
+                {
+                    return (uint)opcUaTypeNodeId.Identifier switch
+                    {
+                        3011 => S7DataType.ARRAY_OF_DATE_AND_TIME,
+                        _ => S7DataType.UNKNOWN
+                    };
+                }
+            }
+        }
+        else if (opcUaTypeNodeId.IdType == Opc.Ua.IdType.String)
+        {
+            if (valueRank == -1)
+            {
+                if (opcUaTypeNodeId.NamespaceIndex == 3)
+                {
+                    return opcUaTypeNodeId.Identifier switch
+                    {
+                        "DT_DTL" => S7DataType.DTL,
+                        _ => S7DataType.UDT
+                    };
+                }
+            }
+            else if (valueRank == 1)
+            {
+                if (opcUaTypeNodeId.NamespaceIndex == 3)
+                {
+                    return opcUaTypeNodeId.Identifier switch
+                    {
+                        "DT_DTL" => S7DataType.ARRAY_OF_DTL,
+                        _ => S7DataType.ARRAY_OF_UDT
+                    };
+                }
+            }
         }
 
         return S7DataType.UNKNOWN;
     }
 
     /// <summary>
-    /// Creates an S7Variable from a reference description with UDT detection.
+    /// Creates an S7Variable from a reference description with proper type mapping.
     /// </summary>
     /// <param name="session">The OPC UA session.</param>
     /// <param name="referenceDescription">The reference description.</param>
-    /// <returns>An S7Variable with UDT information if detected.</returns>
+    /// <returns>An S7Variable with proper S7DataType mapping.</returns>
     private S7Variable CreateS7VariableWithUdtDetection(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription)
     {
+        var nodeId = (Opc.Ua.NodeId)referenceDescription.NodeId;
         var variable = new S7Variable
         {
-            NodeId = ((Opc.Ua.NodeId)referenceDescription.NodeId).ToString(),
+            NodeId = nodeId.ToString(),
             DisplayName = referenceDescription.DisplayName.Text
         };
 
-        // Detect if this is a UDT
-        var udtTypeName = DetectUdtTypeName(session, referenceDescription);
-        if (!string.IsNullOrEmpty(udtTypeName))
+        // Get the variable's DataType and ValueType attributes from OPC UA
+        try
         {
-            // This is a UDT variable
-            variable = variable with 
-            { 
-                S7Type = S7DataType.UDT,
-                UdtTypeName = udtTypeName
+            var readValues = new Opc.Ua.ReadValueIdCollection
+            {
+                new() { NodeId = nodeId, AttributeId = Opc.Ua.Attributes.DataType },
+                new() { NodeId = nodeId, AttributeId = Opc.Ua.Attributes.ValueRank }
             };
 
-            // Try to get or create a basic UDT definition
-            var existingDefinition = _udtTypeRegistry.GetUdtDefinition(udtTypeName);
-            if (existingDefinition == null)
+            session.Read(null, 0, Opc.Ua.TimestampsToReturn.Neither, readValues, out var results, out _);
+            _validateResponse(results, readValues);
+
+            Opc.Ua.NodeId? dataTypeNodeId = null;
+            int? valueRank = null;
+
+            if (Opc.Ua.StatusCode.IsGood(results[0].StatusCode) && results[0].Value != null)
             {
-                // Create a basic placeholder definition
-                try
+                dataTypeNodeId = results[0].Value as Opc.Ua.NodeId;
+            }
+
+            if (Opc.Ua.StatusCode.IsGood(results[1].StatusCode) && results[1].Value != null)
+            {
+                valueRank = results[1].Value as int?;
+            }
+
+            // Use MapOpcUaTypeToS7DataType to determine the correct S7DataType
+            var s7DataType = MapOpcUaTypeToS7DataType(dataTypeNodeId, valueRank);
+            variable = variable with { S7Type = s7DataType };
+
+            // Handle UDT-specific logic if it's a UDT
+            if (s7DataType == S7DataType.UDT)
+            {
+                var udtTypeName = DetectUdtTypeName(session, referenceDescription);
+                if (!string.IsNullOrEmpty(udtTypeName))
                 {
-                    var placeholderDefinition = new UdtDefinition
+                    variable = variable with { UdtTypeName = udtTypeName };
+
+                    // Try to get or create a basic UDT definition
+                    var existingDefinition = _udtTypeRegistry.GetUdtDefinition(udtTypeName);
+                    if (existingDefinition == null)
                     {
-                        Name = udtTypeName,
-                        Description = $"Detected UDT: {udtTypeName}",
-                        Members = new List<UdtMemberDefinition>().AsReadOnly()
-                    };
-                    
-                    _udtTypeRegistry.RegisterDiscoveredUdt(placeholderDefinition);
-                    variable = variable with { UdtDefinition = placeholderDefinition };
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "Failed to create UDT definition for '{UdtTypeName}' during variable creation", udtTypeName);
+                        try
+                        {
+                            var placeholderDefinition = new UdtDefinition
+                            {
+                                Name = udtTypeName,
+                                Description = $"Detected UDT: {udtTypeName}",
+                                Members = new List<UdtMemberDefinition>().AsReadOnly(),
+                                DataTypeNodeId = dataTypeNodeId?.ToString()
+                            };
+
+                            _udtTypeRegistry.RegisterDiscoveredUdt(placeholderDefinition);
+                            variable = variable with { UdtDefinition = placeholderDefinition };
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Failed to create UDT definition for '{UdtTypeName}' during variable creation", udtTypeName);
+                        }
+                    }
+                    else
+                    {
+                        variable = variable with { UdtDefinition = existingDefinition };
+                    }
                 }
             }
-            else
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to read DataType attribute for variable '{DisplayName}', falling back to UNKNOWN", referenceDescription.DisplayName.Text);
+            variable = variable with { S7Type = S7DataType.UNKNOWN };
+        }
+
+        return variable;
+    }
+
+    /// <summary>
+    /// Creates an S7Variable with recursive discovery of STRUCT/UDT members.
+    /// </summary>
+    /// <param name="session">The OPC UA session.</param>
+    /// <param name="referenceDescription">The reference description.</param>
+    /// <param name="depth">Current recursion depth to prevent infinite loops.</param>
+    /// <param name="maxDepth">Maximum recursion depth allowed.</param>
+    /// <returns>An S7Variable with fully discovered structure members.</returns>
+    private S7Variable CreateS7VariableWithRecursiveDiscovery(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription, int depth = 0, int maxDepth = 10)
+    {
+        // Prevent infinite recursion
+        if (depth > maxDepth)
+        {
+            _logger?.LogWarning("Maximum recursion depth reached for variable '{DisplayName}' at depth {Depth}", referenceDescription.DisplayName.Text, depth);
+            return new S7Variable
             {
-                variable = variable with { UdtDefinition = existingDefinition };
+                NodeId = ((Opc.Ua.NodeId)referenceDescription.NodeId).ToString(),
+                DisplayName = referenceDescription.DisplayName.Text,
+                S7Type = S7DataType.UNKNOWN
+            };
+        }
+
+        // Start with basic variable creation using existing logic
+        var variable = CreateS7VariableWithUdtDetection(session, referenceDescription);
+
+        // If it's a STRUCT or UDT, discover its members recursively
+        if (variable.S7Type == S7DataType.STRUCT || variable.S7Type == S7DataType.UDT)
+        {
+            try
+            {
+                _logger?.LogDebug("Discovering members for {Type} variable '{DisplayName}' at depth {Depth}", variable.S7Type, variable.DisplayName, depth);
+                var members = DiscoverStructOrUdtMembers(session, variable.NodeId!, depth + 1, maxDepth);
+                _logger?.LogDebug("Discovered {MemberCount} members for variable '{DisplayName}'", members.Count, variable.DisplayName);
+
+                // For both STRUCT and UDT, populate the StructMembers
+                variable = variable with { StructMembers = members };
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to discover members for STRUCT/UDT variable '{DisplayName}' at depth {Depth}", variable.DisplayName, depth);
             }
         }
 
         return variable;
+    }
+
+    /// <summary>
+    /// Discovers the members of a STRUCT or UDT variable by browsing its child nodes.
+    /// </summary>
+    /// <param name="session">The OPC UA session.</param>
+    /// <param name="nodeId">The NodeId of the STRUCT/UDT variable.</param>
+    /// <param name="depth">Current recursion depth.</param>
+    /// <param name="maxDepth">Maximum recursion depth allowed.</param>
+    /// <returns>A list of discovered member variables.</returns>
+    private IReadOnlyList<IS7Variable> DiscoverStructOrUdtMembers(Opc.Ua.Client.ISession session, string nodeId, int depth, int maxDepth)
+    {
+        if (!session.Connected)
+        {
+            _logger?.LogError("Cannot discover STRUCT/UDT members for '{NodeId}'; session is not connected.", nodeId);
+            return [];
+        }
+
+        try
+        {
+            var browser = new Opc.Ua.Client.Browser(session)
+            {
+                BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+                NodeClassMask = (int)Opc.Ua.NodeClass.Variable,
+                ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
+                IncludeSubtypes = true
+            };
+
+            var childDescriptions = browser.Browse(nodeId);
+            var members = new List<IS7Variable>();
+
+            foreach (var childDesc in childDescriptions)
+            {
+                // Filter out Icon variables as they're not real data
+                if (childDesc.DisplayName.Text == "Icon")
+                    continue;
+
+                // Recursively discover each member
+                var memberVariable = CreateS7VariableWithRecursiveDiscovery(session, childDesc, depth, maxDepth);
+                members.Add(memberVariable);
+            }
+
+            return members.AsReadOnly();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to browse STRUCT/UDT members for NodeId '{NodeId}'", nodeId);
+            return [];
+        }
     }
 
     #endregion UDT Discovery Methods
@@ -1197,46 +1368,78 @@ internal class S7UaClient : IS7UaClient, IDisposable
     {
         var fullPath = pathBuilder.Child(variable.DisplayName).CurrentPath;
 
-        if (variable.S7Type == S7DataType.STRUCT)
+        // For STRUCT/UDT variables, process their already-discovered members
+        if (variable.S7Type == S7DataType.STRUCT || variable.S7Type == S7DataType.UDT)
         {
-            var discoveredMembers = DiscoverSimpleElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
-
-            var templateMembersByName = variable.StructMembers
-                .Where(m => m.DisplayName is not null)
-                .ToDictionary(m => m.DisplayName!, m => m);
-
-            var membersToProcess = discoveredMembers.Cast<S7Variable>().Select(discoveredMember =>
-            {
-                templateMembersByName.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var templateMember);
-
-                return discoveredMember with
-                {
-                    S7Type = templateMember?.S7Type ?? S7DataType.UNKNOWN,
-                    StructMembers = templateMember?.StructMembers ?? []
-                };
-            });
-
-            var processedMembers = membersToProcess
+            var processedMembers = variable.StructMembers
                 .Select(m => (S7Variable)RebuildHierarchyWithValues(session, m, readResultsMap, pathBuilder.Child(variable.DisplayName)))
                 .ToList();
 
             return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good) };
         }
 
-        if (variable.NodeId != null && readResultsMap.TryGetValue(variable.NodeId, out var dataValue))
+        // For simple variables, read their values
+        if (variable.NodeId != null)
         {
-            var converter = this.GetConverter(variable.S7Type, dataValue.Value?.GetType() ?? typeof(object));
-            var rawValue = dataValue.Value;
-            var finalValue = converter.ConvertFromOpc(rawValue);
-
-            return variable with
+            Opc.Ua.NodeId opcNodeId;
+            try
             {
-                RawOpcValue = rawValue,
-                Value = finalValue,
-                SystemType = converter.TargetType,
-                FullPath = fullPath,
-                StatusCode = UaStatusCodeConverter.Convert(dataValue.StatusCode)
-            };
+                opcNodeId = new Opc.Ua.NodeId(variable.NodeId);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Invalid NodeId format for variable '{DisplayName}': '{NodeId}'", variable.DisplayName, variable.NodeId);
+                return variable with
+                {
+                    FullPath = fullPath,
+                    StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.BadNodeIdInvalid)
+                };
+            }
+
+            if (readResultsMap.TryGetValue(opcNodeId, out var dataValue))
+            {
+                // Check if the read operation was successful
+                if (!Opc.Ua.StatusCode.IsGood(dataValue.StatusCode))
+                {
+                    _logger?.LogWarning("Failed to read value for variable '{DisplayName}'. StatusCode: {StatusCode}", variable.DisplayName, dataValue.StatusCode);
+                    return variable with
+                    {
+                        FullPath = fullPath,
+                        StatusCode = UaStatusCodeConverter.Convert(dataValue.StatusCode)
+                    };
+                }
+
+                var converter = this.GetConverter(variable.S7Type, dataValue.Value?.GetType() ?? typeof(object));
+                var rawValue = dataValue.Value;
+
+                try
+                {
+                    var finalValue = converter.ConvertFromOpc(rawValue);
+
+                    return variable with
+                    {
+                        RawOpcValue = rawValue,
+                        Value = finalValue,
+                        SystemType = converter.TargetType,
+                        FullPath = fullPath,
+                        StatusCode = UaStatusCodeConverter.Convert(dataValue.StatusCode)
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Failed to convert value for variable '{DisplayName}' with type '{S7Type}'. RawValue: {RawValue}",
+                        variable.DisplayName, variable.S7Type, rawValue);
+                    return variable with
+                    {
+                        FullPath = fullPath,
+                        StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.BadInternalError)
+                    };
+                }
+            }
+            else
+            {
+                _logger?.LogWarning("Variable '{DisplayName}' with NodeId '{NodeId}' was not found in readResultsMap", variable.DisplayName, variable.NodeId);
+            }
         }
 
         return variable with { FullPath = fullPath, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.BadWaitingForInitialData) };
@@ -1266,37 +1469,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 break;
 
             case S7Variable variable:
-                if (variable.S7Type == S7DataType.STRUCT)
+                // For STRUCT/UDT variables, collect their already-discovered members
+                if (variable.S7Type == S7DataType.STRUCT || variable.S7Type == S7DataType.UDT)
                 {
-                    var discoveredMembers = DiscoverSimpleElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
-
-                    if (variable.StructMembers.Any())
+                    foreach (var member in variable.StructMembers)
                     {
-                        var templateMembersByName = variable.StructMembers.ToDictionary(m => m.DisplayName!, m => m);
-
-                        foreach (var discoveredMember in discoveredMembers.Cast<S7Variable>())
-                        {
-                            if (templateMembersByName.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var templateMember))
-                            {
-                                var memberToRecurse = discoveredMember with
-                                {
-                                    S7Type = templateMember.S7Type,
-                                    StructMembers = templateMember.StructMembers
-                                };
-                                CollectNodesToReadRecursively(session, memberToRecurse, collectedNodes, pathBuilder.Child(variable.DisplayName));
-                            }
-                            else
-                            {
-                                CollectNodesToReadRecursively(session, discoveredMember, collectedNodes, pathBuilder.Child(variable.DisplayName));
-                            }
-                        }
-                    }
-                    else
-                    {
-                        foreach (var member in discoveredMembers)
-                        {
-                            CollectNodesToReadRecursively(session, member, collectedNodes, pathBuilder.Child(variable.DisplayName));
-                        }
+                        CollectNodesToReadRecursively(session, member, collectedNodes, pathBuilder.Child(variable.DisplayName));
                     }
                 }
                 else if (variable.NodeId != null)

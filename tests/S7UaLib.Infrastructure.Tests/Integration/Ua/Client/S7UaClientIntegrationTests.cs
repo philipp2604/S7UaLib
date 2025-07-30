@@ -257,7 +257,7 @@ public class S7UaClientIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverElement_WithRealInstanceDb_ReturnsFullyPopulatedDb()
+    public async Task DiscoverElement_WithRealInstanceDb_ReturnsFullyPopulatedDbWithMappedVariables()
     {
         S7UaClient? client = null;
         try
@@ -276,11 +276,57 @@ public class S7UaClientIntegrationTests : IDisposable
             // Assert
             Assert.NotNull(discoveredElement);
             var populatedDb = discoveredElement;
-            Assert.NotNull(populatedDb.Outputs);
             Assert.NotNull(populatedDb.Inputs);
-            Assert.NotEmpty(populatedDb.Outputs.Variables);
+            Assert.NotNull(populatedDb.Outputs);
+            Assert.NotNull(populatedDb.InOuts);
+            Assert.NotNull(populatedDb.Static);
             Assert.NotEmpty(populatedDb.Inputs.Variables);
-            Assert.Contains(populatedDb.Inputs.Variables, v => v.DisplayName == "Function_InputBool");
+            Assert.NotEmpty(populatedDb.Outputs.Variables);
+            Assert.NotEmpty(populatedDb.InOuts.Variables);
+            Assert.NotEmpty(populatedDb.Static.Variables);
+
+            var inpBool = populatedDb.Inputs.Variables.FirstOrDefault(v => v.DisplayName == "Function_InputBool");
+            Assert.NotNull(inpBool);
+            Assert.Equal(S7DataType.BOOL, inpBool.S7Type);
+
+            var inpReal = populatedDb.Inputs.Variables.FirstOrDefault(v => v.DisplayName == "Function_InputReal");
+            Assert.NotNull(inpReal);
+            Assert.Equal(S7DataType.REAL, inpReal.S7Type);
+
+            var outBool = populatedDb.Outputs.Variables.FirstOrDefault(v => v.DisplayName == "Function_OutputBool");
+            Assert.NotNull(outBool);
+            Assert.Equal(S7DataType.BOOL, outBool.S7Type);
+
+            var outInt = populatedDb.Outputs.Variables.FirstOrDefault(v => v.DisplayName == "Function_OutputInt");
+            Assert.NotNull(outInt);
+            Assert.Equal(S7DataType.INT, outInt.S7Type);
+
+            var inOutWord = populatedDb.InOuts.Variables.FirstOrDefault(v => v.DisplayName == "Function_InOutWord");
+            Assert.NotNull(inOutWord);
+            Assert.Equal(S7DataType.WORD, inOutWord.S7Type);
+
+            var nestedStruct = populatedDb.Static.Variables.FirstOrDefault(v => v.DisplayName == "NestedStruct");
+            Assert.NotNull(nestedStruct);
+            Assert.Equal(S7DataType.UDT, nestedStruct.S7Type);
+            Assert.NotEmpty(nestedStruct.StructMembers);
+
+            var nestedStructNestedBool = nestedStruct.StructMembers.FirstOrDefault(m => m.DisplayName == "NestedBool");
+            Assert.NotNull(nestedStructNestedBool);
+            Assert.Equal(S7DataType.BOOL, nestedStructNestedBool.S7Type);
+
+            var anotherNestedStruct = populatedDb.Static.Variables.FirstOrDefault(v => v.DisplayName == "AnotherNestedStruct");
+            Assert.NotNull(anotherNestedStruct);
+            Assert.Equal(S7DataType.UDT, anotherNestedStruct.S7Type);
+            Assert.NotEmpty(anotherNestedStruct.StructMembers);
+
+            var aNestedStructInsideANestedStruct = anotherNestedStruct.StructMembers.FirstOrDefault(m => m.DisplayName == "ANestedStructInsideANestedStruct");
+            Assert.NotNull(aNestedStructInsideANestedStruct);
+            Assert.Equal(S7DataType.UDT, aNestedStructInsideANestedStruct.S7Type);
+            Assert.NotEmpty(aNestedStructInsideANestedStruct.StructMembers);
+
+            var aVeryNestedBool = aNestedStructInsideANestedStruct.StructMembers.FirstOrDefault(m => m.DisplayName == "AVeryNestedBool");
+            Assert.NotNull(aVeryNestedBool);
+            Assert.Equal(S7DataType.BOOL, aVeryNestedBool.S7Type);
         }
         finally
         {
@@ -327,14 +373,17 @@ public class S7UaClientIntegrationTests : IDisposable
             // Assert
             var inputVar = inputsWithValues.Variables.First(v => v.DisplayName == "TestInput");
             Assert.Equal(StatusCode.Good, inputVar.StatusCode);
+            Assert.Equal(S7DataType.BOOL, inputVar.S7Type);
             Assert.False((bool)inputVar.Value!);
 
             var outputVar = outputsWithValues.Variables.First(v => v.DisplayName == "TestOutput");
             Assert.Equal(StatusCode.Good, outputVar.StatusCode);
+            Assert.Equal(S7DataType.BOOL, outputVar.S7Type);
             Assert.False((bool)outputVar.Value!);
 
             var memoryVar = memoryWithValues.Variables.First(v => v.DisplayName == "TestVar");
             Assert.Equal(StatusCode.Good, memoryVar.StatusCode);
+            Assert.Equal(S7DataType.BOOL, memoryVar.S7Type);
             Assert.False((bool)memoryVar.Value!);
         }
         finally
@@ -358,90 +407,87 @@ public class S7UaClientIntegrationTests : IDisposable
             // Act
             var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
             Assert.NotNull(dbWithVars?.Variables);
-            var correctlyTypedVars = dbWithVars.Variables.Cast<S7Variable>().Select(variable => variable with
-            {
-                S7Type = variable.DisplayName switch
-                {
-                    "TestBool" => S7DataType.BOOL,
-                    "TestByte" => S7DataType.BYTE,
-                    "TestChar" => S7DataType.CHAR,
-                    "TestWChar" => S7DataType.WCHAR,
-                    "TestInt" => S7DataType.INT,
-                    "TestSInt" => S7DataType.SINT,
-                    "TestDInt" => S7DataType.DINT,
-                    "TestLInt" => S7DataType.LINT,
-                    "TestUInt" => S7DataType.UINT,
-                    "TestUSInt" => S7DataType.USINT,
-                    "TestUDInt" => S7DataType.UDINT,
-                    "TestULInt" => S7DataType.ULINT,
-                    "TestReal" => S7DataType.REAL,
-                    "TestLReal" => S7DataType.LREAL,
-                    "TestDWord" => S7DataType.DWORD,
-                    "TestLWord" => S7DataType.LWORD,
-                    "TestString" => S7DataType.STRING,
-                    "TestDate" => S7DataType.DATE,
-                    "TestTime" => S7DataType.TIME,
-                    "TestTimeOfDay" => S7DataType.TIME_OF_DAY,
-                    "TestS5Time" => S7DataType.S5TIME,
-                    "TestDateAndTime" => S7DataType.DATE_AND_TIME,
-                    "TestLTime" => S7DataType.LTIME,
-                    "TestLTimeOfDay" => S7DataType.LTIME_OF_DAY,
-                    "TestDTL" => S7DataType.DTL,
-                    "TestLDT" => S7DataType.LDT,
-                    "TestStruct" => S7DataType.STRUCT,
-                    "TestCharArray" => S7DataType.ARRAY_OF_CHAR,
-                    "TestDateAndTimeArray" => S7DataType.ARRAY_OF_DATE_AND_TIME,
-                    _ => S7DataType.UNKNOWN
-                }
-            }).ToList();
-            int structIndex = correctlyTypedVars.FindIndex(v => v.DisplayName == "TestStruct");
-            if (structIndex != -1)
-            {
-                var hollowStruct = correctlyTypedVars[structIndex];
-                var typedStructMembers = new List<S7Variable>
-                {
-                    new() { DisplayName = "TestStructBool", S7Type = S7DataType.BOOL },
-                    new() { DisplayName = "TestStructInt", S7Type = S7DataType.INT },
-                    new() { DisplayName = "TestDateAndTime", S7Type = S7DataType.DATE_AND_TIME }
-                };
-                correctlyTypedVars[structIndex] = hollowStruct with { StructMembers = typedStructMembers };
-            }
-            var dbToRead = dbWithVars with { Variables = correctlyTypedVars };
 
             // Act
-            var dbWithValues = await client.ReadNodeValuesAsync(dbToRead, "DataBlocksGlobal");
+            var dbWithValues = await client.ReadNodeValuesAsync(dbWithVars, "DataBlocksGlobal");
 
             // Assert
-            void AssertVar(string name, object? expected)
+            void AssertVar(string name, object? expected, S7DataType s7Type)
             {
                 var variable = dbWithValues.Variables.FirstOrDefault(v => v.DisplayName == name);
                 Assert.NotNull(variable);
                 Assert.Equal(StatusCode.Good, variable.StatusCode);
-                Assert.Equal(expected, variable.Value);
+                Assert.Equal(s7Type, variable.S7Type);
+
+                if (expected != null)
+                {
+                    Assert.Equal(expected, variable.Value);
+                }
             }
-            AssertVar("TestBool", true); AssertVar("TestInt", (short)9); Assert.Equal(8.2f, (float)dbWithValues.Variables.First(v => v.DisplayName == "TestReal").Value!, 5);
-            AssertVar("TestString", "Hallo"); AssertVar("TestByte", (byte)3); AssertVar("TestChar", 'C'); AssertVar("TestDInt", 12);
-            AssertVar("TestDWord", (uint)0x31); AssertVar("TestDate", new DateTime(2025, 3, 10));
-            AssertVar("TestDateAndTime", new DateTime(2025, 10, 12, 8, 9, 31, 212)); AssertVar("TestLDT", new DateTime(2008, 10, 25, 8, 12, 34, 567));
-            AssertVar("TestLInt", 1500000L); Assert.Equal(12.13123, (double)dbWithValues.Variables.First(v => v.DisplayName == "TestLReal").Value!, 5);
-            AssertVar("TestLTime", TimeSpan.FromMilliseconds(200)); AssertVar("TestLTimeOfDay", new TimeSpan(12, 11, 31));
-            AssertVar("TestLWord", (ulong)0x22); AssertVar("TestS5Time", TimeSpan.FromSeconds(60)); AssertVar("TestSInt", (sbyte)-103);
-            AssertVar("TestTime", TimeSpan.FromSeconds(40)); AssertVar("TestTimeOfDay", new TimeSpan(8, 12, 22));
-            AssertVar("TestUDInt", (uint)234134); AssertVar("TestUInt", (ushort)32421); AssertVar("TestULInt", (ulong)891841);
-            AssertVar("TestUSInt", (byte)222); AssertVar("TestWChar", 'e');
-            var dtlVar = dbWithValues.Variables.First(v => v.DisplayName == "TestDTL"); Assert.Equal(StatusCode.Good, dtlVar.StatusCode);
-            var expectedDtl = new DateTime(2008, 12, 16, 20, 30, 20, 250).AddTicks(1110 + 3); Assert.Equal(expectedDtl, dtlVar.Value);
-            var structVar = dbWithValues.Variables.First(v => v.DisplayName == "TestStruct"); Assert.NotNull(structVar); Assert.Equal(S7DataType.STRUCT, structVar.S7Type);
-            Assert.Equal(StatusCode.Good, structVar.StatusCode); Assert.NotNull(structVar.StructMembers); Assert.Equal(3, structVar.StructMembers.Count);
-            var structBool = structVar.StructMembers.First(m => m.DisplayName == "TestStructBool"); Assert.Equal(true, structBool.Value);
-            var structInt = structVar.StructMembers.First(m => m.DisplayName == "TestStructInt"); Assert.Equal((short)12341, structInt.Value);
-            var structDT = structVar.StructMembers.First(m => m.DisplayName == "TestDateAndTime"); Assert.Equal(new DateTime(1990, 1, 1), structDT.Value);
-            var charArrayVar = dbWithValues.Variables.First(v => v.DisplayName == "TestCharArray"); Assert.Equal(StatusCode.Good, charArrayVar.StatusCode);
-            Assert.NotNull(charArrayVar.Value); Assert.IsType<List<char>>(charArrayVar.Value); Assert.Equal(['h', 'u', 'H', 'U'], (List<char>)charArrayVar.Value);
-            var dtArrayVar = dbWithValues.Variables.First(v => v.DisplayName == "TestDateAndTimeArray"); Assert.Equal(StatusCode.Good, dtArrayVar.StatusCode);
-            Assert.NotNull(dtArrayVar.Value); Assert.IsType<List<DateTime>>(dtArrayVar.Value);
-            var expectedDateTimes = new List<DateTime> { new(2025, 10, 12, 8, 9, 31, 212), new(2024, 10, 12, 8, 9, 31, 212), new(2023, 10, 12, 8, 9, 31, 212), new(2022, 10, 12, 8, 9, 31, 212) };
-            Assert.Equal(expectedDateTimes, (List<DateTime>)dtArrayVar.Value);
+            AssertVar("TestBool", true, S7DataType.BOOL);
+            AssertVar("TestInt", (short)9, S7DataType.INT);
+            AssertVar("TestReal", (float)8.2, S7DataType.REAL);
+            AssertVar("TestString", "Hallo", S7DataType.STRING);
+            AssertVar("TestByte", (byte)3, S7DataType.BYTE);
+            AssertVar("TestChar", 'C', S7DataType.CHAR);
+            AssertVar("TestDInt", 12, S7DataType.DINT);
+            AssertVar("TestDWord", (uint)0x31, S7DataType.DWORD);
+            AssertVar("TestDate", new DateTime(2025, 3, 10), S7DataType.DATE);
+            AssertVar("TestDateAndTime", new DateTime(2025, 10, 12, 8, 9, 31, 212), S7DataType.DATE_AND_TIME);
+            AssertVar("TestLDT", new DateTime(2008, 10, 25, 8, 12, 34, 567), S7DataType.LDT);
+            AssertVar("TestLInt", 1500000L, S7DataType.LINT);
+            AssertVar("TestLReal", (double)12.13123, S7DataType.LREAL);
+            AssertVar("TestLTime", TimeSpan.FromMilliseconds(200), S7DataType.LTIME);
+            AssertVar("TestLTimeOfDay", new TimeSpan(12, 11, 31), S7DataType.LTIME_OF_DAY);
+            AssertVar("TestLWord", (ulong)0x22, S7DataType.LWORD);
+            AssertVar("TestS5Time", TimeSpan.FromSeconds(60), S7DataType.S5TIME);
+            AssertVar("TestSInt", (sbyte)-103, S7DataType.SINT);
+            AssertVar("TestTime", TimeSpan.FromSeconds(40), S7DataType.TIME);
+            AssertVar("TestTimeOfDay", new TimeSpan(8, 12, 22), S7DataType.TIME_OF_DAY);
+            AssertVar("TestUDInt", (uint)234134, S7DataType.UDINT);
+            AssertVar("TestUInt", (ushort)32421, S7DataType.UINT);
+            AssertVar("TestULInt", (ulong)891841, S7DataType.ULINT);
+            AssertVar("TestUSInt", (byte)222, S7DataType.USINT);
+            AssertVar("TestWChar", 'e', S7DataType.WCHAR);
+            AssertVar("TestDTL", new DateTime(2008, 12, 16, 20, 30, 20, 250).AddTicks(1110 + 3), S7DataType.DTL);
+
+            var structVar = dbWithValues.Variables.First(v => v.DisplayName == "TestStruct");
+            Assert.NotNull(structVar);
+            Assert.Equal(StatusCode.Good, structVar.StatusCode);
+            Assert.Equal(S7DataType.UDT, structVar.S7Type);
+            Assert.NotNull(structVar.StructMembers);
+            Assert.NotEmpty(structVar.StructMembers);
+            Assert.Collection(structVar.StructMembers,
+                m =>
+                {
+                    Assert.Equal("TestStructBool", m.DisplayName);
+                    Assert.Equal(StatusCode.Good, m.StatusCode);
+                    Assert.Equal(S7DataType.BOOL, m.S7Type);
+                    Assert.Equal(true, m.Value);
+                },
+                m =>
+                {
+                    Assert.Equal("TestStructInt", m.DisplayName);
+                    Assert.Equal(StatusCode.Good, m.StatusCode);
+                    Assert.Equal(S7DataType.INT, m.S7Type);
+                    Assert.Equal((short)12341, m.Value);
+                },
+                m =>
+                {
+                    Assert.Equal("TestDateAndTime", m.DisplayName);
+                    Assert.Equal(StatusCode.Good, m.StatusCode);
+                    Assert.Equal(S7DataType.DATE_AND_TIME, m.S7Type);
+                    Assert.Equal(new DateTime(1990, 1, 1), m.Value);
+                });
+
+            AssertVar("TestCharArray", new List<char> { 'h', 'u', 'H', 'U' }, S7DataType.ARRAY_OF_CHAR);
+            AssertVar("TestDateAndTimeArray",
+                new List<DateTime>
+                { new(2025, 10, 12, 8, 9, 31, 212),
+                    new(2024, 10, 12, 8, 9, 31, 212),
+                    new(2023, 10, 12, 8, 9, 31, 212),
+                    new(2022, 10, 12, 8, 9, 31, 212) },
+                S7DataType.ARRAY_OF_DATE_AND_TIME);
         }
         finally
         {
@@ -467,16 +513,28 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(dbWithVars);
 
             // Inline logic to prepare the specific variable structure for reading
-            var structVarShell = dbWithVars.Variables.First(v => v.DisplayName == "TestStruct") as S7Variable;
-            var typedStruct = structVarShell! with
-            {
-                S7Type = S7DataType.STRUCT,
-                StructMembers = new List<S7Variable> { new() { DisplayName = "TestStructInt", S7Type = S7DataType.INT } }
-            };
-            var dbToRead = dbWithVars with { Variables = [typedStruct] };
+            var structVar = dbWithVars.Variables.First(v => v.DisplayName == "TestStruct") as S7Variable;
+            Assert.NotNull(structVar);
+            Assert.Equal(S7DataType.UDT, structVar.S7Type);
+            Assert.Collection(structVar.StructMembers,
+                m =>
+                {
+                    Assert.Equal("TestStructBool", m.DisplayName);
+                    Assert.Equal(S7DataType.BOOL, m.S7Type);
+                },
+                m =>
+                {
+                    Assert.Equal("TestStructInt", m.DisplayName);
+                    Assert.Equal(S7DataType.INT, m.S7Type);
+                },
+                m =>
+                {
+                    Assert.Equal("TestDateAndTime", m.DisplayName);
+                    Assert.Equal(S7DataType.DATE_AND_TIME, m.S7Type);
+                });
 
             // Act 1: Read the initial value
-            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbToRead);
+            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbWithVars);
             testVar = dbWithOriginalValues.Variables
                 .First(v => v.DisplayName == "TestStruct").StructMembers
                 .First(m => m.DisplayName == "TestStructInt") as S7Variable;
@@ -489,7 +547,7 @@ public class S7UaClientIntegrationTests : IDisposable
             short newValue = (short)((short)originalValue + 1);
             Assert.True(await client.WriteVariableAsync(testVar, newValue));
 
-            var dbWithNewValues = await client.ReadNodeValuesAsync(dbToRead);
+            var dbWithNewValues = await client.ReadNodeValuesAsync(dbWithVars);
             var updatedVar = dbWithNewValues.Variables
                 .First(v => v.DisplayName == "TestStruct").StructMembers
                 .First(m => m.DisplayName == "TestStructInt");
@@ -508,7 +566,6 @@ public class S7UaClientIntegrationTests : IDisposable
         }
     }
 
-    // *** NEW TEST ***
     [Fact]
     public async Task WriteAndReadBack_ArrayValue_Succeeds()
     {
@@ -524,14 +581,11 @@ public class S7UaClientIntegrationTests : IDisposable
             var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
             Assert.NotNull(dbWithVars);
 
-            var variableToType = dbWithVars.Variables.First(v => v.DisplayName == "TestCharArray") as S7Variable;
-            var typedVariable = variableToType! with { S7Type = S7DataType.ARRAY_OF_CHAR };
-            var dbToRead = dbWithVars with { Variables = [typedVariable] };
-
             // Act 1: Read initial value
-            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbToRead);
+            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbWithVars);
             testVar = dbWithOriginalValues.Variables.First(v => v.DisplayName == "TestCharArray") as S7Variable;
             Assert.NotNull(testVar);
+            Assert.Equal(S7DataType.ARRAY_OF_CHAR, testVar.S7Type);
             originalValue = testVar.Value;
             Assert.NotNull(originalValue);
 
@@ -539,7 +593,7 @@ public class S7UaClientIntegrationTests : IDisposable
             var newValue = new List<char> { 'X', 'Y', 'Z', '!' };
             Assert.True(await client.WriteVariableAsync(testVar, newValue));
 
-            var dbWithNewValues = (S7DataBlockGlobal)await client.ReadNodeValuesAsync(dbToRead);
+            var dbWithNewValues = (S7DataBlockGlobal)await client.ReadNodeValuesAsync(dbWithOriginalValues);
             var updatedVar = dbWithNewValues.Variables.First(v => v.DisplayName == "TestCharArray");
 
             // Assert
@@ -556,7 +610,6 @@ public class S7UaClientIntegrationTests : IDisposable
         }
     }
 
-    // *** NEW TEST ***
     [Fact]
     public async Task WriteVariableAsync_WithIncompatibleType_ReturnsFalse()
     {
@@ -570,9 +623,10 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(dbWithVars);
             var testVar = dbWithVars.Variables.First(v => v.DisplayName == "TestInt") as S7Variable;
             Assert.NotNull(testVar);
+            Assert.Equal(S7DataType.INT, testVar.S7Type);
 
             // Act: This should fail because the server expects a short (Int), not a string.
-            bool success = await client.WriteVariableAsync(testVar with { S7Type = S7DataType.INT }, "this is not a number");
+            bool success = await client.WriteVariableAsync(testVar, "this is not a number");
 
             // Assert
             Assert.False(success);
@@ -601,7 +655,7 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(dbWithVars);
             testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestInt") as S7Variable;
             Assert.NotNull(testVar);
-            testVar = testVar with { S7Type = S7DataType.INT };
+            Assert.Equal(S7DataType.INT, testVar.S7Type);
 
             // Act & Assert
             var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbWithVars with { Variables = [testVar] });
@@ -651,7 +705,8 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(dbWithVars);
             testVar = dbWithVars.Variables.FirstOrDefault(v => v.DisplayName == "AnotherTestDInt") as S7Variable;
             Assert.NotNull(testVar);
-            testVar = testVar with { S7Type = S7DataType.DINT, SamplingInterval = 100 };
+            Assert.Equal(S7DataType.DINT, testVar.S7Type);
+            testVar = testVar with { SamplingInterval = 100 };
 
             var dbWithOriginalValue = await client.ReadNodeValuesAsync(dbWithVars with { Variables = [testVar] });
             originalValue = dbWithOriginalValue.Variables[0].Value;

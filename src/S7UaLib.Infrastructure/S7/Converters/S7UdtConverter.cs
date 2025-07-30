@@ -146,7 +146,7 @@ internal class S7UdtConverter : IS7TypeConverter
             // Fallback: try to extract from raw OPC value using UDT definition
             // This is a simplified implementation - in reality, we'd need to parse the OPC structure
             _logger?.LogDebug("Using fallback conversion for UDT '{UdtName}' - struct members not available", udtDefinition.Name);
-            
+
             // For now, just return the raw value wrapped in a dictionary
             result["_raw"] = opcValue;
         }
@@ -158,14 +158,14 @@ internal class S7UdtConverter : IS7TypeConverter
     {
         // This is a complex operation that would need to reconstruct the OPC structure
         // For now, return a simplified implementation
-        
+
         // In a full implementation, we'd need to:
         // 1. Create an OPC structure based on the UDT definition
         // 2. Map dictionary values to the correct positions
         // 3. Handle nested UDTs recursively
-        
+
         _logger?.LogDebug("Converting dictionary back to OPC structure for UDT '{UdtName}'", udtDefinition.Name);
-        
+
         // Placeholder implementation - return the dictionary for now
         // The actual OPC structure creation would depend on the OPC UA client implementation
         return dict;
