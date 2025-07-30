@@ -216,30 +216,13 @@ internal interface IS7UaClient : IDisposable
     public Task<IS7Counters?> GetCountersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Discovers the full structure of a given UA element shell. This method acts as a dispatcher,
-    /// calling the appropriate specialized "Discover" method based on the element's type.
+    /// Discovers the full structure of any UA node using a unified approach.
+    /// This method acts as a dispatcher, calling the appropriate specialized logic based on the node's type.
     /// </summary>
-    /// <param name="elementShell">The "shell" element, typically containing only a NodeId and DisplayName.</param>
+    /// <param name="nodeShell">The node shell to discover, typically containing only a NodeId and DisplayName.</param>
     /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
-    /// <returns>A Task encapsulating a fully discovered element as <see cref="IUaElement"/>, or null if the type is unsupported or an error occurs.</returns>
-    public Task<IUaNode?> DiscoverElementAsync(IUaNode elementShell, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Discovers the variables contained within a simple structure element (like a global DB or I/O area).
-    /// </summary>
-    /// <typeparam name="T">The type of the structure element, which must be a derivative of <see cref="S7StructureElement"/>.</typeparam>
-    /// <param name="element">The structure element shell whose variables are to be discovered.</param>
-    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
-    /// <returns>A Task encapsulating a new instance of the element with its <c>Variables</c> list populated. Returns the original element on failure.</returns>
-    public Task<T> DiscoverVariablesOfElementAsync<T>(T element, CancellationToken cancellationToken = default) where T : S7StructureElement;
-
-    /// <summary>
-    /// Discovers the full nested structure of an instance data block.
-    /// </summary>
-    /// <param name="instanceDbShell">The instance data block shell to discover.</param>
-    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
-    /// <returns>A Task encapsulating a new instance of the data block with its sections populated. Returns the original element on failure.</returns>
-    public Task<IS7DataBlockInstance> DiscoverInstanceOfDataBlockAsync(S7DataBlockInstance instanceDbShell, CancellationToken cancellationToken = default);
+    /// <returns>A Task encapsulating the fully discovered node, or null if the input is null or an error occurs.</returns>
+    public Task<IUaNode?> DiscoverNodeAsync(IUaNode nodeShell, CancellationToken cancellationToken = default);
 
     #endregion Structure Browsing and Discovery Methods
 
@@ -248,14 +231,14 @@ internal interface IS7UaClient : IDisposable
     #region Reading Methods
 
     /// <summary>
-    /// Reads the values for any previously discovered S7 element.
+    /// Reads values for any discovered node structure using a unified approach.
     /// </summary>
-    /// <typeparam name="T">The type of the element to read, which must implement <see cref="IUaElement"/>.</typeparam>
-    /// <param name="elementWithStructure">An element whose structure has already been discovered.</param>
+    /// <typeparam name="T">The type of the node to read values for, which must implement <see cref="IUaNode"/>.</typeparam>
+    /// <param name="nodeWithStructure">A node whose structure has already been discovered.</param>
     /// <param name="rootContextName">The name of the root collection (e.g., "DataBlocksGlobal", "Inputs") used for building the full path.</param>
     /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
-    /// <returns>A Task encapsulating a new instance of the element, populated with values. Returns the original element on failure.</returns>
-    public Task<T> ReadValuesOfElementAsync<T>(T elementWithStructure, string? rootContextName = null, CancellationToken cancellationToken = default) where T : IUaNode;
+    /// <returns>A Task encapsulating a new instance of the node, populated with values. Returns the original node on failure.</returns>
+    public Task<T> ReadNodeValuesAsync<T>(T nodeWithStructure, string? rootContextName = null, CancellationToken cancellationToken = default) where T : IUaNode;
 
     #endregion Reading Methods
 
