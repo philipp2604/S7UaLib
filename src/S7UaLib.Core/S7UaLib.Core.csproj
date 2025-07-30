@@ -9,7 +9,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>philipp2604.$(AssemblyName)</PackageId>
     <Title>$(AssemblyName)</Title>
-    <Version>5.0.0</Version>
+    <Version>5.1.0</Version>
     <Authors>Philipp Siewert</Authors>
     <Product>$(PackageId)</Product>
     <Description>The foundational library for the S7UaLib ecosystem. This package provides the core data models, interfaces, and enumerations used for representing a Siemens S7 PLC's structure via OPC UA. It is the shared kernel that enables all other S7UaLib packages to work together seamlessly.</Description>

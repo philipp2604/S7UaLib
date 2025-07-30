@@ -69,7 +69,7 @@ public class S7UaClientUnitTests
         // Act & Assert
         await Assert.ThrowsAsync<ObjectDisposedException>(() => _sut.ConnectAsync("opc.tcp://localhost"));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => _sut.GetAllGlobalDataBlocksAsync());
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => _sut.ReadValuesOfElementAsync(new S7DataBlockGlobal()));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => _sut.ReadNodeValuesAsync(new S7DataBlockGlobal()));
         Assert.Throws<ObjectDisposedException>(() => _sut.SaveConfiguration("path"));
     }
 
@@ -326,7 +326,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public async Task DiscoverElementAsync_WithSimpleElement_DispatchesToDiscoverVariables()
+    public async Task DiscoverNodeAsync_WithSimpleElement_DispatchesToUnifiedDiscovery()
     {
         // Arrange
         var elementShell = new S7DataBlockGlobal { NodeId = "ns=1;s=DB1" };
@@ -337,7 +337,7 @@ public class S7UaClientUnitTests
             .ReturnsAsync(expectedElement);
 
         // Act
-        var result = await _sut.DiscoverElementAsync(elementShell);
+        var result = await _sut.DiscoverNodeAsync(elementShell);
 
         // Assert
         Assert.Same(expectedElement, result);
@@ -347,7 +347,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public async Task DiscoverElementAsync_WithInstanceDb_DispatchesToDiscoverInstance()
+    public async Task DiscoverNodeAsync_WithInstanceDb_DispatchesToUnifiedDiscovery()
     {
         // Arrange
         var elementShell = new S7DataBlockInstance { NodeId = "ns=1;s=IDB1" };
@@ -358,7 +358,7 @@ public class S7UaClientUnitTests
             .ReturnsAsync(expectedElement);
 
         // Act
-        var result = await _sut.DiscoverElementAsync(elementShell);
+        var result = await _sut.DiscoverNodeAsync(elementShell);
 
         // Assert
         Assert.Same(expectedElement, result);
@@ -369,7 +369,7 @@ public class S7UaClientUnitTests
     }
 
     [Fact]
-    public async Task ReadValuesOfElementAsync_WithNestedStruct_CorrectlyDiscoversAndReadsValues()
+    public async Task ReadNodeValuesAsync_WithNestedStruct_CorrectlyDiscoversAndReadsValues()
     {
         // Arrange
         var elementToRead = new S7DataBlockGlobal
@@ -413,7 +413,7 @@ public class S7UaClientUnitTests
             .Returns<Func<Opc.Ua.Client.ISession, Task<S7DataBlockGlobal>>, CancellationToken>(async (operation, _) => await operation(mockSession.Object));
 
         // Act
-        var result = await _sut.ReadValuesOfElementAsync(elementToRead, "MyRoot");
+        var result = await _sut.ReadNodeValuesAsync(elementToRead, "MyRoot");
 
         // Assert
         Assert.NotNull(result);
