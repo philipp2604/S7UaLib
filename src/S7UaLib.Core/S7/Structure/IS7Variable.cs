@@ -1,4 +1,5 @@
 ﻿using S7UaLib.Core.Enums;
+using S7UaLib.Core.S7.Udt;
 using S7UaLib.Core.Ua;
 using System.Text.Json.Serialization;
 
@@ -35,6 +36,11 @@ public interface IS7Variable : IUaNode
     public S7DataType S7Type { get; init; }
 
     /// <summary>
+    /// Gets or sets the UDT (User-Defined Type) name if this variable is a struct.
+    /// </summary>
+    public string? UdtTypeName { get; init; }
+
+    /// <summary>
     /// Gets the target .NET <see cref="Type"/> that this variable's value is converted to.
     /// </summary>
     public Type? SystemType { get; init; }
@@ -61,6 +67,17 @@ public interface IS7Variable : IUaNode
     /// This setting is persisted in the configuration.
     /// </summary>
     public uint SamplingInterval { get; init; }
+
+    /// <summary>
+    /// Gets the UDT definition if this variable represents a User-Defined Type.
+    /// Null for simple data types.
+    /// </summary>
+    public UdtDefinition? UdtDefinition { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether this variable is a User-Defined Type (UDT).
+    /// </summary>
+    public bool IsUdt => S7Type == S7DataType.UDT && !string.IsNullOrEmpty(UdtTypeName);
 
     #endregion Public Properties
 }

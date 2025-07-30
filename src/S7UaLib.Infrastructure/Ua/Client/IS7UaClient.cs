@@ -2,6 +2,7 @@
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
+using S7UaLib.Core.S7.Udt;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
@@ -315,6 +316,42 @@ internal interface IS7UaClient : IDisposable
     IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType);
 
     #endregion Type Converter Access
+
+    #region UDT Registry Access
+
+    /// <summary>
+    /// Gets the UDT type registry for managing discovered UDT definitions and custom converters.
+    /// </summary>
+    /// <returns>The UDT type registry instance.</returns>
+    IUdtTypeRegistry GetUdtTypeRegistry();
+
+    /// <summary>
+    /// Registers a custom converter for a specific UDT type.
+    /// </summary>
+    /// <param name="udtName">The name of the UDT.</param>
+    /// <param name="converter">The custom converter to use.</param>
+    void RegisterCustomUdtConverter(string udtName, IS7TypeConverter converter);
+
+    #endregion UDT Registry Access
+
+    #region UDT Discovery Methods
+
+    /// <summary>
+    /// Discovers all available UDT types from the OPC UA server.
+    /// </summary>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A list of discovered UDT type names.</returns>
+    Task<IReadOnlyList<string>> GetAvailableUdtTypesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Discovers the structure definition of a specific UDT type.
+    /// </summary>
+    /// <param name="udtTypeName">The name of the UDT to discover.</param>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>The discovered UDT definition, or null if not found.</returns>
+    Task<UdtDefinition?> DiscoverUdtDefinitionAsync(string udtTypeName, CancellationToken cancellationToken = default);
+
+    #endregion UDT Discovery Methods
 
     #endregion Reading and Writing Methods
 

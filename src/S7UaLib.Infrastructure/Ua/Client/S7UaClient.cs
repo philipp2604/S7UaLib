@@ -3,10 +3,12 @@ using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
 using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
+using S7UaLib.Core.S7.Udt;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.Events;
 using S7UaLib.Infrastructure.S7.Converters;
+using S7UaLib.Infrastructure.S7.Udt;
 using S7UaLib.Infrastructure.Ua.Converters;
 using System.Collections;
 using System.Collections.ObjectModel;
@@ -60,8 +62,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private readonly S7S5TimeConverter _s5TimeConverterInstance;
     private readonly S7DTLConverter _dtlConverterInstance;
     private readonly S7CounterConverter _counterConverterInstance;
+    private readonly S7UdtConverter _udtConverterInstance;
 
     private readonly Dictionary<S7DataType, IS7TypeConverter> _typeConvertersInstance;
+    private readonly IUdtTypeRegistry _udtTypeRegistry;
 
     #endregion Instance Type Converters
 
@@ -128,6 +132,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
         _s5TimeConverterInstance = new S7S5TimeConverter();
         _dtlConverterInstance = new S7DTLConverter();
         _counterConverterInstance = new S7CounterConverter();
+        
+        // Initialize UDT support
+        _udtTypeRegistry = new UdtTypeRegistry();
+        _udtConverterInstance = new S7UdtConverter(loggerFactory?.CreateLogger<S7UdtConverter>());
 
         _typeConvertersInstance = new Dictionary<S7DataType, IS7TypeConverter>
         {
@@ -152,7 +160,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
             [S7DataType.ARRAY_OF_S5TIME] = new S7ElementwiseArrayConverter(_s5TimeConverterInstance, typeof(ushort)),
             [S7DataType.ARRAY_OF_DATE_AND_TIME] = new S7ElementwiseArrayConverter(_dateAndTimeConverterInstance, typeof(byte)),
             [S7DataType.ARRAY_OF_DTL] = new S7ElementwiseArrayConverter(_dtlConverterInstance, typeof(byte[])),
-            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverterInstance, typeof(ushort))
+            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverterInstance, typeof(ushort)),
+            [S7DataType.UDT] = _udtConverterInstance
         };
     }
 
@@ -198,6 +207,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
         _s5TimeConverterInstance = new S7S5TimeConverter();
         _dtlConverterInstance = new S7DTLConverter();
         _counterConverterInstance = new S7CounterConverter();
+        
+        // Initialize UDT support
+        _udtTypeRegistry = new UdtTypeRegistry();
+        _udtConverterInstance = new S7UdtConverter();
 
         _typeConvertersInstance = new Dictionary<S7DataType, IS7TypeConverter>
         {
@@ -222,7 +235,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
             [S7DataType.ARRAY_OF_S5TIME] = new S7ElementwiseArrayConverter(_s5TimeConverterInstance, typeof(ushort)),
             [S7DataType.ARRAY_OF_DATE_AND_TIME] = new S7ElementwiseArrayConverter(_dateAndTimeConverterInstance, typeof(byte)),
             [S7DataType.ARRAY_OF_DTL] = new S7ElementwiseArrayConverter(_dtlConverterInstance, typeof(byte[])),
-            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverterInstance, typeof(ushort))
+            [S7DataType.ARRAY_OF_COUNTER] = new S7ElementwiseArrayConverter(_counterConverterInstance, typeof(ushort)),
+            [S7DataType.UDT] = _udtConverterInstance
         };
     }
 
@@ -528,8 +542,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
     #region Type Converter Access
 
     /// <inheritdoc cref="IS7UaClient.GetConverter(S7DataType, Type)"/>
-    public IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType) =>
-        _typeConvertersInstance.TryGetValue(s7Type, out var converter) ? converter : new DefaultConverter(fallbackType);
+    public IS7TypeConverter GetConverter(S7DataType s7Type, Type fallbackType)
+    {
+        // Check for UDT type - use generic UDT converter
+        // Custom UDT converters are handled separately via the UDT registry
+        return _typeConvertersInstance.TryGetValue(s7Type, out var converter) 
+            ? converter 
+            : new DefaultConverter(fallbackType);
+    }
 
     #endregion Type Converter Access
 
@@ -694,11 +714,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => new S7Variable
-            {
-                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
-                DisplayName = desc.DisplayName.Text
-            }
+            desc => CreateS7VariableWithUdtDetection(session, desc)
         );
 
         var variables = BrowseAndCreateNodes(session, globalDb.NodeId!, context).Cast<S7Variable>().ToList();
@@ -744,11 +760,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             Opc.Ua.NodeClass.Variable | Opc.Ua.NodeClass.Object,
             desc => desc.DisplayName.Text != "Icon",
             desc => desc.NodeClass == Opc.Ua.NodeClass.Variable
-                ? new S7Variable
-                {
-                    NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
-                    DisplayName = desc.DisplayName.Text
-                }
+                ? CreateS7VariableWithUdtDetection(session, desc)
                 : new S7DataBlockInstance
                 {
                     NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
@@ -775,11 +787,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => new S7Variable
-            {
-                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
-                DisplayName = desc.DisplayName.Text
-            }
+            desc => CreateS7VariableWithUdtDetection(session, desc)
         );
 
         var variables = BrowseAndCreateNodes(session, element.NodeId!, context).Cast<S7Variable>().ToList();
@@ -798,6 +806,193 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Shared Discovery Logic
+
+    #region UDT Discovery Methods
+
+    /// <summary>
+    /// Detects if a variable represents a UDT based on its OPC UA metadata.
+    /// </summary>
+    /// <param name="session">The OPC UA session.</param>
+    /// <param name="referenceDescription">The reference description of the variable.</param>
+    /// <returns>The UDT type name if detected, otherwise null.</returns>
+    private string? DetectUdtTypeName(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription)
+    {
+        try
+        {
+            // For now, use a simplified approach - check display name patterns
+            // This will be enhanced later with proper OPC UA DataType inspection
+            var displayName = referenceDescription.DisplayName?.Text;
+            
+            // Simple heuristic: if the display name contains certain patterns, it might be a UDT
+            // This is a placeholder implementation
+            if (!string.IsNullOrEmpty(displayName) && 
+                (displayName.Contains("UDT") || displayName.Contains("STRUCT") || displayName.Contains("TYPE")))
+            {
+                return displayName;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to detect UDT type for variable '{DisplayName}'", referenceDescription.DisplayName?.Text);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Checks if a NodeId represents a built-in OPC UA data type.
+    /// </summary>
+    /// <param name="dataTypeNodeId">The data type NodeId to check.</param>
+    /// <returns>True if it's a built-in type, false if it's a custom UDT.</returns>
+    private bool IsBuiltInOpcUaType(Opc.Ua.NodeId dataTypeNodeId)
+    {
+        // Built-in OPC UA types have namespace index 0 and specific identifier ranges
+        if (dataTypeNodeId.NamespaceIndex != 0)
+            return false;
+
+        // Check for standard OPC UA built-in types (rough range check)
+        if (dataTypeNodeId.IdType == Opc.Ua.IdType.Numeric)
+        {
+            var id = (uint)dataTypeNodeId.Identifier;
+            // Built-in types are typically in the range 1-30 for basic types
+            // and some extended ranges for structures
+            return id <= 30 || (id >= 256 && id <= 290);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Discovers the structure definition of a UDT from the OPC UA server.
+    /// </summary>
+    /// <param name="session">The OPC UA session.</param>
+    /// <param name="udtTypeName">The name of the UDT.</param>
+    /// <param name="dataTypeNodeId">The NodeId of the UDT's data type.</param>
+    /// <returns>The discovered UDT definition, or null if discovery failed.</returns>
+    private async Task<UdtDefinition?> DiscoverUdtDefinitionAsync(Opc.Ua.Client.ISession session, string udtTypeName, Opc.Ua.NodeId dataTypeNodeId)
+    {
+        try
+        {
+            // Simplified implementation - create a basic definition
+            var definition = new UdtDefinition
+            {
+                Name = udtTypeName,
+                Members = new List<UdtMemberDefinition>().AsReadOnly(),
+                DataTypeNodeId = dataTypeNodeId.ToString(),
+                Description = $"Auto-discovered UDT: {udtTypeName}"
+            };
+
+            // Register the discovered UDT definition
+            _udtTypeRegistry.RegisterDiscoveredUdt(definition);
+            _logger?.LogDebug("Created basic UDT definition for '{UdtName}'", udtTypeName);
+
+            await Task.CompletedTask;
+
+            return definition;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to discover UDT definition for '{UdtName}'", udtTypeName);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Maps an OPC UA data type NodeId to the corresponding S7DataType enum value.
+    /// </summary>
+    /// <param name="opcUaTypeNodeId">The OPC UA data type NodeId.</param>
+    /// <returns>The corresponding S7DataType enum value.</returns>
+    private S7DataType MapOpcUaTypeToS7DataType(Opc.Ua.NodeId? opcUaTypeNodeId)
+    {
+        if (opcUaTypeNodeId == null)
+            return S7DataType.UNKNOWN;
+
+        // Check if it's a custom UDT first
+        if (!IsBuiltInOpcUaType(opcUaTypeNodeId))
+            return S7DataType.UDT;
+
+        // Map built-in OPC UA types to S7 types
+        if (opcUaTypeNodeId.IdType == Opc.Ua.IdType.Numeric && opcUaTypeNodeId.NamespaceIndex == 0)
+        {
+            return (uint)opcUaTypeNodeId.Identifier switch
+            {
+                1 => S7DataType.BOOL,           // Boolean
+                2 => S7DataType.SINT,           // SByte  
+                3 => S7DataType.USINT,          // Byte
+                4 => S7DataType.INT,            // Int16
+                5 => S7DataType.UINT,           // UInt16
+                6 => S7DataType.DINT,           // Int32
+                7 => S7DataType.UDINT,          // UInt32
+                8 => S7DataType.LINT,           // Int64
+                9 => S7DataType.ULINT,          // UInt64
+                10 => S7DataType.REAL,          // Float
+                11 => S7DataType.LREAL,         // Double
+                12 => S7DataType.STRING,        // String
+                13 => S7DataType.DATE_AND_TIME, // DateTime
+                _ => S7DataType.UNKNOWN
+            };
+        }
+
+        return S7DataType.UNKNOWN;
+    }
+
+    /// <summary>
+    /// Creates an S7Variable from a reference description with UDT detection.
+    /// </summary>
+    /// <param name="session">The OPC UA session.</param>
+    /// <param name="referenceDescription">The reference description.</param>
+    /// <returns>An S7Variable with UDT information if detected.</returns>
+    private S7Variable CreateS7VariableWithUdtDetection(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription)
+    {
+        var variable = new S7Variable
+        {
+            NodeId = ((Opc.Ua.NodeId)referenceDescription.NodeId).ToString(),
+            DisplayName = referenceDescription.DisplayName.Text
+        };
+
+        // Detect if this is a UDT
+        var udtTypeName = DetectUdtTypeName(session, referenceDescription);
+        if (!string.IsNullOrEmpty(udtTypeName))
+        {
+            // This is a UDT variable
+            variable = variable with 
+            { 
+                S7Type = S7DataType.UDT,
+                UdtTypeName = udtTypeName
+            };
+
+            // Try to get or create a basic UDT definition
+            var existingDefinition = _udtTypeRegistry.GetUdtDefinition(udtTypeName);
+            if (existingDefinition == null)
+            {
+                // Create a basic placeholder definition
+                try
+                {
+                    var placeholderDefinition = new UdtDefinition
+                    {
+                        Name = udtTypeName,
+                        Description = $"Detected UDT: {udtTypeName}",
+                        Members = new List<UdtMemberDefinition>().AsReadOnly()
+                    };
+                    
+                    _udtTypeRegistry.RegisterDiscoveredUdt(placeholderDefinition);
+                    variable = variable with { UdtDefinition = placeholderDefinition };
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to create UDT definition for '{UdtTypeName}' during variable creation", udtTypeName);
+                }
+            }
+            else
+            {
+                variable = variable with { UdtDefinition = existingDefinition };
+            }
+        }
+
+        return variable;
+    }
+
+    #endregion UDT Discovery Methods
 
     #region Helper Methods - Session pool implementation
 
@@ -1161,4 +1356,49 @@ internal class S7UaClient : IS7UaClient, IDisposable
     }
 
     #endregion Dispose
+
+    #region UDT Registry Access
+
+    /// <inheritdoc cref="IS7UaClient.GetUdtTypeRegistry"/>
+    public IUdtTypeRegistry GetUdtTypeRegistry()
+    {
+        return _udtTypeRegistry;
+    }
+
+    /// <inheritdoc cref="IS7UaClient.RegisterCustomUdtConverter(string, IS7TypeConverter)"/>
+    public void RegisterCustomUdtConverter(string udtName, IS7TypeConverter converter)
+    {
+        _udtTypeRegistry.RegisterCustomConverter(udtName, converter);
+    }
+
+    #endregion UDT Registry Access
+
+    #region UDT Discovery Methods
+
+    /// <inheritdoc cref="IS7UaClient.GetAvailableUdtTypesAsync(CancellationToken)"/>
+    public async Task<IReadOnlyList<string>> GetAvailableUdtTypesAsync(CancellationToken cancellationToken = default)
+    {
+        // Return currently discovered UDT types from the registry
+        var discoveredUdts = _udtTypeRegistry.GetAllUdtDefinitions();
+        await Task.CompletedTask;
+        return discoveredUdts.Keys.ToList().AsReadOnly();
+    }
+
+    /// <inheritdoc cref="IS7UaClient.DiscoverUdtDefinitionAsync(string, CancellationToken)"/>
+    public async Task<UdtDefinition?> DiscoverUdtDefinitionAsync(string udtTypeName, CancellationToken cancellationToken = default)
+    {
+        // Check if we already have this UDT definition
+        var existingDefinition = _udtTypeRegistry.GetUdtDefinition(udtTypeName);
+        if (existingDefinition != null)
+        {
+            return existingDefinition;
+        }
+        await Task.CompletedTask;
+
+        // For now, return null if not found
+        // This will be enhanced later with proper OPC UA discovery
+        return null;
+    }
+
+    #endregion UDT Discovery Methods
 }

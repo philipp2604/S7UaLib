@@ -66,5 +66,6 @@ public enum S7DataType
     USINT,
     WCHAR,
     WSTRING,
-    WORD
+    WORD,
+    UDT
 }

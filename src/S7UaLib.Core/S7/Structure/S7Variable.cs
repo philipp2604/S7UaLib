@@ -1,4 +1,5 @@
 ﻿using S7UaLib.Core.Enums;
+using S7UaLib.Core.S7.Udt;
 using System.Text.Json.Serialization;
 
 namespace S7UaLib.Core.S7.Structure;
@@ -32,6 +33,9 @@ public record S7Variable : IS7Variable
     /// <inheritdoc cref="IS7Variable.S7Type" />
     public S7DataType S7Type { get; init; }
 
+    /// <inheritdoc cref="IS7Variable.UdtTypeName" />
+    public string? UdtTypeName { get; init; }
+
     /// <inheritdoc cref="IS7Variable.SystemType" />
     public Type? SystemType { get; init; }
 
@@ -47,6 +51,9 @@ public record S7Variable : IS7Variable
 
     /// <inheritdoc cref="IS7Variable.SamplingInterval" />
     public uint SamplingInterval { get; init; } = 0;
+
+    /// <inheritdoc cref="IS7Variable.UdtDefinition" />
+    public UdtDefinition? UdtDefinition { get; init; }
 
     #endregion Public Properties
 }

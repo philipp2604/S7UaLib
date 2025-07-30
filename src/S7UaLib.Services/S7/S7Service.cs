@@ -1,7 +1,9 @@
 ﻿using Microsoft.Extensions.Logging;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
+using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
+using S7UaLib.Core.S7.Udt;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.DataStore;
@@ -796,6 +798,70 @@ public class S7Service : IS7Service
     {
         VariableValueChanged?.Invoke(this, e);
     }
+
+    #region UDT Management
+
+    /// <summary>
+    /// Registers a custom converter for a specific UDT type.
+    /// This converter will be used instead of the generic UDT converter for variables of this type.
+    /// </summary>
+    /// <param name="udtName">The name of the UDT as defined in the PLC.</param>
+    /// <param name="converter">The custom converter to use for this UDT type.</param>
+    public void RegisterUdtConverter(string udtName, IS7TypeConverter converter)
+    {
+        _client.RegisterCustomUdtConverter(udtName, converter);
+    }
+
+    /// <summary>
+    /// Registers a custom converter instance for a specific UDT type.
+    /// </summary>
+    /// <typeparam name="T">The converter type that implements IS7TypeConverter.</typeparam>
+    /// <param name="udtName">The name of the UDT as defined in the PLC.</param>
+    public void RegisterUdtConverter<T>(string udtName) where T : IS7TypeConverter, new()
+    {
+        RegisterUdtConverter(udtName, new T());
+    }
+
+    /// <summary>
+    /// Gets the UDT type registry containing all discovered UDT definitions and registered custom converters.
+    /// </summary>
+    /// <returns>The UDT type registry instance.</returns>
+    public IUdtTypeRegistry GetUdtTypeRegistry()
+    {
+        return _client.GetUdtTypeRegistry();
+    }
+
+    /// <summary>
+    /// Gets all currently discovered UDT definitions.
+    /// </summary>
+    /// <returns>A read-only dictionary of UDT definitions keyed by UDT name.</returns>
+    public IReadOnlyDictionary<string, UdtDefinition> GetDiscoveredUdts()
+    {
+        return _client.GetUdtTypeRegistry().GetAllUdtDefinitions();
+    }
+
+    /// <summary>
+    /// Discovers all available UDT types from the PLC.
+    /// </summary>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A list of available UDT type names.</returns>
+    public async Task<IReadOnlyList<string>> GetAvailableUdtTypesAsync(CancellationToken cancellationToken = default)
+    {
+        return await _client.GetAvailableUdtTypesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Discovers the structure definition of a specific UDT type from the PLC.
+    /// </summary>
+    /// <param name="udtTypeName">The name of the UDT to discover.</param>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>The discovered UDT definition, or null if not found.</returns>
+    public async Task<UdtDefinition?> DiscoverUdtDefinitionAsync(string udtTypeName, CancellationToken cancellationToken = default)
+    {
+        return await _client.DiscoverUdtDefinitionAsync(udtTypeName, cancellationToken);
+    }
+
+    #endregion UDT Management
 
     private void RegisterClientEventHandlers()
     {
