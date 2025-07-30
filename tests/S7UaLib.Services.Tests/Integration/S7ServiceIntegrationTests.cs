@@ -434,7 +434,7 @@ public class S7ServiceIntegrationTests : IDisposable
             {
                 DisplayName = "MyHiddenInt",
                 FullPath = registeredPath,
-                NodeId = $"ns=3;s=\"NonBrowsableDB\".\"MyHiddenInt\"",
+                NodeId = "ns=3;s=\"NonBrowsableDB\".\"MyHiddenInt\"",
                 S7Type = S7DataType.INT
             };
             Assert.True(await service.RegisterGlobalDataBlockAsync(dbToRegister));

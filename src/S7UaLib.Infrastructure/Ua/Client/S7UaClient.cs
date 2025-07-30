@@ -423,31 +423,22 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(GetSingletonStructureElementCore<S7Counters>(session, _countersRootNode)), cancellationToken);
     }
 
-    /// <inheritdoc cref="IS7UaClient.DiscoverElementAsync(IUaElement, CancellationToken)"/>
-    public async Task<IUaNode?> DiscoverElementAsync(IUaNode elementShell, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Discovers the full structure of any UA node using a unified approach.
+    /// </summary>
+    /// <param name="nodeShell">The node shell to discover.</param>
+    /// <param name="cancellationToken">A cancellation token to abort the operation.</param>
+    /// <returns>The discovered node with populated structure, or null if the input is null.</returns>
+    public async Task<IUaNode?> DiscoverNodeAsync(IUaNode nodeShell, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        if (elementShell is null)
+        if (nodeShell is null)
         {
-            _logger?.LogWarning("DiscoverElement was called with a null element shell.");
+            _logger?.LogWarning("DiscoverNodeAsync was called with a null node shell.");
             return null;
         }
 
-        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverElementCore(session, elementShell)), cancellationToken);
-    }
-
-    /// <inheritdoc cref="IS7UaClient.DiscoverVariablesOfElementAsync(T, CancellationToken)"/>
-    public async Task<T> DiscoverVariablesOfElementAsync<T>(T element, CancellationToken cancellationToken = default) where T : S7StructureElement
-    {
-        ThrowIfDisposed();
-        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverVariablesOfElementCore(session, element)), cancellationToken);
-    }
-
-    /// <inheritdoc cref="IS7UaClient.DiscoverInstanceOfDataBlockAsync(S7DataBlockInstance, CancellationToken)"/>
-    public async Task<IS7DataBlockInstance> DiscoverInstanceOfDataBlockAsync(S7DataBlockInstance instanceDbShell, CancellationToken cancellationToken = default)
-    {
-        ThrowIfDisposed();
-        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverInstanceOfDataBlockCore(session, instanceDbShell)), cancellationToken);
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverNodeCore(session, nodeShell)), cancellationToken);
     }
 
     #endregion Structure Browsing and Discovery Methods (delegated to session pool)
@@ -456,11 +447,18 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #region Reading Methods
 
-    /// <inheritdoc cref="IS7UaClient.ReadValuesOfElementAsync{T}(T, string?, CancellationToken)"/>
-    public async Task<T> ReadValuesOfElementAsync<T>(T elementWithStructure, string? rootContextName = null, CancellationToken cancellationToken = default) where T : IUaNode
+    /// <summary>
+    /// Reads values for any discovered node structure using a unified approach.
+    /// </summary>
+    /// <typeparam name="T">The type of the node to read values for.</typeparam>
+    /// <param name="nodeWithStructure">The node with discovered structure.</param>
+    /// <param name="rootContextName">Optional root context name for path building.</param>
+    /// <param name="cancellationToken">A cancellation token to abort the operation.</param>
+    /// <returns>The node populated with current values.</returns>
+    public async Task<T> ReadNodeValuesAsync<T>(T nodeWithStructure, string? rootContextName = null, CancellationToken cancellationToken = default) where T : IUaNode
     {
         ThrowIfDisposed();
-        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(ReadValuesOfElementCore(session, elementWithStructure, rootContextName)), cancellationToken);
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(ReadNodeValuesCore(session, nodeWithStructure, rootContextName)), cancellationToken);
     }
 
     #endregion Reading Methods
@@ -625,6 +623,182 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
     #endregion Event Handlers
 
+    #region Shared Discovery Logic
+
+    /// <summary>
+    /// Common browsing logic for discovering child nodes based on provided context.
+    /// </summary>
+    /// <param name="session">The OPC UA session.</param>
+    /// <param name="nodeId">The NodeId to browse.</param>
+    /// <param name="context">The discovery context containing browsing parameters.</param>
+    /// <returns>A collection of discovered child nodes.</returns>
+    private IEnumerable<IUaNode> BrowseAndCreateNodes(Opc.Ua.Client.ISession session, string nodeId, NodeDiscoveryContext context)
+    {
+        if (!session.Connected)
+        {
+            _logger?.LogError("Cannot browse nodes for '{NodeId}'; session is not connected.", nodeId);
+            return [];
+        }
+
+        var browser = new Opc.Ua.Client.Browser(session)
+        {
+            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
+            NodeClassMask = (int)context.NodeClassMask,
+            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
+            IncludeSubtypes = true
+        };
+
+        try
+        {
+            var childDescriptions = browser.Browse(nodeId);
+            return childDescriptions
+                .Where(context.Filter)
+                .Select(context.NodeFactory);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to browse nodes for '{NodeId}'.", nodeId);
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Unified node discovery method that dispatches to specialized handlers based on node type.
+    /// </summary>
+    /// <param name="session">The OPC UA session.</param>
+    /// <param name="nodeShell">The node shell to discover.</param>
+    /// <returns>The discovered node with populated structure.</returns>
+    private IUaNode DiscoverNodeCore(Opc.Ua.Client.ISession session, IUaNode nodeShell)
+    {
+        if (nodeShell?.NodeId is null)
+        {
+            _logger?.LogWarning("DiscoverNodeCore called with a null node or node with null NodeId.");
+            return nodeShell ?? throw new ArgumentNullException(nameof(nodeShell));
+        }
+
+        return nodeShell switch
+        {
+            S7DataBlockGlobal globalDb => DiscoverGlobalDbCore(session, globalDb),
+            S7DataBlockInstance instanceDb => DiscoverInstanceDbCore(session, instanceDb),
+            S7InstanceDbSection section => DiscoverSectionCore(session, section),
+            S7StructureElement element => DiscoverSimpleElementCore(session, element),
+            _ => nodeShell
+        };
+    }
+
+    /// <summary>
+    /// Discovers the structure of a global data block.
+    /// </summary>
+    private S7DataBlockGlobal DiscoverGlobalDbCore(Opc.Ua.Client.ISession session, S7DataBlockGlobal globalDb)
+    {
+        var context = new NodeDiscoveryContext(
+            Opc.Ua.NodeClass.Variable,
+            desc => desc.DisplayName.Text != "Icon",
+            desc => new S7Variable
+            {
+                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                DisplayName = desc.DisplayName.Text
+            }
+        );
+
+        var variables = BrowseAndCreateNodes(session, globalDb.NodeId!, context).Cast<S7Variable>().ToList();
+        return globalDb with { Variables = variables };
+    }
+
+    /// <summary>
+    /// Discovers the structure of an instance data block with its four sections.
+    /// </summary>
+    private S7DataBlockInstance DiscoverInstanceDbCore(Opc.Ua.Client.ISession session, S7DataBlockInstance instanceDb)
+    {
+        var context = new NodeDiscoveryContext(
+            Opc.Ua.NodeClass.Object,
+            _ => true,
+            desc => new S7InstanceDbSection
+            {
+                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                DisplayName = desc.DisplayName.Text
+            }
+        );
+
+        var sections = BrowseAndCreateNodes(session, instanceDb.NodeId!, context)
+            .Cast<S7InstanceDbSection>()
+            .Select(section => (S7InstanceDbSection)DiscoverNodeCore(session, section))
+            .ToArray();
+
+        return instanceDb with
+        {
+            Inputs = sections.FirstOrDefault(s => s.DisplayName == "Inputs"),
+            Outputs = sections.FirstOrDefault(s => s.DisplayName == "Outputs"),
+            InOuts = sections.FirstOrDefault(s => s.DisplayName == "InOuts"),
+            Static = sections.FirstOrDefault(s => s.DisplayName == "Static")
+        };
+    }
+
+    /// <summary>
+    /// Discovers the contents of an instance data block section.
+    /// </summary>
+    private S7InstanceDbSection DiscoverSectionCore(Opc.Ua.Client.ISession session, S7InstanceDbSection section)
+    {
+#pragma warning disable RCS1130 // Bitwise operation on enum without Flags attribute
+        var context = new NodeDiscoveryContext(
+            Opc.Ua.NodeClass.Variable | Opc.Ua.NodeClass.Object,
+            desc => desc.DisplayName.Text != "Icon",
+            desc => desc.NodeClass == Opc.Ua.NodeClass.Variable
+                ? new S7Variable
+                {
+                    NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                    DisplayName = desc.DisplayName.Text
+                }
+                : new S7DataBlockInstance
+                {
+                    NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                    DisplayName = desc.DisplayName.Text
+                }
+        );
+#pragma warning restore RCS1130 // Bitwise operation on enum without Flags attribute
+
+        var children = BrowseAndCreateNodes(session, section.NodeId!, context).ToList();
+
+        var variables = children.OfType<S7Variable>().ToList();
+        var nestedInstances = children.OfType<S7DataBlockInstance>()
+            .Select(nested => (S7DataBlockInstance)DiscoverNodeCore(session, nested))
+            .ToList();
+
+        return section with { Variables = variables, NestedInstances = nestedInstances };
+    }
+
+    /// <summary>
+    /// Discovers variables within a simple structure element.
+    /// </summary>
+    private S7StructureElement DiscoverSimpleElementCore(Opc.Ua.Client.ISession session, S7StructureElement element)
+    {
+        var context = new NodeDiscoveryContext(
+            Opc.Ua.NodeClass.Variable,
+            desc => desc.DisplayName.Text != "Icon",
+            desc => new S7Variable
+            {
+                NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
+                DisplayName = desc.DisplayName.Text
+            }
+        );
+
+        var variables = BrowseAndCreateNodes(session, element.NodeId!, context).Cast<S7Variable>().ToList();
+
+        // Apply special type handling for Counters and Timers
+        if (element.DisplayName == "Counters")
+        {
+            variables = variables.ConvertAll(variable => variable with { S7Type = S7DataType.COUNTER });
+        }
+        else if (element.DisplayName == "Timers")
+        {
+            variables = variables.ConvertAll(variable => variable with { S7Type = S7DataType.S5TIME });
+        }
+
+        return element with { Variables = variables };
+    }
+
+    #endregion Shared Discovery Logic
+
     #region Helper Methods - Session pool implementation
 
     private ReadOnlyCollection<T> GetAllStructureElementsCore<T>(Opc.Ua.Client.ISession session, Opc.Ua.NodeId rootNode, Opc.Ua.NodeClass expectedNodeClass) where T : S7StructureElement, new()
@@ -671,60 +845,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         string displayName = (result.Value as Opc.Ua.LocalizedText)?.Text ?? node.ToString();
         return new T { NodeId = node.ToString(), DisplayName = displayName };
-    }
-
-    private IUaNode? DiscoverElementCore(Opc.Ua.Client.ISession session, IUaNode elementShell)
-    {
-        return elementShell switch
-        {
-            S7DataBlockInstance idb => DiscoverInstanceOfDataBlockCore(session, idb),
-            S7StructureElement simpleElement => DiscoverVariablesOfElementCore(session, (dynamic)simpleElement),
-            _ => new Func<IUaNode?>(() =>
-            {
-                _logger?.LogWarning("DiscoverElement was called with an unsupported element type: {ElementType}", elementShell.GetType().Name);
-                return null;
-            })(),
-        };
-    }
-
-    private T DiscoverVariablesOfElementCore<T>(Opc.Ua.Client.ISession session, T element) where T : S7StructureElement
-    {
-        if (element?.NodeId is null)
-        {
-            _logger?.LogWarning("Cannot discover variables for element of type {ElementType} because it or its NodeId is null.", typeof(T).Name);
-            return element!;
-        }
-        if (!session.Connected)
-        {
-            _logger?.LogError("Cannot discover variables for '{DisplayName}'; session is not connected.", element.DisplayName);
-            return element;
-        }
-
-        var browser = new Opc.Ua.Client.Browser(session)
-        {
-            BrowseDirection = Opc.Ua.BrowseDirection.Forward,
-            NodeClassMask = (int)Opc.Ua.NodeClass.Variable,
-            ReferenceTypeId = Opc.Ua.ReferenceTypeIds.HierarchicalReferences,
-            IncludeSubtypes = true
-        };
-        Opc.Ua.ReferenceDescriptionCollection variableDescriptions = browser.Browse(element.NodeId);
-
-        var discoveredVariables = variableDescriptions
-            .Where(desc => desc.DisplayName.Text != "Icon")
-            .Select(desc => new S7Variable { NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(), DisplayName = desc.DisplayName.Text }).ToList();
-
-        if (element.DisplayName == "Counters")
-        {
-            discoveredVariables = discoveredVariables
-                .ConvertAll(variable => variable with { S7Type = S7DataType.COUNTER });
-        }
-        else if (element.DisplayName == "Timers")
-        {
-            discoveredVariables = discoveredVariables
-                .ConvertAll(variable => variable with { S7Type = S7DataType.S5TIME });
-        }
-
-        return element with { Variables = discoveredVariables };
     }
 
     private S7DataBlockInstance DiscoverInstanceOfDataBlockCore(Opc.Ua.Client.ISession session, S7DataBlockInstance instanceDbShell)
@@ -797,23 +917,27 @@ internal class S7UaClient : IS7UaClient, IDisposable
         return sectionShell with { Variables = variables, NestedInstances = nestedInstances };
     }
 
-    private T ReadValuesOfElementCore<T>(Opc.Ua.Client.ISession session, T elementWithStructure, string? rootContextName = null) where T : IUaNode
+    /// <summary>
+    /// Core method for reading values from any discovered node structure.
+    /// </summary>
+    private T ReadNodeValuesCore<T>(Opc.Ua.Client.ISession session, T nodeWithStructure, string? rootContextName = null) where T : IUaNode
     {
-        if (elementWithStructure?.NodeId is null)
+        if (nodeWithStructure?.NodeId is null)
         {
-            _logger?.LogWarning("ReadValuesOfElement called with a null element or element with a null NodeId.");
-            return elementWithStructure!;
+            _logger?.LogWarning("ReadNodeValuesCore called with a null node or node with null NodeId.");
+            return nodeWithStructure!;
         }
         if (!session.Connected)
         {
-            _logger?.LogError("Cannot read values for '{DisplayName}'; session is not connected.", elementWithStructure.DisplayName);
-            return elementWithStructure;
+            _logger?.LogError("Cannot read values for '{DisplayName}'; session is not connected.", nodeWithStructure.DisplayName);
+            return nodeWithStructure;
         }
 
-        string initialPathPrefix = BuildInitialPath(elementWithStructure, rootContextName);
+        var pathBuilder = new PathBuilder(rootContextName);
+        var initialPath = pathBuilder.BuildInitialPath(nodeWithStructure);
 
         var nodesToReadCollector = new Dictionary<Opc.Ua.NodeId, S7Variable>();
-        CollectNodesToReadRecursivelyCore(session, elementWithStructure, nodesToReadCollector, initialPathPrefix);
+        CollectNodesToReadRecursively(session, nodeWithStructure, nodesToReadCollector, pathBuilder.Child(nodeWithStructure.DisplayName));
 
         var readResultsMap = new Dictionary<Opc.Ua.NodeId, Opc.Ua.DataValue>();
         if (nodesToReadCollector.Count > 0)
@@ -828,111 +952,128 @@ internal class S7UaClient : IS7UaClient, IDisposable
             }
         }
 
-        return (T)RebuildHierarchyWithValuesRecursivelyCore(session, elementWithStructure, readResultsMap, initialPathPrefix);
+        return (T)RebuildHierarchyWithValues(session, nodeWithStructure, readResultsMap, pathBuilder.Child(nodeWithStructure.DisplayName));
     }
 
-    private IUaNode RebuildHierarchyWithValuesRecursivelyCore(
+    /// <summary>
+    /// Recursively rebuilds the node hierarchy with read values using unified logic.
+    /// </summary>
+    private IUaNode RebuildHierarchyWithValues(
         Opc.Ua.Client.ISession session,
-        IUaNode templateElement,
+        IUaNode templateNode,
         IReadOnlyDictionary<Opc.Ua.NodeId, Opc.Ua.DataValue> readResultsMap,
-        string currentPath)
+        PathBuilder pathBuilder)
     {
-        switch (templateElement)
+        return templateNode switch
         {
-            case S7DataBlockInstance idb:
-                var newInput = idb.Inputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.Inputs, readResultsMap, $"{currentPath}.{idb.Inputs.DisplayName}") : null;
-                var newOutput = idb.Outputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.Outputs, readResultsMap, $"{currentPath}.{idb.Outputs.DisplayName}") : null;
-                var newInOut = idb.InOuts != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.InOuts, readResultsMap, $"{currentPath}.{idb.InOuts.DisplayName}") : null;
-                var newStatic = idb.Static != null ? (S7InstanceDbSection)RebuildHierarchyWithValuesRecursivelyCore(session, idb.Static, readResultsMap, $"{currentPath}.{idb.Static.DisplayName}") : null;
-                return idb with { Inputs = newInput, Outputs = newOutput, InOuts = newInOut, Static = newStatic };
+            S7DataBlockInstance idb => idb with
+            {
+                Inputs = idb.Inputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValues(session, idb.Inputs, readResultsMap, pathBuilder.Child(idb.Inputs.DisplayName)) : null,
+                Outputs = idb.Outputs != null ? (S7InstanceDbSection)RebuildHierarchyWithValues(session, idb.Outputs, readResultsMap, pathBuilder.Child(idb.Outputs.DisplayName)) : null,
+                InOuts = idb.InOuts != null ? (S7InstanceDbSection)RebuildHierarchyWithValues(session, idb.InOuts, readResultsMap, pathBuilder.Child(idb.InOuts.DisplayName)) : null,
+                Static = idb.Static != null ? (S7InstanceDbSection)RebuildHierarchyWithValues(session, idb.Static, readResultsMap, pathBuilder.Child(idb.Static.DisplayName)) : null
+            },
 
-            case S7InstanceDbSection section:
-                var newVars = section.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(session, v, readResultsMap, currentPath)).ToList();
-                var newNested = section.NestedInstances.Select(n => (S7DataBlockInstance)RebuildHierarchyWithValuesRecursivelyCore(session, n, readResultsMap, $"{currentPath}.{n.DisplayName}")).ToList();
-                return section with { Variables = newVars, NestedInstances = newNested };
+            S7InstanceDbSection section => section with
+            {
+                Variables = section.Variables.Select(v => (S7Variable)RebuildHierarchyWithValues(session, v, readResultsMap, pathBuilder)).ToList(),
+                NestedInstances = section.NestedInstances.Select(n => (S7DataBlockInstance)RebuildHierarchyWithValues(session, n, readResultsMap, pathBuilder.Child(n.DisplayName))).ToList()
+            },
 
-            case S7StructureElement simpleElement:
-                var newSimpleVars = simpleElement.Variables.Select(v => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(session, v, readResultsMap, currentPath)).ToList();
-                return simpleElement with { Variables = newSimpleVars };
+            S7StructureElement simpleElement => simpleElement with
+            {
+                Variables = simpleElement.Variables.Select(v => (S7Variable)RebuildHierarchyWithValues(session, v, readResultsMap, pathBuilder)).ToList()
+            },
 
-            case S7Variable variable:
-                string fullPath = $"{currentPath}.{variable.DisplayName}";
+            S7Variable variable => ProcessVariableWithValues(session, variable, readResultsMap, pathBuilder),
 
-                if (variable.S7Type == S7DataType.STRUCT)
-                {
-                    var discoveredMembers = DiscoverVariablesOfElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
-
-                    var templateMembersByName = variable.StructMembers
-                        .Where(m => m.DisplayName is not null)
-                        .ToDictionary(m => m.DisplayName!, m => m);
-
-                    var membersToProcess = discoveredMembers.Cast<S7Variable>().Select(discoveredMember =>
-                    {
-                        templateMembersByName.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var templateMember);
-
-                        return (IS7Variable)(discoveredMember with
-                        {
-                            S7Type = templateMember?.S7Type ?? S7DataType.UNKNOWN,
-                            StructMembers = templateMember?.StructMembers ?? []
-                        });
-                    });
-
-                    var processedMembers = membersToProcess
-                        .Select(m => (S7Variable)RebuildHierarchyWithValuesRecursivelyCore(session, m, readResultsMap, fullPath))
-                        .ToList();
-
-                    return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good) };
-                }
-
-                if (variable.NodeId != null && readResultsMap.TryGetValue(variable.NodeId, out var dataValue))
-                {
-                    var converter = this.GetConverter(variable.S7Type, dataValue.Value?.GetType() ?? typeof(object));
-                    var rawValue = dataValue.Value;
-                    var finalValue = converter.ConvertFromOpc(rawValue);
-
-                    return variable with
-                    {
-                        RawOpcValue = rawValue,
-                        Value = finalValue,
-                        SystemType = converter.TargetType,
-                        FullPath = fullPath,
-                        StatusCode = UaStatusCodeConverter.Convert(dataValue.StatusCode)
-                    };
-                }
-
-                return variable with { FullPath = fullPath, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.BadWaitingForInitialData) };
-
-            default:
-                _logger?.LogWarning("RebuildHierarchy encountered an unhandled element type: {ElementType}", templateElement.GetType().Name);
-                return templateElement;
-        }
+            _ => templateNode
+        };
     }
 
-    private void CollectNodesToReadRecursivelyCore(Opc.Ua.Client.ISession session, IUaNode currentElement, IDictionary<Opc.Ua.NodeId, S7Variable> collectedNodes, string currentPath)
+    /// <summary>
+    /// Processes a single variable with its values, handling both simple and struct types.
+    /// </summary>
+    private S7Variable ProcessVariableWithValues(
+        Opc.Ua.Client.ISession session,
+        S7Variable variable,
+        IReadOnlyDictionary<Opc.Ua.NodeId, Opc.Ua.DataValue> readResultsMap,
+        PathBuilder pathBuilder)
     {
-        switch (currentElement)
+        var fullPath = pathBuilder.Child(variable.DisplayName).CurrentPath;
+
+        if (variable.S7Type == S7DataType.STRUCT)
+        {
+            var discoveredMembers = DiscoverSimpleElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
+
+            var templateMembersByName = variable.StructMembers
+                .Where(m => m.DisplayName is not null)
+                .ToDictionary(m => m.DisplayName!, m => m);
+
+            var membersToProcess = discoveredMembers.Cast<S7Variable>().Select(discoveredMember =>
+            {
+                templateMembersByName.TryGetValue(discoveredMember.DisplayName ?? string.Empty, out var templateMember);
+
+                return discoveredMember with
+                {
+                    S7Type = templateMember?.S7Type ?? S7DataType.UNKNOWN,
+                    StructMembers = templateMember?.StructMembers ?? []
+                };
+            });
+
+            var processedMembers = membersToProcess
+                .Select(m => (S7Variable)RebuildHierarchyWithValues(session, m, readResultsMap, pathBuilder.Child(variable.DisplayName)))
+                .ToList();
+
+            return variable with { FullPath = fullPath, StructMembers = processedMembers, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good) };
+        }
+
+        if (variable.NodeId != null && readResultsMap.TryGetValue(variable.NodeId, out var dataValue))
+        {
+            var converter = this.GetConverter(variable.S7Type, dataValue.Value?.GetType() ?? typeof(object));
+            var rawValue = dataValue.Value;
+            var finalValue = converter.ConvertFromOpc(rawValue);
+
+            return variable with
+            {
+                RawOpcValue = rawValue,
+                Value = finalValue,
+                SystemType = converter.TargetType,
+                FullPath = fullPath,
+                StatusCode = UaStatusCodeConverter.Convert(dataValue.StatusCode)
+            };
+        }
+
+        return variable with { FullPath = fullPath, StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.BadWaitingForInitialData) };
+    }
+
+    /// <summary>
+    /// Recursively collects all readable nodes using unified logic.
+    /// </summary>
+    private void CollectNodesToReadRecursively(Opc.Ua.Client.ISession session, IUaNode currentNode, IDictionary<Opc.Ua.NodeId, S7Variable> collectedNodes, PathBuilder pathBuilder)
+    {
+        switch (currentNode)
         {
             case S7DataBlockInstance idb:
-                if (idb.Inputs != null) CollectNodesToReadRecursivelyCore(session, idb.Inputs, collectedNodes, $"{currentPath}.{idb.Inputs.DisplayName}");
-                if (idb.Outputs != null) CollectNodesToReadRecursivelyCore(session, idb.Outputs, collectedNodes, $"{currentPath}.{idb.Outputs.DisplayName}");
-                if (idb.InOuts != null) CollectNodesToReadRecursivelyCore(session, idb.InOuts, collectedNodes, $"{currentPath}.{idb.InOuts.DisplayName}");
-                if (idb.Static != null) CollectNodesToReadRecursivelyCore(session, idb.Static, collectedNodes, $"{currentPath}.{idb.Static.DisplayName}");
+                if (idb.Inputs != null) CollectNodesToReadRecursively(session, idb.Inputs, collectedNodes, pathBuilder.Child(idb.Inputs.DisplayName));
+                if (idb.Outputs != null) CollectNodesToReadRecursively(session, idb.Outputs, collectedNodes, pathBuilder.Child(idb.Outputs.DisplayName));
+                if (idb.InOuts != null) CollectNodesToReadRecursively(session, idb.InOuts, collectedNodes, pathBuilder.Child(idb.InOuts.DisplayName));
+                if (idb.Static != null) CollectNodesToReadRecursively(session, idb.Static, collectedNodes, pathBuilder.Child(idb.Static.DisplayName));
                 break;
 
             case S7InstanceDbSection section:
-                foreach (var variable in section.Variables) CollectNodesToReadRecursivelyCore(session, variable, collectedNodes, currentPath);
-                foreach (var nestedIdb in section.NestedInstances) CollectNodesToReadRecursivelyCore(session, nestedIdb, collectedNodes, $"{currentPath}.{nestedIdb.DisplayName}");
+                foreach (var variable in section.Variables) CollectNodesToReadRecursively(session, variable, collectedNodes, pathBuilder);
+                foreach (var nestedIdb in section.NestedInstances) CollectNodesToReadRecursively(session, nestedIdb, collectedNodes, pathBuilder.Child(nestedIdb.DisplayName));
                 break;
 
             case S7StructureElement simpleElement:
-                foreach (var variable in simpleElement.Variables) CollectNodesToReadRecursivelyCore(session, variable, collectedNodes, currentPath);
+                foreach (var variable in simpleElement.Variables) CollectNodesToReadRecursively(session, variable, collectedNodes, pathBuilder);
                 break;
 
             case S7Variable variable:
-                string fullPath = $"{currentPath}.{variable.DisplayName}";
                 if (variable.S7Type == S7DataType.STRUCT)
                 {
-                    var discoveredMembers = DiscoverVariablesOfElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
+                    var discoveredMembers = DiscoverSimpleElementCore(session, new S7StructureElement { NodeId = variable.NodeId }).Variables;
 
                     if (variable.StructMembers.Any())
                     {
@@ -947,11 +1088,11 @@ internal class S7UaClient : IS7UaClient, IDisposable
                                     S7Type = templateMember.S7Type,
                                     StructMembers = templateMember.StructMembers
                                 };
-                                CollectNodesToReadRecursivelyCore(session, memberToRecurse, collectedNodes, fullPath);
+                                CollectNodesToReadRecursively(session, memberToRecurse, collectedNodes, pathBuilder.Child(variable.DisplayName));
                             }
                             else
                             {
-                                CollectNodesToReadRecursivelyCore(session, discoveredMember, collectedNodes, fullPath);
+                                CollectNodesToReadRecursively(session, discoveredMember, collectedNodes, pathBuilder.Child(variable.DisplayName));
                             }
                         }
                     }
@@ -959,7 +1100,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     {
                         foreach (var member in discoveredMembers)
                         {
-                            CollectNodesToReadRecursivelyCore(session, member, collectedNodes, fullPath);
+                            CollectNodesToReadRecursively(session, member, collectedNodes, pathBuilder.Child(variable.DisplayName));
                         }
                     }
                 }
@@ -971,14 +1112,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
     }
 
-    private static string BuildInitialPath(IUaNode element, string? rootContextName)
-    {
-        return string.IsNullOrEmpty(rootContextName)
-            ? element.DisplayName ?? string.Empty
-            : rootContextName.Equals(element.DisplayName, StringComparison.OrdinalIgnoreCase)
-            ? rootContextName
-            : $"{rootContextName}.{element.DisplayName}";
-    }
 
     private void ThrowIfDisposed()
     {
