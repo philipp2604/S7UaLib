@@ -501,49 +501,45 @@ internal class S7UaClient : IS7UaClient, IDisposable
         if (variable.NodeId == null)
             throw new ArgumentException($"Variable '{variable.DisplayName}' has no NodeId and cannot be written to.", nameof(variable));
 
-        // Check if this is a UDT variable with a custom converter
-        if ((variable.S7Type == S7DataType.UDT || variable.S7Type == S7DataType.STRUCT) &&
+        // Check if this is a UDT/STRUCT variable (single or array) with a custom converter
+        if ((variable.S7Type is S7DataType.UDT or S7DataType.STRUCT or S7DataType.ARRAY_OF_UDT) &&
             !string.IsNullOrWhiteSpace(variable.UdtTypeName) &&
             _udtTypeRegistry.HasCustomConverter(variable.UdtTypeName))
         {
-            _logger?.LogDebug("WriteVariableAsync: Found custom UDT converter for type '{UdtTypeName}' on variable '{DisplayName}'", variable.UdtTypeName, variable.DisplayName);
             var customConverter = _udtTypeRegistry.GetCustomConverter(variable.UdtTypeName);
-            var udtType = _udtTypeRegistry.GetUdtType(variable.UdtTypeName);
-
-            // Check if the value is of the expected UDT type
-            _logger?.LogDebug("WriteVariableAsync: customConverter null: {IsNull}, customConverter type: {ConverterType}, customConverter is IUdtConverterBase: {IsConverterBase}, udtType: {UdtType}, value type: {ValueType}, IsInstanceOfType: {IsInstanceOfType}",
-                customConverter == null, customConverter?.GetType().Name ?? "null", customConverter is IUdtConverterBase, udtType?.Name ?? "null", value.GetType().Name, udtType?.IsInstanceOfType(value) ?? false);
-
             if (customConverter is IUdtConverterBase udtConverter)
             {
-                _logger?.LogDebug("WriteVariableAsync: Successfully cast to IUdtConverterBase");
-                if (udtType != null)
+                try
                 {
-                    _logger?.LogDebug("WriteVariableAsync: udtType is not null: {UdtTypeName}", udtType.Name);
-                    if (udtType.IsInstanceOfType(value))
+                    // Handle ARRAY_OF_UDT
+                    if (variable.S7Type == S7DataType.ARRAY_OF_UDT)
                     {
-                        _logger?.LogDebug("WriteVariableAsync: Value is instance of UDT type");
-                    }
-                    else
-                    {
-                        _logger?.LogDebug("WriteVariableAsync: Value is NOT instance of UDT type");
-                    }
-                }
-                else
-                {
-                    _logger?.LogDebug("WriteVariableAsync: udtType is null");
-                }
+                        if (value is not IList udtList)
+                        {
+                            _logger?.LogWarning("WriteVariableAsync for ARRAY_OF_UDT requires an IList value, but received {ValueType}", value.GetType().Name);
+                            return false;
+                        }
 
-                if (udtType?.IsInstanceOfType(value) == true)
-                {
-                    try
-                    {
-                        // Convert the UDT object back to struct members for writing
-                        var updatedMembers = udtConverter.ConvertToUdtMembers(value, variable.StructMembers);
+                        if (udtList.Count != variable.StructMembers.Count)
+                        {
+                            _logger?.LogWarning("WriteVariableAsync for ARRAY_OF_UDT failed: List size ({ListCount}) does not match array size ({ArraySize})", udtList.Count, variable.StructMembers.Count);
+                            return false;
+                        }
 
-                        // Write each member individually
+                        var allMembersToWrite = new List<IS7Variable>();
+                        for (int i = 0; i < udtList.Count; i++)
+                        {
+                            var udtObject = udtList[i];
+                            var templateElement = variable.StructMembers[i];
+                            if (udtObject != null)
+                            {
+                                var updatedElementMembers = udtConverter.ConvertToUdtMembers(udtObject, templateElement.StructMembers);
+                                allMembersToWrite.AddRange(updatedElementMembers);
+                            }
+                        }
+
                         var writeResults = new List<bool>();
-                        foreach (var member in updatedMembers)
+                        foreach (var member in allMembersToWrite)
                         {
                             if (member.NodeId != null && member.Value != null)
                             {
@@ -551,15 +547,32 @@ internal class S7UaClient : IS7UaClient, IDisposable
                                 writeResults.Add(result);
                             }
                         }
-
-                        // Return true only if all member writes were successful
                         return writeResults.All(r => r);
                     }
-                    catch (Exception ex)
+                    // Handle single UDT/STRUCT
+                    else
                     {
-                        _logger?.LogError(ex, "Failed to convert UDT object '{UdtTypeName}' for writing to variable '{DisplayName}'", variable.UdtTypeName, variable.DisplayName);
-                        return false;
+                        var udtType = _udtTypeRegistry.GetUdtType(variable.UdtTypeName);
+                        if (udtType?.IsInstanceOfType(value) == true)
+                        {
+                            var updatedMembers = udtConverter.ConvertToUdtMembers(value, variable.StructMembers);
+                            var writeResults = new List<bool>();
+                            foreach (var member in updatedMembers)
+                            {
+                                if (member.NodeId != null && member.Value != null)
+                                {
+                                    var result = await WriteVariableAsync(member.NodeId, member.Value, member.S7Type, cancellationToken).ConfigureAwait(false);
+                                    writeResults.Add(result);
+                                }
+                            }
+                            return writeResults.All(r => r);
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Failed to convert UDT object '{UdtTypeName}' for writing to variable '{DisplayName}'", variable.UdtTypeName, variable.DisplayName);
+                    return false;
                 }
             }
         }
@@ -1035,13 +1048,27 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private S7Variable CreateS7VariableWithUdtDetection(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription)
     {
         var nodeId = (Opc.Ua.NodeId)referenceDescription.NodeId;
+        string displayName = referenceDescription.DisplayName.Text;
+
+        if (nodeId.Identifier is string nodeIdStr && nodeIdStr.Contains("["))
+        {
+            int lastBracketIndex = nodeIdStr.LastIndexOf('[');
+
+            if (lastBracketIndex > -1 && nodeIdStr.EndsWith("]"))
+            {
+                int lastDotIndex = nodeIdStr.LastIndexOf('.', lastBracketIndex);
+                int nameStartIndex = lastDotIndex + 1;
+                string arrayName = nodeIdStr.Substring(nameStartIndex, lastBracketIndex - nameStartIndex);
+                displayName = arrayName.Trim('"') + nodeIdStr.Substring(lastBracketIndex);
+            }
+        }
+
         var variable = new S7Variable
         {
             NodeId = nodeId.ToString(),
-            DisplayName = referenceDescription.DisplayName.Text
+            DisplayName = displayName
         };
 
-        // Get the variable's DataType and ValueType attributes from OPC UA
         try
         {
             var readValues = new Opc.Ua.ReadValueIdCollection
@@ -1068,19 +1095,16 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 valueRank = results[1].Value as int?;
             }
 
-            // Use MapOpcUaTypeToS7DataType to determine the correct S7DataType
             var s7DataType = MapOpcUaTypeToS7DataType(dataTypeNodeId, valueRank);
             variable = variable with { S7Type = s7DataType };
 
-            // Handle UDT-specific logic if it's a UDT
-            if (s7DataType == S7DataType.UDT)
+            if (s7DataType is S7DataType.UDT or S7DataType.ARRAY_OF_UDT)
             {
                 var udtTypeName = DetectUdtTypeName(dataTypeNodeId);
                 if (!string.IsNullOrEmpty(udtTypeName))
                 {
                     variable = variable with { UdtTypeName = udtTypeName };
 
-                    // Try to get or create a basic UDT definition
                     var existingDefinition = _udtTypeRegistry.GetUdtDefinition(udtTypeName);
                     if (existingDefinition == null)
                     {
@@ -1140,11 +1164,10 @@ internal class S7UaClient : IS7UaClient, IDisposable
             };
         }
 
-        // Start with basic variable creation using existing logic
         var variable = CreateS7VariableWithUdtDetection(session, referenceDescription);
 
-        // If it's a STRUCT or UDT, discover its members recursively
-        if (variable.S7Type == S7DataType.STRUCT || variable.S7Type == S7DataType.UDT)
+        // If it's a STRUCT, UDT, or an array of UDTs, discover its members/elements recursively
+        if (variable.S7Type is S7DataType.STRUCT or S7DataType.UDT or S7DataType.ARRAY_OF_UDT)
         {
             try
             {
@@ -1152,12 +1175,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 var members = DiscoverStructOrUdtMembers(session, variable.NodeId!, depth + 1, maxDepth);
                 _logger?.LogDebug("Discovered {MemberCount} members for variable '{DisplayName}'", members.Count, variable.DisplayName);
 
-                // For both STRUCT and UDT, populate the StructMembers
+                // For STRUCT, UDT, and ARRAY_OF_UDT, populate the StructMembers
                 variable = variable with { StructMembers = members };
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Failed to discover members for STRUCT/UDT variable '{DisplayName}' at depth {Depth}", variable.DisplayName, depth);
+                _logger?.LogError(ex, "Failed to discover members for {Type} variable '{DisplayName}' at depth {Depth}", variable.S7Type, variable.DisplayName, depth);
             }
         }
 
@@ -1419,26 +1442,45 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var fullPath = pathBuilder.Child(variable.DisplayName).CurrentPath;
 
         // For STRUCT/UDT variables, check for custom UDT converters first
-        if (variable.S7Type == S7DataType.STRUCT || variable.S7Type == S7DataType.UDT)
+        if (variable.S7Type is S7DataType.STRUCT or S7DataType.UDT or S7DataType.ARRAY_OF_UDT)
         {
-            _logger?.LogDebug("Processing UDT/STRUCT variable '{DisplayName}' with UdtTypeName='{UdtTypeName}'", variable.DisplayName, variable.UdtTypeName ?? "null");
+            _logger?.LogDebug("Processing UDT/STRUCT/ARRAY_OF_UDT variable '{DisplayName}' with UdtTypeName='{UdtTypeName}'", variable.DisplayName, variable.UdtTypeName ?? "null");
+
             // Check if there's a custom UDT converter registered for this UDT type
             if (!string.IsNullOrWhiteSpace(variable.UdtTypeName) &&
                 _udtTypeRegistry.HasCustomConverter(variable.UdtTypeName))
             {
                 _logger?.LogDebug("Found custom UDT converter for type '{UdtTypeName}' on variable '{DisplayName}'", variable.UdtTypeName, variable.DisplayName);
-                // Process the struct members first to get their values
-                var processedMembers = variable.StructMembers
-                    .Select(m => (S7Variable)RebuildHierarchyWithValues(session, m, readResultsMap, pathBuilder.Child(variable.DisplayName)))
-                    .ToList();
-
-                // Use the custom UDT converter to create the final object
                 var customConverter = _udtTypeRegistry.GetCustomConverter(variable.UdtTypeName);
+
                 if (customConverter is IUdtConverterBase udtConverter)
                 {
+                    // Process the struct members first to get their values
+                    var processedMembers = variable.StructMembers
+                        .Select(m => (S7Variable)RebuildHierarchyWithValues(session, m, readResultsMap, pathBuilder.Child(variable.DisplayName)))
+                        .ToList();
+
                     try
                     {
-                        // Use the non-generic ConvertFromUdtMembers method
+                        // Handle ARRAY_OF_UDT
+                        if (variable.S7Type == S7DataType.ARRAY_OF_UDT)
+                        {
+                            var convertedList = new ArrayList();
+                            foreach (var elementVariable in processedMembers)
+                            {
+                                var convertedElement = udtConverter.ConvertFromUdtMembers(elementVariable.StructMembers);
+                                convertedList.Add(convertedElement);
+                            }
+                            return variable with
+                            {
+                                FullPath = fullPath,
+                                StructMembers = processedMembers,
+                                Value = convertedList,
+                                StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good)
+                            };
+                        }
+
+                        // Handle single UDT/STRUCT
                         var customValue = udtConverter.ConvertFromUdtMembers(processedMembers);
                         return variable with
                         {
@@ -1555,14 +1597,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 break;
 
             case S7Variable variable:
-                // For STRUCT/UDT variables, collect their already-discovered members
-                if (variable.S7Type == S7DataType.STRUCT || variable.S7Type == S7DataType.UDT)
+                if (variable.S7Type is S7DataType.STRUCT or S7DataType.UDT or S7DataType.ARRAY_OF_UDT)
                 {
                     foreach (var member in variable.StructMembers)
                     {
                         CollectNodesToReadRecursively(session, member, collectedNodes, pathBuilder.Child(variable.DisplayName));
                     }
                 }
+                // For simple types, add their NodeId to the collection.
                 else if (variable.NodeId != null)
                 {
                     collectedNodes[variable.NodeId] = variable;

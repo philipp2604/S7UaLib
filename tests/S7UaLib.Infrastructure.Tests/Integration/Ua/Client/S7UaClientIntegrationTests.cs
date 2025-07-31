@@ -660,6 +660,161 @@ public class S7UaClientIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task WriteAndReadBack_UdtArrayValue_Succeeds()
+    {
+        S7UaClient? client = null;
+        S7Variable? testVar = null;
+        object? originalValue = null;
+
+        try
+        {
+            // Arrange
+            client = await CreateAndConnectClientAsync();
+
+            // Register the custom UDT converter
+            client.RegisterUdtConverter(new MyCustomUdtConverter());
+
+            var dbShell = (await client.GetAllGlobalDataBlocksAsync()).First(db => db.DisplayName == "MyGlobalDb");
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
+            Assert.NotNull(dbWithVars);
+
+            // Find the UDT array variable
+            testVar = dbWithVars.Variables.FirstOrDefault(v =>
+                v.DisplayName == "myUDTArray" &&
+                v.S7Type == S7DataType.ARRAY_OF_UDT) as S7Variable;
+
+            Assert.NotNull(testVar);
+            Assert.Equal(S7DataType.ARRAY_OF_UDT, testVar.S7Type);
+            Assert.Equal("DT_\"typeMyCustomUDT\"", testVar.UdtTypeName);
+
+            // Act 1: Read initial value with custom converter
+            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbWithVars);
+            testVar = dbWithOriginalValues.Variables.First(v => v.NodeId == testVar.NodeId) as S7Variable;
+            Assert.NotNull(testVar);
+
+            Assert.IsAssignableFrom<System.Collections.IList>(testVar.Value);
+            originalValue = testVar.Value;
+            Assert.NotNull(originalValue);
+
+            // Convert to strongly typed list for inspection
+            var originalList = originalValue as System.Collections.IList;
+            Assert.NotNull(originalList);
+            Assert.True(originalList.Count > 0, "Array should have at least one element");
+
+            Assert.Collection<MyCustomUdt>(originalList.Cast<MyCustomUdt>(),
+                item =>
+                {
+                    Assert.IsType<MyCustomUdt>(item);
+                    Assert.IsType<bool>(item.OneBool);
+                    Assert.True(item.OneBool);
+                    Assert.IsType<short>(item.OneInt);
+                    Assert.Equal(1, item.OneInt);
+                    Assert.IsType<string>(item.OneString);
+                    Assert.Equal("Test1", item.OneString);
+                },
+                item =>
+                {
+                    Assert.IsType<MyCustomUdt>(item);
+                    Assert.IsType<bool>(item.OneBool);
+                    Assert.False(item.OneBool);
+                    Assert.IsType<short>(item.OneInt);
+                    Assert.Equal(2, item.OneInt);
+                    Assert.IsType<string>(item.OneString);
+                    Assert.Equal("Test2", item.OneString);
+                },
+                item =>
+                {
+                    Assert.IsType<MyCustomUdt>(item);
+                    Assert.IsType<bool>(item.OneBool);
+                    Assert.True(item.OneBool);
+                    Assert.IsType<short>(item.OneInt);
+                    Assert.Equal(3, item.OneInt);
+                    Assert.IsType<string>(item.OneString);
+                    Assert.Equal("Test3", item.OneString);
+                });
+
+            // Act 2: Write new UDT array values
+            var newUdtArray = new List<MyCustomUdt>
+            {
+                new MyCustomUdt(OneBool: false, OneInt: 100, OneString: "First"),
+                new MyCustomUdt(OneBool: true, OneInt: 200, OneString: "Second"),
+                new MyCustomUdt(OneBool: false, OneInt: 300, OneString: "Third")
+            };
+
+            //bool writeSuccess = await client.WriteVariableAsync(originalArrayVar, newUdtArray);
+            bool writeSuccess = await client.WriteVariableAsync(testVar, newUdtArray);
+
+            Assert.True(writeSuccess, "Writing the new UDT array values failed.");
+            // Act 3: Read back the modified values
+            var dbWithNewValues = await client.ReadNodeValuesAsync(dbWithVars);
+            var modifiedArrayVar = dbWithNewValues.Variables.First(v => v.NodeId == testVar.NodeId) as S7Variable;
+            Assert.NotNull(modifiedArrayVar);
+
+            // Verify the read value is the expected modified UDT array
+            Assert.IsAssignableFrom<System.Collections.IList>(modifiedArrayVar.Value);
+            var modifiedList = modifiedArrayVar.Value as System.Collections.IList;
+            Assert.NotNull(modifiedList);
+            Assert.Equal(newUdtArray.Count, modifiedList.Count);
+
+            Assert.Collection<MyCustomUdt>(modifiedList.Cast<MyCustomUdt>(),
+                item =>
+                {
+                    Assert.IsType<MyCustomUdt>(item);
+                    Assert.IsType<bool>(item.OneBool);
+                    Assert.False(item.OneBool);
+                    Assert.IsType<short>(item.OneInt);
+                    Assert.Equal(100, item.OneInt);
+                    Assert.IsType<string>(item.OneString);
+                    Assert.Equal("First", item.OneString);
+                },
+                item =>
+                {
+                    Assert.IsType<MyCustomUdt>(item);
+                    Assert.IsType<bool>(item.OneBool);
+                    Assert.True(item.OneBool);
+                    Assert.IsType<short>(item.OneInt);
+                    Assert.Equal(200, item.OneInt);
+                    Assert.IsType<string>(item.OneString);
+                    Assert.Equal("Second", item.OneString);
+                },
+                item =>
+                {
+                    Assert.IsType<MyCustomUdt>(item);
+                    Assert.IsType<bool>(item.OneBool);
+                    Assert.False(item.OneBool);
+                    Assert.IsType<short>(item.OneInt);
+                    Assert.Equal(300, item.OneInt);
+                    Assert.IsType<string>(item.OneString);
+                    Assert.Equal("Third", item.OneString);
+                });
+
+            // Verify struct members are also properly populated
+            Assert.NotEmpty(modifiedArrayVar.StructMembers);
+
+            // Check that array members have proper array indices
+            var membersWithIndex0 = modifiedArrayVar.StructMembers.Where(m =>
+                m.FullPath != null && m.FullPath.Contains("[0]")).ToList();
+            var membersWithIndex1 = modifiedArrayVar.StructMembers.Where(m =>
+                m.FullPath != null && m.FullPath.Contains("[1]")).ToList();
+            var membersWithIndex2 = modifiedArrayVar.StructMembers.Where(m =>
+                m.FullPath != null && m.FullPath.Contains("[2]")).ToList();
+
+            Assert.NotEmpty(membersWithIndex0);
+            Assert.NotEmpty(membersWithIndex1);
+            Assert.NotEmpty(membersWithIndex2);
+        }
+        finally
+        {
+            // Cleanup: Restore original values
+            if (client?.IsConnected == true && testVar != null && originalValue != null)
+            {
+                await client.WriteVariableAsync(testVar, originalValue);
+            }
+            await client!.DisconnectAsync();
+        }
+    }
+
+    [Fact]
     public async Task WriteVariableAsync_WithIncompatibleType_ReturnsFalse()
     {
         S7UaClient? client = null;
