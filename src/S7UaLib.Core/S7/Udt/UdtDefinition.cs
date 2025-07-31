@@ -1,5 +1,3 @@
-using S7UaLib.Core.Enums;
-
 namespace S7UaLib.Core.S7.Udt;
 
 /// <summary>

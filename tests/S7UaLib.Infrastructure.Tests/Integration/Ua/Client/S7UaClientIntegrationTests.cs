@@ -1,4 +1,5 @@
 ﻿using S7UaLib.Core.Enums;
+using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
@@ -8,6 +9,52 @@ using S7UaLib.TestHelpers;
 using System.Collections;
 
 namespace S7UaLib.Infrastructure.Tests.Integration.Ua.Client;
+
+/// <summary>
+/// Test record representing the PLC UDT ""DT_\"typeMyCustomUDT\""" with members: OneBool, OneInt, OneString
+/// </summary>
+/// <param name="OneBool">Boolean member</param>
+/// <param name="OneInt">S7-Integer member</param>
+/// <param name="OneString">String member</param>
+public record MyCustomUdt(bool OneBool, short OneInt, string OneString);
+
+/// <summary>
+/// Custom converter for MyCustomUdt that converts between PLC UDT structure members and the C# record
+/// </summary>
+public class MyCustomUdtConverter : UdtConverterBase<MyCustomUdt>
+{
+    public MyCustomUdtConverter() : base("DT_\"typeMyCustomUDT\"") { }
+
+    public override MyCustomUdt ConvertFromUdtMembers(IReadOnlyList<IS7Variable> structMembers)
+    {
+        var oneBool = GetMemberValue<bool>(FindMember(structMembers, "OneBool"));
+        var oneInt = GetMemberValue<short>(FindMember(structMembers, "OneInt"));
+        var oneString = GetMemberValue<string>(FindMember(structMembers, "OneString"), "");
+        
+        return new MyCustomUdt(oneBool, oneInt, oneString);
+    }
+
+    public override IReadOnlyList<IS7Variable> ConvertToUdtMembers(MyCustomUdt udtInstance, IReadOnlyList<IS7Variable> structMemberTemplate)
+    {
+        var updatedMembers = new List<IS7Variable>();
+        foreach (var member in structMemberTemplate)
+        {
+            var updatedValue = member.DisplayName switch
+            {
+                "OneBool" => udtInstance.OneBool,
+                "OneInt" => udtInstance.OneInt,
+                "OneString" => udtInstance.OneString,
+                _ => member.Value
+            };
+            
+            if (member is S7Variable s7Member)
+            {
+                updatedMembers.Add(s7Member with { Value = updatedValue });
+            }
+        }
+        return updatedMembers.Cast<IS7Variable>().ToList();
+    }
+}
 
 [Trait("Category", "Integration")]
 public class S7UaClientIntegrationTests : IDisposable
@@ -756,4 +803,117 @@ public class S7UaClientIntegrationTests : IDisposable
     }
 
     #endregion Subscription Tests
+
+    #region Custom UDT Converter Tests
+
+    [Fact]
+    public async Task WriteAndReadBack_CustomUdtConverter_Succeeds()
+    {
+        S7UaClient? client = null;
+        S7Variable? testUdtVar = null;
+        MyCustomUdt? originalValue = null;
+
+        try
+        {
+            // Arrange
+            client = await CreateAndConnectClientAsync();
+            
+            // Register the custom UDT converter
+            client.RegisterUdtConverter(new MyCustomUdtConverter());
+            
+            var globalDbs = await client.GetAllGlobalDataBlocksAsync();
+            var dbShell = globalDbs.FirstOrDefault(db => db.DisplayName == "MyGlobalDb");
+            Assert.NotNull(dbShell);
+            
+            var dbWithVars = (S7DataBlockGlobal?)await client.DiscoverNodeAsync(dbShell);
+            Assert.NotNull(dbWithVars);
+            
+            // Find the UDT variable - assuming it exists in the PLC as "MyCustomUdtInstance"
+            testUdtVar = dbWithVars.Variables.FirstOrDefault(v => 
+                v.S7Type == S7DataType.UDT && 
+                !string.IsNullOrWhiteSpace(v.UdtTypeName) && 
+                v.UdtTypeName.Contains("typeMyCustomUdt", StringComparison.OrdinalIgnoreCase)) as S7Variable;
+            
+            Assert.NotNull(testUdtVar);
+            Assert.Equal(S7DataType.UDT, testUdtVar.S7Type);
+            Assert.Equal("DT_\"typeMyCustomUDT\"", testUdtVar.UdtTypeName);
+            
+            // Verify the UDT structure has the expected members
+            Assert.Collection(testUdtVar.StructMembers,
+                m =>
+                {
+                    Assert.Equal("OneBool", m.DisplayName);
+                    Assert.Equal(S7DataType.BOOL, m.S7Type);
+                },
+                m =>
+                {
+                    Assert.Equal("OneInt", m.DisplayName);
+                    Assert.Equal(S7DataType.INT, m.S7Type);
+                },
+                m =>
+                {
+                    Assert.Equal("OneString", m.DisplayName);
+                    Assert.Equal(S7DataType.STRING, m.S7Type);
+                });
+
+            // Act 1: Read original values using custom converter
+            var dbWithOriginalValues = await client.ReadNodeValuesAsync(dbWithVars);
+            var originalUdtVar = dbWithOriginalValues.Variables.First(v => v.NodeId == testUdtVar.NodeId) as S7Variable;
+            Assert.NotNull(originalUdtVar);
+            
+            // The Value should now be a MyCustomUdt object thanks to our custom converter
+            Assert.IsType<MyCustomUdt>(originalUdtVar.Value);
+            originalValue = (MyCustomUdt)originalUdtVar.Value!;
+            
+            // Verify original values are properly converted
+            Assert.NotNull(originalValue);
+            Assert.IsType<bool>(originalValue.OneBool);
+            Assert.IsType<short>(originalValue.OneInt);
+            Assert.IsType<string>(originalValue.OneString);
+
+            // Act 2: Write new values using custom UDT object
+            var newUdtValue = new MyCustomUdt(
+                OneBool: !originalValue.OneBool,
+                OneInt: (short)(originalValue.OneInt + 100),
+                OneString: originalValue.OneString + "_Modified"
+            );
+            
+            bool writeSuccess = await client.WriteVariableAsync(originalUdtVar, newUdtValue);
+            Assert.True(writeSuccess, "Writing the new UDT value failed.");
+
+            // Act 3: Read back the modified values
+            var dbWithNewValues = await client.ReadNodeValuesAsync(dbWithVars);
+            var modifiedUdtVar = dbWithNewValues.Variables.First(v => v.NodeId == testUdtVar.NodeId) as S7Variable;
+            Assert.NotNull(modifiedUdtVar);
+            
+            // Verify the read value is the expected modified UDT object
+            Assert.IsType<MyCustomUdt>(modifiedUdtVar.Value);
+            var readBackValue = (MyCustomUdt)modifiedUdtVar.Value!;
+            
+            Assert.Equal(newUdtValue.OneBool, readBackValue.OneBool);
+            Assert.Equal(newUdtValue.OneInt, readBackValue.OneInt);
+            Assert.Equal(newUdtValue.OneString, readBackValue.OneString);
+
+            // Act 4: Verify struct members are also properly populated
+            Assert.NotEmpty(modifiedUdtVar.StructMembers);
+            var boolMember = modifiedUdtVar.StructMembers.First(m => m.DisplayName == "OneBool");
+            var intMember = modifiedUdtVar.StructMembers.First(m => m.DisplayName == "OneInt");
+            var stringMember = modifiedUdtVar.StructMembers.First(m => m.DisplayName == "OneString");
+            
+            Assert.Equal(newUdtValue.OneBool, boolMember.Value);
+            Assert.Equal(newUdtValue.OneInt, intMember.Value);
+            Assert.Equal(newUdtValue.OneString, stringMember.Value);
+        }
+        finally
+        {
+            // Cleanup: Restore original values
+            if (client?.IsConnected == true && testUdtVar != null && originalValue != null)
+            {
+                await client.WriteVariableAsync(testUdtVar, originalValue);
+            }
+            await client!.DisconnectAsync();
+        }
+    }
+
+    #endregion Custom UDT Converter Tests
 }

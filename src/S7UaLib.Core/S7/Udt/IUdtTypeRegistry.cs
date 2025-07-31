@@ -40,7 +40,7 @@ public interface IUdtTypeRegistry
     /// </summary>
     void ClearUdtDefinitions();
 
-    #endregion
+    #endregion UDT Definition Management
 
     #region Custom Converter Management
 
@@ -53,11 +53,34 @@ public interface IUdtTypeRegistry
     void RegisterCustomConverter(string udtName, IS7TypeConverter converter);
 
     /// <summary>
+    /// Registers a custom UDT converter for a specific UDT type with strong typing.
+    /// This converter will be used instead of the generic UDT converter.
+    /// </summary>
+    /// <typeparam name="T">The user-defined C# type that represents the UDT.</typeparam>
+    /// <param name="converter">The custom UDT converter to use.</param>
+    void RegisterUdtConverter<T>(IUdtConverter<T> converter) where T : class;
+
+    /// <summary>
     /// Gets a custom converter for a specific UDT type.
     /// </summary>
     /// <param name="udtName">The name of the UDT.</param>
     /// <returns>The custom converter if registered; otherwise null.</returns>
     IS7TypeConverter? GetCustomConverter(string udtName);
+
+    /// <summary>
+    /// Gets a custom UDT converter for a specific UDT type with strong typing.
+    /// </summary>
+    /// <typeparam name="T">The user-defined C# type that represents the UDT.</typeparam>
+    /// <param name="udtName">The name of the UDT.</param>
+    /// <returns>The custom UDT converter if registered; otherwise null.</returns>
+    IUdtConverter<T>? GetUdtConverter<T>(string udtName) where T : class;
+
+    /// <summary>
+    /// Gets the C# type associated with a registered UDT converter.
+    /// </summary>
+    /// <param name="udtName">The name of the UDT.</param>
+    /// <returns>The C# type if a UDT converter is registered; otherwise null.</returns>
+    Type? GetUdtType(string udtName);
 
     /// <summary>
     /// Gets all currently registered custom converters.
@@ -77,7 +100,7 @@ public interface IUdtTypeRegistry
     /// </summary>
     void ClearCustomConverters();
 
-    #endregion
+    #endregion Custom Converter Management
 
     #region Utility Methods
 
@@ -95,5 +118,5 @@ public interface IUdtTypeRegistry
     /// <returns>True if a custom converter exists; otherwise false.</returns>
     bool HasCustomConverter(string udtName);
 
-    #endregion
+    #endregion Utility Methods
 }

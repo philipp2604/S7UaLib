@@ -332,6 +332,13 @@ internal interface IS7UaClient : IDisposable
     /// <param name="converter">The custom converter to use.</param>
     void RegisterCustomUdtConverter(string udtName, IS7TypeConverter converter);
 
+    /// <summary>
+    /// Registers a custom UDT converter for a specific UDT type with strong typing.
+    /// </summary>
+    /// <typeparam name="T">The user-defined C# type that represents the UDT.</typeparam>
+    /// <param name="converter">The custom UDT converter to use.</param>
+    void RegisterUdtConverter<T>(IUdtConverter<T> converter) where T : class;
+
     #endregion UDT Registry Access
 
     #region UDT Discovery Methods

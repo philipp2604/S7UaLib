@@ -62,12 +62,71 @@ internal class UdtTypeRegistry : IUdtTypeRegistry
         _customConverters.AddOrUpdate(udtName, converter, (_, _) => converter);
     }
 
+    public void RegisterUdtConverter<T>(IUdtConverter<T> converter) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(converter);
+        
+        _customConverters.AddOrUpdate(converter.UdtTypeName, converter, (_, _) => converter);
+    }
+
     public IS7TypeConverter? GetCustomConverter(string udtName)
     {
         if (string.IsNullOrWhiteSpace(udtName))
             return null;
 
         return _customConverters.TryGetValue(udtName, out var converter) ? converter : null;
+    }
+
+    public IUdtConverter<T>? GetUdtConverter<T>(string udtName) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(udtName))
+            return null;
+
+        return _customConverters.TryGetValue(udtName, out var converter) ? converter as IUdtConverter<T> : null;
+    }
+
+    public Type? GetUdtType(string udtName)
+    {
+        if (string.IsNullOrWhiteSpace(udtName))
+            return null;
+
+        if (_customConverters.TryGetValue(udtName, out var converter))
+        {
+            // Check if it's a UDT converter with a specific type
+            var converterType = converter.GetType();
+            Console.WriteLine($"GetUdtType: converter type = {converterType.Name}, IsGenericType = {converterType.IsGenericType}");
+            
+            // The converter itself might not be generic, but it implements generic interfaces
+            var interfaces = converterType.GetInterfaces();
+            Console.WriteLine($"GetUdtType: interfaces count = {interfaces.Length}");
+            
+            foreach (var iface in interfaces)
+            {
+                Console.WriteLine($"GetUdtType: interface = {iface.Name}, IsGenericType = {iface.IsGenericType}");
+                if (iface.IsGenericType)
+                {
+                    Console.WriteLine($"GetUdtType: generic type definition = {iface.GetGenericTypeDefinition().Name}");
+                }
+            }
+            
+            var udtConverterInterface = interfaces.FirstOrDefault(i => 
+                i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IUdtConverter<>));
+            
+            Console.WriteLine($"GetUdtType: found UDT converter interface = {udtConverterInterface != null}");
+            
+            if (udtConverterInterface != null)
+            {
+                var genericArg = udtConverterInterface.GetGenericArguments()[0];
+                Console.WriteLine($"GetUdtType: returning type = {genericArg.Name}");
+                return genericArg;
+            }
+        }
+        else
+        {
+            Console.WriteLine($"GetUdtType: converter not found for udtName = '{udtName}'");
+        }
+
+        return null;
     }
 
     public IReadOnlyDictionary<string, IS7TypeConverter> GetAllCustomConverters()
