@@ -16,6 +16,7 @@ public class S7UaSessionPoolUnitTests
     private readonly Action<IList, IList> _validateResponse;
     private readonly Opc.Ua.ApplicationConfiguration _opcAppConfig;
     private readonly Opc.Ua.ConfiguredEndpoint _endpoint;
+
     private class TestableS7UaSessionPool : S7UaSessionPool
     {
         public Queue<Opc.Ua.Client.ISession> MockSessionsToCreate { get; } = new();

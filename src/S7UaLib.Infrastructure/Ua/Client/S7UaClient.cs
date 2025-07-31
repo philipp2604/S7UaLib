@@ -497,23 +497,23 @@ internal class S7UaClient : IS7UaClient, IDisposable
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(variable);
         ArgumentNullException.ThrowIfNull(value);
-        
+
         if (variable.NodeId == null)
             throw new ArgumentException($"Variable '{variable.DisplayName}' has no NodeId and cannot be written to.", nameof(variable));
 
         // Check if this is a UDT variable with a custom converter
-        if ((variable.S7Type == S7DataType.UDT || variable.S7Type == S7DataType.STRUCT) && 
+        if ((variable.S7Type == S7DataType.UDT || variable.S7Type == S7DataType.STRUCT) &&
             !string.IsNullOrWhiteSpace(variable.UdtTypeName) &&
             _udtTypeRegistry.HasCustomConverter(variable.UdtTypeName))
         {
             _logger?.LogDebug("WriteVariableAsync: Found custom UDT converter for type '{UdtTypeName}' on variable '{DisplayName}'", variable.UdtTypeName, variable.DisplayName);
             var customConverter = _udtTypeRegistry.GetCustomConverter(variable.UdtTypeName);
             var udtType = _udtTypeRegistry.GetUdtType(variable.UdtTypeName);
-            
+
             // Check if the value is of the expected UDT type
-            _logger?.LogDebug("WriteVariableAsync: customConverter null: {IsNull}, customConverter type: {ConverterType}, customConverter is IUdtConverterBase: {IsConverterBase}, udtType: {UdtType}, value type: {ValueType}, IsInstanceOfType: {IsInstanceOfType}", 
+            _logger?.LogDebug("WriteVariableAsync: customConverter null: {IsNull}, customConverter type: {ConverterType}, customConverter is IUdtConverterBase: {IsConverterBase}, udtType: {UdtType}, value type: {ValueType}, IsInstanceOfType: {IsInstanceOfType}",
                 customConverter == null, customConverter?.GetType().Name ?? "null", customConverter is IUdtConverterBase, udtType?.Name ?? "null", value.GetType().Name, udtType?.IsInstanceOfType(value) ?? false);
-            
+
             if (customConverter is IUdtConverterBase udtConverter)
             {
                 _logger?.LogDebug("WriteVariableAsync: Successfully cast to IUdtConverterBase");
@@ -533,14 +533,14 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 {
                     _logger?.LogDebug("WriteVariableAsync: udtType is null");
                 }
-                
+
                 if (udtType != null && udtType.IsInstanceOfType(value))
                 {
                     try
                     {
                         // Convert the UDT object back to struct members for writing
                         var updatedMembers = udtConverter.ConvertToUdtMembers(value, variable.StructMembers);
-                        
+
                         // Write each member individually
                         var writeResults = new List<bool>();
                         foreach (var member in updatedMembers)
@@ -565,7 +565,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         }
 
         // Default behavior for simple variables or when no custom converter is available
-        _logger?.LogDebug("WriteVariableAsync: Falling back to default behavior for variable '{DisplayName}' with S7Type '{S7Type}', value type: '{ValueType}'", 
+        _logger?.LogDebug("WriteVariableAsync: Falling back to default behavior for variable '{DisplayName}' with S7Type '{S7Type}', value type: '{ValueType}'",
             variable.DisplayName, variable.S7Type, value.GetType().Name);
         return await WriteVariableAsync(variable.NodeId, value, variable.S7Type, cancellationToken).ConfigureAwait(false);
     }
@@ -1426,7 +1426,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         {
             _logger?.LogDebug("Processing UDT/STRUCT variable '{DisplayName}' with UdtTypeName='{UdtTypeName}'", variable.DisplayName, variable.UdtTypeName ?? "null");
             // Check if there's a custom UDT converter registered for this UDT type
-            if (!string.IsNullOrWhiteSpace(variable.UdtTypeName) && 
+            if (!string.IsNullOrWhiteSpace(variable.UdtTypeName) &&
                 _udtTypeRegistry.HasCustomConverter(variable.UdtTypeName))
             {
                 _logger?.LogDebug("Found custom UDT converter for type '{UdtTypeName}' on variable '{DisplayName}'", variable.UdtTypeName, variable.DisplayName);
@@ -1443,12 +1443,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     {
                         // Use the non-generic ConvertFromUdtMembers method
                         var customValue = udtConverter.ConvertFromUdtMembers(processedMembers);
-                        return variable with 
-                        { 
-                            FullPath = fullPath, 
-                            StructMembers = processedMembers, 
+                        return variable with
+                        {
+                            FullPath = fullPath,
+                            StructMembers = processedMembers,
                             Value = customValue,
-                            StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good) 
+                            StatusCode = UaStatusCodeConverter.Convert(Opc.Ua.StatusCodes.Good)
                         };
                     }
                     catch (Exception ex)
@@ -1573,7 +1573,6 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 break;
         }
     }
-
 
     private void ThrowIfDisposed()
     {
