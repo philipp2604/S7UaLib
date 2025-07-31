@@ -54,7 +54,7 @@ public class MyCustomUdtConverter : UdtConverterBase<MyCustomUdt>
                 updatedMembers.Add(s7Member with { Value = updatedValue });
             }
         }
-        return updatedMembers.Cast<IS7Variable>().ToList();
+        return [.. updatedMembers.Cast<IS7Variable>()];
     }
 }
 

@@ -65,7 +65,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     private readonly S7UdtConverter _udtConverterInstance;
 
     private readonly Dictionary<S7DataType, IS7TypeConverter> _typeConvertersInstance;
-    private readonly IUdtTypeRegistry _udtTypeRegistry;
+    private readonly UdtTypeRegistry _udtTypeRegistry;
 
     #endregion Instance Type Converters
 
@@ -534,7 +534,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     _logger?.LogDebug("WriteVariableAsync: udtType is null");
                 }
 
-                if (udtType != null && udtType.IsInstanceOfType(value))
+                if (udtType?.IsInstanceOfType(value) == true)
                 {
                     try
                     {
@@ -880,16 +880,11 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <summary>
     /// Detects if a variable represents a UDT based on its OPC UA metadata.
     /// </summary>
-    /// <param name="session">The OPC UA session.</param>
     /// <param name="dataTypeNodeId">The <see cref="Opc.Ua.NodeId"> of the data type.</param>
     /// <returns>The UDT type name if detected, otherwise null.</returns>
-    private string? DetectUdtTypeName(Opc.Ua.Client.ISession session, Opc.Ua.NodeId dataTypeNodeId)
+    private static string? DetectUdtTypeName(Opc.Ua.NodeId dataTypeNodeId)
     {
-        if (dataTypeNodeId.IdType == Opc.Ua.IdType.String)
-        {
-            return dataTypeNodeId.Identifier as string;
-        }
-        return null;
+        return dataTypeNodeId.IdType == Opc.Ua.IdType.String ? dataTypeNodeId.Identifier as string : null;
     }
 
     /// <summary>
@@ -898,7 +893,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <param name="opcUaTypeNodeId">The OPC UA data type NodeId.</param>
     /// <param name="valueRank">The ValueRank attribute indicating if it's an array.</param>
     /// <returns>The corresponding S7DataType enum value.</returns>
-    private S7DataType MapOpcUaTypeToS7DataType(Opc.Ua.NodeId? opcUaTypeNodeId, int? valueRank = null)
+    private static S7DataType MapOpcUaTypeToS7DataType(Opc.Ua.NodeId? opcUaTypeNodeId, int? valueRank = null)
     {
         if (opcUaTypeNodeId == null)
             return S7DataType.UNKNOWN;
@@ -1066,6 +1061,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
                 dataTypeNodeId = results[0].Value as Opc.Ua.NodeId;
             }
 
+            ArgumentNullException.ThrowIfNull(dataTypeNodeId, nameof(dataTypeNodeId));
+
             if (Opc.Ua.StatusCode.IsGood(results[1].StatusCode) && results[1].Value != null)
             {
                 valueRank = results[1].Value as int?;
@@ -1078,7 +1075,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             // Handle UDT-specific logic if it's a UDT
             if (s7DataType == S7DataType.UDT)
             {
-                var udtTypeName = DetectUdtTypeName(session, dataTypeNodeId);
+                var udtTypeName = DetectUdtTypeName(dataTypeNodeId);
                 if (!string.IsNullOrEmpty(udtTypeName))
                 {
                     variable = variable with { UdtTypeName = udtTypeName };
@@ -1175,12 +1172,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <param name="depth">Current recursion depth.</param>
     /// <param name="maxDepth">Maximum recursion depth allowed.</param>
     /// <returns>A list of discovered member variables.</returns>
-    private IReadOnlyList<IS7Variable> DiscoverStructOrUdtMembers(Opc.Ua.Client.ISession session, string nodeId, int depth, int maxDepth)
+    private ReadOnlyCollection<IS7Variable> DiscoverStructOrUdtMembers(Opc.Ua.Client.ISession session, string nodeId, int depth, int maxDepth)
     {
         if (!session.Connected)
         {
             _logger?.LogError("Cannot discover STRUCT/UDT members for '{NodeId}'; session is not connected.", nodeId);
-            return [];
+            return new ReadOnlyCollection<IS7Variable>([]);
         }
 
         try
@@ -1212,7 +1209,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to browse STRUCT/UDT members for NodeId '{NodeId}'", nodeId);
-            return [];
+            return new ReadOnlyCollection<IS7Variable>([]);
         }
     }
 
@@ -1537,7 +1534,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <summary>
     /// Recursively collects all readable nodes using unified logic.
     /// </summary>
-    private void CollectNodesToReadRecursively(Opc.Ua.Client.ISession session, IUaNode currentNode, IDictionary<Opc.Ua.NodeId, S7Variable> collectedNodes, PathBuilder pathBuilder)
+    private static void CollectNodesToReadRecursively(Opc.Ua.Client.ISession session, IUaNode currentNode, IDictionary<Opc.Ua.NodeId, S7Variable> collectedNodes, PathBuilder pathBuilder)
     {
         switch (currentNode)
         {

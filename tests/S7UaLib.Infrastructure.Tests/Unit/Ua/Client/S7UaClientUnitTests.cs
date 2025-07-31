@@ -21,9 +21,6 @@ public class S7UaClientUnitTests
     private readonly Mock<IS7UaSessionPool> _mockSessionPool;
     private readonly S7UaClient _sut;
 
-    // Helper delegates for mocking complex OPC UA calls
-    private delegate void BrowseCallback(Opc.Ua.RequestHeader rh, Opc.Ua.ViewDescription v, uint m, Opc.Ua.BrowseDescriptionCollection bdc, out Opc.Ua.BrowseResultCollection brc, out Opc.Ua.DiagnosticInfoCollection dic);
-
     private delegate void ReadCallback(Opc.Ua.RequestHeader rh, double a, Opc.Ua.TimestampsToReturn t, Opc.Ua.ReadValueIdCollection r, out Opc.Ua.DataValueCollection dvc, out Opc.Ua.DiagnosticInfoCollection dic);
 
     public S7UaClientUnitTests()
@@ -377,7 +374,7 @@ public class S7UaClientUnitTests
             return bd.NodeId == nodeId &&
                    bd.BrowseDirection == Opc.Ua.BrowseDirection.Forward &&
                    bd.ReferenceTypeId == Opc.Ua.ReferenceTypeIds.HierarchicalReferences &&
-                   bd.IncludeSubtypes == true &&
+                   bd.IncludeSubtypes &&
                    bd.NodeClassMask == (uint)Opc.Ua.NodeClass.Variable;
         };
 
@@ -391,7 +388,7 @@ public class S7UaClientUnitTests
             out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
         .Callback((Opc.Ua.RequestHeader _, Opc.Ua.ViewDescription _, uint _, Opc.Ua.BrowseDescriptionCollection _, out Opc.Ua.BrowseResultCollection results, out Opc.Ua.DiagnosticInfoCollection diagnosticInfos) =>
         {
-            results = new Opc.Ua.BrowseResultCollection { new() { StatusCode = Opc.Ua.StatusCodes.Good, References = [new() { NodeId = udtVariableNodeId, DisplayName = "MyUdt", NodeClass = Opc.Ua.NodeClass.Variable }] } };
+            results = [new() { StatusCode = Opc.Ua.StatusCodes.Good, References = [new() { NodeId = udtVariableNodeId, DisplayName = "MyUdt", NodeClass = Opc.Ua.NodeClass.Variable }] }];
             diagnosticInfos = [];
         });
 
@@ -413,7 +410,7 @@ public class S7UaClientUnitTests
             out It.Ref<Opc.Ua.DiagnosticInfoCollection>.IsAny))
         .Callback((Opc.Ua.RequestHeader _, Opc.Ua.ViewDescription _, uint _, Opc.Ua.BrowseDescriptionCollection _, out Opc.Ua.BrowseResultCollection results, out Opc.Ua.DiagnosticInfoCollection diagnosticInfos) =>
         {
-            results = new Opc.Ua.BrowseResultCollection { new() { StatusCode = Opc.Ua.StatusCodes.Good, References = [new() { NodeId = udtMember1NodeId, DisplayName = "Member1", NodeClass = Opc.Ua.NodeClass.Variable }] } };
+            results = [new() { StatusCode = Opc.Ua.StatusCodes.Good, References = [new() { NodeId = udtMember1NodeId, DisplayName = "Member1", NodeClass = Opc.Ua.NodeClass.Variable }] }];
             diagnosticInfos = [];
         });
 
@@ -431,7 +428,7 @@ public class S7UaClientUnitTests
         // Assert
         var discoveredDb = Assert.IsType<S7DataBlockGlobal>(result);
         Assert.Single(discoveredDb.Variables);
-        var udtVar = discoveredDb.Variables.First();
+        var udtVar = discoveredDb.Variables[0];
 
         Assert.Equal("MyUdt", udtVar.DisplayName);
         Assert.Equal(S7DataType.UDT, udtVar.S7Type);
@@ -439,7 +436,7 @@ public class S7UaClientUnitTests
 
         Assert.NotNull(udtVar.StructMembers);
         Assert.Single(udtVar.StructMembers);
-        var memberVar = udtVar.StructMembers.First();
+        var memberVar = udtVar.StructMembers[0];
         Assert.Equal("Member1", memberVar.DisplayName);
         Assert.Equal(S7DataType.BOOL, memberVar.S7Type);
     }
@@ -492,7 +489,7 @@ public class S7UaClientUnitTests
 
         // Assert
         Assert.NotNull(result);
-        var resultUdtVar = result.Variables.First();
+        var resultUdtVar = result.Variables[0];
 
         Assert.NotNull(resultUdtVar.Value);
         var udtInstance = Assert.IsType<MyCustomUdt>(resultUdtVar.Value);
@@ -524,11 +521,11 @@ public class S7UaClientUnitTests
             DisplayName = "MyUdtInstance",
             S7Type = S7DataType.UDT,
             UdtTypeName = "MyUdt_T",
-            StructMembers = new List<IS7Variable>
-            {
+            StructMembers =
+            [
                 new S7Variable { NodeId = "ns=3;s=\"MyDb.MyUdtInstance.IsActive\"", DisplayName = "IsActive", S7Type = S7DataType.BOOL },
                 new S7Variable { NodeId = "ns=3;s=\"MyDb.MyUdtInstance.Counter\"", DisplayName = "Counter", S7Type = S7DataType.INT }
-            }
+            ]
         };
 
         var capturedWrites = new List<Opc.Ua.WriteValue>();
@@ -543,7 +540,7 @@ public class S7UaClientUnitTests
                     .ReturnsAsync((Opc.Ua.RequestHeader _, Opc.Ua.WriteValueCollection wvc, CancellationToken _) => new Opc.Ua.WriteResponse
                     {
                         ResponseHeader = new Opc.Ua.ResponseHeader { ServiceResult = Opc.Ua.StatusCodes.Good },
-                        Results = new Opc.Ua.StatusCodeCollection(wvc.Select(_ => new Opc.Ua.StatusCode(Opc.Ua.StatusCodes.Good)))
+                        Results = [.. wvc.Select(_ => new Opc.Ua.StatusCode(Opc.Ua.StatusCodes.Good))]
                     });
 
                 return await operation(mockSession.Object);
