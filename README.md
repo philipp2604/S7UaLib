@@ -63,8 +63,9 @@ Or via the NuGet Package Manager in Visual Studio.
 Here's a simple example demonstrating the main workflow: connect, discover, subscribe to changes, and write a value.
 
 ```csharp
-using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
+using S7UaLib.Core.S7.Converters;
+using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Services.S7;
@@ -81,7 +82,7 @@ const string appUri = "urn:localhost:UA:S7UaLib:Example";
 const string productUri = "uri:philipp2604:S7UaLib:Example";
 
 // Use an empty constructor for anonymous user, or new UserIdentity("user", "pass")
-var userIdentity = new UserIdentity(); 
+var userIdentity = new UserIdentity();
 
 // 1. Initialize S7Service
 var service = new S7Service(userIdentity);
@@ -106,6 +107,9 @@ service.VariableValueChanged += OnVariableValueChanged;
 
 try
 {
+    // Optional: Register custom UDT converter
+    service.RegisterUdtConverter(new MyCustomUdtConverter());
+
     // 3. Connect to the PLC
     Console.WriteLine($"Connecting to {serverUrl}...");
     await service.ConnectAsync(serverUrl, useSecurity: false);
@@ -125,12 +129,6 @@ try
         await service.SaveStructureAsync(configFile);
     }
 
-    // After discovery/loading, it's often necessary to set the specific S7 data types
-    // for variables, as this info isn't always exposed by the server.
-    // This is typically done once and saved in the config file.
-    await service.UpdateVariableTypeAsync(myIntVarPath, S7DataType.INT);
-    await service.UpdateVariableTypeAsync(myStringVarPath, S7DataType.STRING);
-
     // 5. Read all variables to get the initial state
     Console.WriteLine("\nReading all variable values...");
     await service.ReadAllVariablesAsync();
@@ -148,11 +146,18 @@ try
     {
         intVal = (short)(intVal + 1);
         Console.WriteLine($"Writing '{intVal}' to '{myIntVarPath}'...");
-        bool success = await service.WriteVariableAsync(myIntVarPath, intVal);
-        if (success)
+        if (await service.WriteVariableAsync(myIntVarPath, intVal))
         {
             Console.WriteLine($"Write to {myIntVarPath} successful! A new value change event should have been triggered.");
         }
+    }
+
+    // Optional: Write a value using the custom UDT
+    var myCustomUdtS7Var = service.GetVariable("DataBlocksGlobal.MyGlobalDb.myUDTInstance");
+    if(myCustomUdtS7Var != null && myCustomUdtS7Var.Value is MyCustomUdt myCustomUdt)
+    {
+        myCustomUdt = myCustomUdt with { OneInt = 42, OneBool = true, OneString = "Updated from S7UaLib" };
+        await service.WriteVariableAsync(myCustomUdtS7Var.FullPath!, myCustomUdt);
     }
 
     Console.WriteLine($"Press Enter to write a value to {myStringVarPath} from here...");
@@ -186,7 +191,6 @@ finally
     service.Dispose();
 }
 
-// Event handler for value changes (from polling or subscriptions)
 void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
 {
     Console.ForegroundColor = ConsoleColor.Cyan;
@@ -195,6 +199,54 @@ void OnVariableValueChanged(object? sender, VariableValueChangedEventArgs e)
     Console.WriteLine($"  Old Value: {e.OldVariable.Value ?? "null"}");
     Console.WriteLine($"  New Value: {e.NewVariable.Value ?? "null"}");
     Console.ResetColor();
+}
+
+/// <summary>
+/// Test record representing the PLC UDT ""DT_\"typeMyCustomUDT\""" with members: OneBool, OneInt, OneString
+/// </summary>
+/// <param name="OneBool">Boolean member</param>
+/// <param name="OneInt">S7-Integer member</param>
+/// <param name="OneString">String member</param>
+public record MyCustomUdt(bool OneBool, short OneInt, string OneString);
+
+/// <summary>
+/// Custom converter for MyCustomUdt that converts between PLC UDT structure members and the C# record
+/// </summary>
+public class MyCustomUdtConverter : UdtConverterBase<MyCustomUdt>
+{
+    public MyCustomUdtConverter() : base("DT_\"typeMyCustomUDT\"")
+    {
+    }
+
+    public override MyCustomUdt ConvertFromUdtMembers(IReadOnlyList<IS7Variable> structMembers)
+    {
+        var oneBool = GetMemberValue<bool>(FindMember(structMembers, "OneBool"));
+        var oneInt = GetMemberValue<short>(FindMember(structMembers, "OneInt"));
+        var oneString = GetMemberValue<string>(FindMember(structMembers, "OneString"), "");
+
+        return new MyCustomUdt(oneBool, oneInt, oneString);
+    }
+
+    public override IReadOnlyList<IS7Variable> ConvertToUdtMembers(MyCustomUdt udtInstance, IReadOnlyList<IS7Variable> structMemberTemplate)
+    {
+        var updatedMembers = new List<IS7Variable>();
+        foreach (var member in structMemberTemplate)
+        {
+            var updatedValue = member.DisplayName switch
+            {
+                "OneBool" => udtInstance.OneBool,
+                "OneInt" => udtInstance.OneInt,
+                "OneString" => udtInstance.OneString,
+                _ => member.Value
+            };
+
+            if (member is S7Variable s7Member)
+            {
+                updatedMembers.Add(s7Member with { Value = updatedValue });
+            }
+        }
+        return [.. updatedMembers.Cast<IS7Variable>()];
+    }
 }
 ```
 

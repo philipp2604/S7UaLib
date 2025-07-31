@@ -1,7 +1,9 @@
 ﻿using Microsoft.Extensions.Logging;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
+using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
+using S7UaLib.Core.S7.Udt;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.DataStore;
@@ -296,10 +298,10 @@ public class S7Service : IS7Service
         var instanceDbShells = await instanceDbShellsTask.ConfigureAwait(false);
 
         var globalDbDiscoveryTasks = (globalDbShells ?? [])
-            .Select(shell => _client.DiscoverElementAsync(shell, cancellationToken)).ToList();
+            .Select(shell => _client.DiscoverNodeAsync(shell, cancellationToken)).ToList();
 
         var instanceDbDiscoveryTasks = (instanceDbShells ?? [])
-            .Select(shell => _client.DiscoverElementAsync(shell, cancellationToken)).ToList();
+            .Select(shell => _client.DiscoverNodeAsync(shell, cancellationToken)).ToList();
 
         await Task.WhenAll(globalDbDiscoveryTasks.Concat(instanceDbDiscoveryTasks)).ConfigureAwait(false);
 
@@ -320,11 +322,11 @@ public class S7Service : IS7Service
         var counters = await countersTask.ConfigureAwait(false);
 
         var simpleElementTasks = new List<Task>();
-        if (inputs is not null) simpleElementTasks.Add(Task.Run(async () => inputs = await _client.DiscoverVariablesOfElementAsync((S7Inputs)inputs, cancellationToken).ConfigureAwait(false), cancellationToken));
-        if (outputs is not null) simpleElementTasks.Add(Task.Run(async () => outputs = await _client.DiscoverVariablesOfElementAsync((S7Outputs)outputs, cancellationToken).ConfigureAwait(false), cancellationToken));
-        if (memory is not null) simpleElementTasks.Add(Task.Run(async () => memory = await _client.DiscoverVariablesOfElementAsync((S7Memory)memory, cancellationToken).ConfigureAwait(false), cancellationToken));
-        if (timers is not null) simpleElementTasks.Add(Task.Run(async () => timers = await _client.DiscoverVariablesOfElementAsync((S7Timers)timers, cancellationToken).ConfigureAwait(false), cancellationToken));
-        if (counters is not null) simpleElementTasks.Add(Task.Run(async () => counters = await _client.DiscoverVariablesOfElementAsync((S7Counters)counters, cancellationToken).ConfigureAwait(false), cancellationToken));
+        if (inputs is not null) simpleElementTasks.Add(Task.Run(async () => inputs = (S7Inputs?)await _client.DiscoverNodeAsync((S7Inputs)inputs, cancellationToken).ConfigureAwait(false), cancellationToken));
+        if (outputs is not null) simpleElementTasks.Add(Task.Run(async () => outputs = (S7Outputs?)await _client.DiscoverNodeAsync((S7Outputs)outputs, cancellationToken).ConfigureAwait(false), cancellationToken));
+        if (memory is not null) simpleElementTasks.Add(Task.Run(async () => memory = (S7Memory?)await _client.DiscoverNodeAsync((S7Memory)memory, cancellationToken).ConfigureAwait(false), cancellationToken));
+        if (timers is not null) simpleElementTasks.Add(Task.Run(async () => timers = (S7Timers?)await _client.DiscoverNodeAsync((S7Timers)timers, cancellationToken).ConfigureAwait(false), cancellationToken));
+        if (counters is not null) simpleElementTasks.Add(Task.Run(async () => counters = (S7Counters?)await _client.DiscoverNodeAsync((S7Counters)counters, cancellationToken).ConfigureAwait(false), cancellationToken));
 
         await Task.WhenAll(simpleElementTasks).ConfigureAwait(false);
 
@@ -409,37 +411,37 @@ public class S7Service : IS7Service
         var readTasks = new List<Task>();
 
         var globalDbReadTasks = _dataStore.DataBlocksGlobal
-            .Select(db => _client.ReadValuesOfElementAsync(db, "DataBlocksGlobal", cancellationToken))
+            .Select(db => _client.ReadNodeValuesAsync(db, "DataBlocksGlobal", cancellationToken))
             .ToList();
         readTasks.AddRange(globalDbReadTasks);
 
         var instanceDbReadTasks = _dataStore.DataBlocksInstance
-            .Select(db => _client.ReadValuesOfElementAsync(db, "DataBlocksInstance", cancellationToken))
+            .Select(db => _client.ReadNodeValuesAsync(db, "DataBlocksInstance", cancellationToken))
             .ToList();
         readTasks.AddRange(instanceDbReadTasks);
 
         Task<IS7Inputs> inputsReadTask = _dataStore.Inputs is not null
-            ? _client.ReadValuesOfElementAsync(_dataStore.Inputs, null, cancellationToken)
+            ? _client.ReadNodeValuesAsync(_dataStore.Inputs, null, cancellationToken)
             : Task.FromResult<IS7Inputs?>(null)!;
         readTasks.Add(inputsReadTask);
 
         Task<IS7Outputs> outputsReadTask = _dataStore.Outputs is not null
-            ? _client.ReadValuesOfElementAsync(_dataStore.Outputs, null, cancellationToken)
+            ? _client.ReadNodeValuesAsync(_dataStore.Outputs, null, cancellationToken)
             : Task.FromResult<IS7Outputs?>(null)!;
         readTasks.Add(outputsReadTask);
 
         Task<IS7Memory> memoryReadTask = _dataStore.Memory is not null
-            ? _client.ReadValuesOfElementAsync(_dataStore.Memory, null, cancellationToken)
+            ? _client.ReadNodeValuesAsync(_dataStore.Memory, null, cancellationToken)
             : Task.FromResult<IS7Memory?>(null)!;
         readTasks.Add(memoryReadTask);
 
         Task<IS7Timers> timersReadTask = _dataStore.Timers is not null
-            ? _client.ReadValuesOfElementAsync(_dataStore.Timers, null, cancellationToken)
+            ? _client.ReadNodeValuesAsync(_dataStore.Timers, null, cancellationToken)
             : Task.FromResult<IS7Timers?>(null)!;
         readTasks.Add(timersReadTask);
 
         Task<IS7Counters> countersReadTask = _dataStore.Counters is not null
-            ? _client.ReadValuesOfElementAsync(_dataStore.Counters, null, cancellationToken)
+            ? _client.ReadNodeValuesAsync(_dataStore.Counters, null, cancellationToken)
             : Task.FromResult<IS7Counters?>(null)!;
         readTasks.Add(countersReadTask);
 
@@ -491,7 +493,7 @@ public class S7Service : IS7Service
 
         try
         {
-            return await _client.WriteVariableAsync(variable.NodeId, value, variable.S7Type);
+            return await _client.WriteVariableAsync(variable, value);
         }
         catch (Exception ex)
         {
@@ -524,7 +526,7 @@ public class S7Service : IS7Service
                 {
                     _logger?.LogDebug("Variable '{Path}' set to STRUCT. Discovering members immediately.", fullPath);
                     var shellForDiscovery = new S7StructureElement { NodeId = oldS7Var.NodeId, DisplayName = oldS7Var.DisplayName };
-                    var discoveredMembers = (await _client.DiscoverVariablesOfElementAsync(shellForDiscovery, cancellationToken)).Variables;
+                    var discoveredMembers = ((S7StructureElement?)await _client.DiscoverNodeAsync(shellForDiscovery, cancellationToken))?.Variables ?? [];
 
                     newVariable = newVariable with { StructMembers = discoveredMembers.Cast<S7Variable>().ToList() };
                     _logger?.LogDebug("Discovered {MemberCount} members for struct '{Path}'.", discoveredMembers.Count, fullPath);
@@ -733,6 +735,18 @@ public class S7Service : IS7Service
 
     #endregion Persistence Methods
 
+    #region UDT Converter Management
+
+    /// <inheritdoc cref="IS7Service.RegisterUdtConverter{T}(IUdtConverter{T})"/>
+    public void RegisterUdtConverter<T>(IUdtConverter<T> converter) where T : class
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(converter);
+        _client.RegisterUdtConverter(converter);
+    }
+
+    #endregion UDT Converter Management
+
     #endregion Public Methods
 
     #region Private Methods
@@ -796,6 +810,70 @@ public class S7Service : IS7Service
     {
         VariableValueChanged?.Invoke(this, e);
     }
+
+    #region UDT Management
+
+    /// <summary>
+    /// Registers a custom converter for a specific UDT type.
+    /// This converter will be used instead of the generic UDT converter for variables of this type.
+    /// </summary>
+    /// <param name="udtName">The name of the UDT as defined in the PLC.</param>
+    /// <param name="converter">The custom converter to use for this UDT type.</param>
+    public void RegisterUdtConverter(string udtName, IS7TypeConverter converter)
+    {
+        _client.RegisterCustomUdtConverter(udtName, converter);
+    }
+
+    /// <summary>
+    /// Registers a custom converter instance for a specific UDT type.
+    /// </summary>
+    /// <typeparam name="T">The converter type that implements IS7TypeConverter.</typeparam>
+    /// <param name="udtName">The name of the UDT as defined in the PLC.</param>
+    public void RegisterUdtConverter<T>(string udtName) where T : IS7TypeConverter, new()
+    {
+        RegisterUdtConverter(udtName, new T());
+    }
+
+    /// <summary>
+    /// Gets the UDT type registry containing all discovered UDT definitions and registered custom converters.
+    /// </summary>
+    /// <returns>The UDT type registry instance.</returns>
+    public IUdtTypeRegistry GetUdtTypeRegistry()
+    {
+        return _client.GetUdtTypeRegistry();
+    }
+
+    /// <summary>
+    /// Gets all currently discovered UDT definitions.
+    /// </summary>
+    /// <returns>A read-only dictionary of UDT definitions keyed by UDT name.</returns>
+    public IReadOnlyDictionary<string, UdtDefinition> GetDiscoveredUdts()
+    {
+        return _client.GetUdtTypeRegistry().GetAllUdtDefinitions();
+    }
+
+    /// <summary>
+    /// Discovers all available UDT types from the PLC.
+    /// </summary>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>A list of available UDT type names.</returns>
+    public async Task<IReadOnlyList<string>> GetAvailableUdtTypesAsync(CancellationToken cancellationToken = default)
+    {
+        return await _client.GetAvailableUdtTypesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Discovers the structure definition of a specific UDT type from the PLC.
+    /// </summary>
+    /// <param name="udtTypeName">The name of the UDT to discover.</param>
+    /// <param name="cancellationToken">A <c>CancellationToken</c> to abort the async function.</param>
+    /// <returns>The discovered UDT definition, or null if not found.</returns>
+    public async Task<UdtDefinition?> DiscoverUdtDefinitionAsync(string udtTypeName, CancellationToken cancellationToken = default)
+    {
+        return await _client.DiscoverUdtDefinitionAsync(udtTypeName, cancellationToken);
+    }
+
+    #endregion UDT Management
 
     private void RegisterClientEventHandlers()
     {
