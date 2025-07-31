@@ -36,6 +36,7 @@ public enum S7DataType
     ARRAY_OF_USINT,
     ARRAY_OF_WCHAR,
     ARRAY_OF_WSTRING,
+    ARRAY_OF_UDT,
     ARRAY_OF_WORD,
     BOOL,
     BYTE,
@@ -66,5 +67,6 @@ public enum S7DataType
     USINT,
     WCHAR,
     WSTRING,
+    UDT,
     WORD
 }

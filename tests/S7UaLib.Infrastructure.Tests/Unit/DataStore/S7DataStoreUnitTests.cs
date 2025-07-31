@@ -58,7 +58,7 @@ public class S7DataStoreUnitTests
         Assert.Empty(sut.Outputs.Variables);
     }
 
-    #endregion
+    #endregion SetStructure Tests
 
     #region BuildCache Tests
 

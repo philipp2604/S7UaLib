@@ -8,18 +8,17 @@ namespace S7UaLib.Infrastructure.Ua.Client;
 internal class PathBuilder
 {
     private readonly string _rootContext;
-    private readonly string _currentPath;
 
     public PathBuilder(string? rootContext = null)
     {
         _rootContext = rootContext ?? string.Empty;
-        _currentPath = _rootContext;
+        CurrentPath = _rootContext;
     }
 
     private PathBuilder(string rootContext, string currentPath)
     {
         _rootContext = rootContext;
-        _currentPath = currentPath;
+        CurrentPath = currentPath;
     }
 
     /// <summary>
@@ -32,9 +31,9 @@ internal class PathBuilder
         if (string.IsNullOrEmpty(segment))
             return this;
 
-        var newPath = string.IsNullOrEmpty(_currentPath)
+        var newPath = string.IsNullOrEmpty(CurrentPath)
             ? segment
-            : $"{_currentPath}.{segment}";
+            : $"{CurrentPath}.{segment}";
 
         return new PathBuilder(_rootContext, newPath);
     }
@@ -56,10 +55,10 @@ internal class PathBuilder
     /// <summary>
     /// Gets the current path.
     /// </summary>
-    public string CurrentPath => _currentPath;
+    public string CurrentPath { get; }
 
     /// <summary>
     /// Implicit conversion to string for convenience.
     /// </summary>
-    public static implicit operator string(PathBuilder builder) => builder._currentPath;
+    public static implicit operator string(PathBuilder builder) => builder.CurrentPath;
 }

@@ -2,6 +2,7 @@
 using Moq;
 using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
+using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua.Configuration;
 using S7UaLib.Infrastructure.DataStore;
@@ -1021,7 +1022,7 @@ public class S7ServiceUnitTests
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(nodeId.ToString(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<IS7Variable>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true)
             .Verifiable();
 
@@ -1033,7 +1034,10 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.True(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(nodeId.ToString(), valueToWrite, S7DataType.INT, It.IsAny<CancellationToken>()), Times.Once);
+        _mockClient.Verify(c => c.WriteVariableAsync(
+            It.Is<IS7Variable>(v => v.NodeId == nodeId.ToString() && v.DisplayName == "TestVar"),
+            valueToWrite,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1048,7 +1052,7 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.False(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<IS7Variable>(), It.IsAny<object>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -1061,7 +1065,7 @@ public class S7ServiceUnitTests
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<IS7Variable>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Write failed"));
 
         // Act
@@ -1564,6 +1568,72 @@ public class S7ServiceUnitTests
     }
 
     #endregion Connection Tests
+
+    #region UDT Converter Tests
+
+    [Fact]
+    public void RegisterUdtConverter_ValidConverter_CallsClientRegisterUdtConverter()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var mockConverter = new Mock<IUdtConverter<TestUdtType>>();
+        mockConverter.Setup(c => c.UdtTypeName).Returns("TestUdt");
+
+        // Act
+        sut.RegisterUdtConverter(mockConverter.Object);
+
+        // Assert
+        _mockClient.Verify(c => c.RegisterUdtConverter(mockConverter.Object), Times.Once);
+    }
+
+    [Fact]
+    public void RegisterUdtConverter_NullConverter_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => sut.RegisterUdtConverter<TestUdtType>(null!));
+    }
+
+    [Fact]
+    public void RegisterUdtConverter_DisposedService_ThrowsObjectDisposedException()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var mockConverter = new Mock<IUdtConverter<TestUdtType>>();
+        mockConverter.Setup(c => c.UdtTypeName).Returns("TestUdt");
+
+        sut.Dispose();
+
+        // Act & Assert
+        Assert.Throws<ObjectDisposedException>(() => sut.RegisterUdtConverter(mockConverter.Object));
+    }
+
+    [Fact]
+    public void RegisterUdtConverter_MultipleConverters_CallsClientForEach()
+    {
+        // Arrange
+        var sut = CreateSut();
+        var mockConverter1 = new Mock<IUdtConverter<TestUdtType>>();
+        var mockConverter2 = new Mock<IUdtConverter<AnotherTestUdtType>>();
+        mockConverter1.Setup(c => c.UdtTypeName).Returns("TestUdt1");
+        mockConverter2.Setup(c => c.UdtTypeName).Returns("TestUdt2");
+
+        // Act
+        sut.RegisterUdtConverter(mockConverter1.Object);
+        sut.RegisterUdtConverter(mockConverter2.Object);
+
+        // Assert
+        _mockClient.Verify(c => c.RegisterUdtConverter(mockConverter1.Object), Times.Once);
+        _mockClient.Verify(c => c.RegisterUdtConverter(mockConverter2.Object), Times.Once);
+    }
+
+    #endregion UDT Converter Tests
+
+    // Test UDT types for unit testing
+    public record TestUdtType(bool TestBool, int TestInt, string TestString);
+    public record AnotherTestUdtType(double TestDouble, DateTime TestDateTime);
 
     private static ApplicationConfiguration CreateTestAppConfig()
     {

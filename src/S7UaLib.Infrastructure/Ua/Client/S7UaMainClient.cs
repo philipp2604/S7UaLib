@@ -59,8 +59,10 @@ internal class S7UaMainClient : IS7UaMainClient
         UserIdentity = userIdentity ?? new UserIdentity();
         _validateResponse = validateResponse ?? throw new ArgumentNullException(nameof(validateResponse));
         _loggerFactory = loggerFactory;
-        _appInst = new Opc.Ua.Configuration.ApplicationInstance();
-        _appInst.ApplicationType = Opc.Ua.ApplicationType.Client;
+        _appInst = new Opc.Ua.Configuration.ApplicationInstance
+        {
+            ApplicationType = Opc.Ua.ApplicationType.Client
+        };
 
         if (_loggerFactory != null)
         {
@@ -828,7 +830,7 @@ internal class S7UaMainClient : IS7UaMainClient
                 _session.Dispose();
             }
 
-            if (_appInst != null && _appInst.ApplicationConfiguration != null)
+            if (_appInst?.ApplicationConfiguration != null)
             {
                 _appInst.ApplicationConfiguration.CertificateValidator.CertificateValidation -= Client_CertificateValidation;
             }

@@ -318,7 +318,7 @@ This section provides a complete reference for the public `S7Service` class. The
 - `Task DisconnectAsync(bool leaveChannelOpen = false, CancellationToken cancellationToken = default)`
   > Disconnects from the S7 UA server.
 
-#### Structure Discovery / Registration Methods
+#### Structure Discovery & Registration Methods
 
 - `Task DiscoverStructureAsync(CancellationToken cancellationToken = default)`
   > Discovers the entire structure of the OPC UA server and populates the internal data store. Throws an `InvalidOperationException` if not connected.
@@ -327,31 +327,33 @@ This section provides a complete reference for the public `S7Service` class. The
 - `Task<bool> RegisterVariableAsync(IS7Variable variable, CancellationToken cancellationToken = default)`
   > Registers a new variable manually in the data store's structure. The parent element must already exist.
 
-#### Variables Access and Manipulation Methods
+#### Data Access Methods
 - `IReadOnlyList<IS7DataBlockGlobal> GetGlobalDataBlocks()`
-  > Returns the cached global data blocks.
+  > Gets all cached global data blocks.
 - `IReadOnlyList<IS7DataBlockInstance> GetInstanceDataBlocks()`
-  > Returns the cached instance data blocks.
+  > Gets all cached instance data blocks.
 - `IS7Inputs? GetInputs()`
-  > Returns the cached inputs area.
+  > Gets the cached inputs area.
 - `IS7Outputs? GetOutputs()`
-  > Returns the cached outputs area.
+  > Gets the cached outputs area.
 - `IS7Memory? GetMemory()`
-  > Returns the cached memory area.
+  > Gets the cached memory area.
 - `IS7Timers? GetTimers()`
-  > Returns the cached timers area.
+  > Gets the cached timers area.
 - `IS7Counters? GetCounters()`
-  > Returns the cached counters area.
+  > Gets the cached counters area.
 - `IReadOnlyList<IS7Variable> FindVariablesWhere(Func<IS7Variable, bool> predicate)`
   > Filters and returns variables from the internal cache based on a predicate.
+- `IS7Variable? GetVariable(string fullPath)`
+  > Retrieves a variable from the data store by its full symbolic path. Returns the `IS7Variable` if found; otherwise, `null`.
+
+#### Variable Read/Write Methods
 - `Task ReadAllVariablesAsync(CancellationToken cancellationToken = default)`
   > Reads the values of all discovered variables from the PLC. Raises the `VariableValueChanged` event for any variable whose value has changed.
 - `Task<bool> WriteVariableAsync(string fullPath, object value)`
   > Writes a value to a variable specified by its full symbolic path. The library handles the necessary type conversion. Returns `true` on success.
 - `Task<bool> UpdateVariableTypeAsync(string fullPath, S7DataType newType, CancellationToken cancellationToken = default)`
   > Updates the S7 data type of a variable in the data store and attempts to reconvert its current raw value. Returns `true` if the variable was found and updated.
-- `IS7Variable? GetVariable(string fullPath)`
-  > Retrieves a variable from the data store by its full symbolic path. Returns the `IS7Variable` if found; otherwise, `null`.
 
 #### Subscription Methods
 
@@ -361,6 +363,23 @@ This section provides a complete reference for the public `S7Service` class. The
   > Subscribes to all variables that have the `IsSubscribed` flag set to `true` (typically from a loaded structure file). Returns `true` if all subscriptions were successful.
 - `Task<bool> UnsubscribeFromVariableAsync(string fullPath, CancellationToken cancellationToken = default)`
   > Unsubscribes from a variable to stop receiving value changes. Returns `true` on success.
+
+#### UDT and Custom Type Methods
+
+- `void RegisterUdtConverter<T>(IUdtConverter<T> converter) where T : class`
+  > Registers a custom UDT converter for a specific UDT type with strong typing. This converter will be used to convert between PLC UDT structure members and user-defined C# objects.
+- `void RegisterUdtConverter(string udtName, IS7TypeConverter converter)`
+  > Registers a custom converter for a specific UDT type. This converter will be used instead of the generic UDT converter for variables of this type.
+- `void RegisterUdtConverter<T>(string udtName) where T : IS7TypeConverter, new()`
+  > Registers a custom converter instance for a specific UDT type.
+- `Task<UdtDefinition?> DiscoverUdtDefinitionAsync(string udtTypeName, CancellationToken cancellationToken = default)`
+  > Discovers the structure definition of a specific UDT type from the PLC.
+- `Task<IReadOnlyList<string>> GetAvailableUdtTypesAsync(CancellationToken cancellationToken = default)`
+  > Discovers all available UDT types from the PLC.
+- `IReadOnlyDictionary<string, UdtDefinition> GetDiscoveredUdts()`
+  > Gets all currently discovered UDT definitions.
+- `IUdtTypeRegistry GetUdtTypeRegistry()`
+  > Gets the UDT type registry containing all discovered UDT definitions and registered custom converters.
 
 #### Persistence Methods
 

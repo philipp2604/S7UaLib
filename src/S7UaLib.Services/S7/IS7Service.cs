@@ -1,5 +1,6 @@
 ﻿using S7UaLib.Core.Enums;
 using S7UaLib.Core.Events;
+using S7UaLib.Core.S7.Converters;
 using S7UaLib.Core.S7.Structure;
 using S7UaLib.Core.Ua;
 using S7UaLib.Core.Ua.Configuration;
@@ -295,6 +296,18 @@ public interface IS7Service : IDisposable
     Task<bool> UnsubscribeFromVariableAsync(string fullPath, CancellationToken cancellationToken = default);
 
     #endregion Variables Access and Manipulation Methods
+
+    #region UDT Converter Management
+
+    /// <summary>
+    /// Registers a custom UDT converter for a specific UDT type with strong typing.
+    /// This converter will be used to convert between PLC UDT structure members and user-defined C# objects.
+    /// </summary>
+    /// <typeparam name="T">The user-defined C# type that represents the UDT.</typeparam>
+    /// <param name="converter">The custom UDT converter to use.</param>
+    void RegisterUdtConverter<T>(IUdtConverter<T> converter) where T : class;
+
+    #endregion UDT Converter Management
 
     #region Persistence Methods
 
