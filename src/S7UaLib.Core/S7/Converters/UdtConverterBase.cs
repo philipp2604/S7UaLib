@@ -6,27 +6,21 @@ namespace S7UaLib.Core.S7.Converters;
 /// Base class for custom UDT converters, providing common functionality.
 /// </summary>
 /// <typeparam name="T">The user-defined C# type that represents the UDT.</typeparam>
-public abstract class UdtConverterBase<T> : IUdtConverter<T> where T : class
+/// <remarks>
+/// Initializes a new instance of the <see cref="UdtConverterBase{T}"/> class.
+/// </remarks>
+/// <param name="udtTypeName">The UDT type name as defined in the PLC.</param>
+public abstract class UdtConverterBase<T>(string udtTypeName) : IUdtConverter<T> where T : class
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="UdtConverterBase{T}"/> class.
-    /// </summary>
-    /// <param name="udtTypeName">The UDT type name as defined in the PLC.</param>
-    protected UdtConverterBase(string udtTypeName)
-    {
-        UdtTypeName = udtTypeName ?? throw new ArgumentNullException(nameof(udtTypeName));
-        UdtType = typeof(T);
-        TargetType = typeof(T);
-    }
 
     /// <inheritdoc />
-    public string UdtTypeName { get; }
+    public string UdtTypeName { get; } = udtTypeName ?? throw new ArgumentNullException(nameof(udtTypeName));
 
     /// <inheritdoc />
-    public Type UdtType { get; }
+    public Type UdtType { get; } = typeof(T);
 
     /// <inheritdoc />
-    public Type TargetType { get; }
+    public Type TargetType { get; } = typeof(T);
 
     /// <inheritdoc />
     public abstract T ConvertFromUdtMembers(IReadOnlyList<IS7Variable> structMembers);
@@ -40,12 +34,9 @@ public abstract class UdtConverterBase<T> : IUdtConverter<T> where T : class
         // This method is called by the generic converter system
         // For UDT converters, the actual conversion happens in ConvertFromUdtMembers
         // This method should not be called directly for UDT types
-        if (opcValue is IReadOnlyList<IS7Variable> structMembers)
-        {
-            return ConvertFromUdtMembers(structMembers);
-        }
-
-        throw new InvalidOperationException($"UDT converter for type '{UdtTypeName}' cannot convert from OPC value of type '{opcValue?.GetType().Name}'. Use ConvertFromUdtMembers instead.");
+        return opcValue is IReadOnlyList<IS7Variable> structMembers
+            ? (object)ConvertFromUdtMembers(structMembers)
+            : throw new InvalidOperationException($"UDT converter for type '{UdtTypeName}' cannot convert from OPC value of type '{opcValue?.GetType().Name}'. Use ConvertFromUdtMembers instead.");
     }
 
     /// <inheritdoc />
@@ -65,12 +56,9 @@ public abstract class UdtConverterBase<T> : IUdtConverter<T> where T : class
     /// <inheritdoc />
     IReadOnlyList<IS7Variable> IUdtConverterBase.ConvertToUdtMembers(object udtInstance, IReadOnlyList<IS7Variable> structMemberTemplate)
     {
-        if (udtInstance is T typedInstance)
-        {
-            return ConvertToUdtMembers(typedInstance, structMemberTemplate);
-        }
-
-        throw new ArgumentException($"Expected instance of type '{typeof(T).Name}' but received '{udtInstance?.GetType().Name}'.", nameof(udtInstance));
+        return udtInstance is T typedInstance
+            ? ConvertToUdtMembers(typedInstance, structMemberTemplate)
+            : throw new ArgumentException($"Expected instance of type '{typeof(T).Name}' but received '{udtInstance?.GetType().Name}'.", nameof(udtInstance));
     }
 
     /// <summary>
@@ -93,11 +81,6 @@ public abstract class UdtConverterBase<T> : IUdtConverter<T> where T : class
     /// <returns>The typed value or the default value.</returns>
     protected static TValue GetMemberValue<TValue>(IS7Variable? member, TValue defaultValue = default!)
     {
-        if (member?.Value is TValue typedValue)
-        {
-            return typedValue;
-        }
-
-        return defaultValue;
+        return member?.Value is TValue typedValue ? typedValue : defaultValue;
     }
 }

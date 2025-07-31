@@ -135,7 +135,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
 
         // Initialize UDT support
         _udtTypeRegistry = new UdtTypeRegistry();
-        _udtConverterInstance = new S7UdtConverter(loggerFactory?.CreateLogger<S7UdtConverter>());
+        _udtConverterInstance = new S7UdtConverter();
 
         _typeConvertersInstance = new Dictionary<S7DataType, IS7TypeConverter>
         {
@@ -1096,16 +1096,16 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var nodeId = (Opc.Ua.NodeId)referenceDescription.NodeId;
         string displayName = referenceDescription.DisplayName.Text;
 
-        if (nodeId.Identifier is string nodeIdStr && nodeIdStr.Contains("["))
+        if (nodeId.Identifier is string nodeIdStr && nodeIdStr.Contains('['))
         {
             int lastBracketIndex = nodeIdStr.LastIndexOf('[');
 
-            if (lastBracketIndex > -1 && nodeIdStr.EndsWith("]"))
+            if (lastBracketIndex > -1 && nodeIdStr.EndsWith(']'))
             {
                 int lastDotIndex = nodeIdStr.LastIndexOf('.', lastBracketIndex);
                 int nameStartIndex = lastDotIndex + 1;
-                string arrayName = nodeIdStr.Substring(nameStartIndex, lastBracketIndex - nameStartIndex);
-                displayName = arrayName.Trim('"') + nodeIdStr.Substring(lastBracketIndex);
+                string arrayName = nodeIdStr[nameStartIndex..lastBracketIndex];
+                displayName = arrayName.Trim('"') + nodeIdStr[lastBracketIndex..];
             }
         }
 

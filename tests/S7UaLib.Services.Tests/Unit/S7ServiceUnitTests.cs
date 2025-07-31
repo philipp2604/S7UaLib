@@ -1035,8 +1035,8 @@ public class S7ServiceUnitTests
         // Assert
         Assert.True(success);
         _mockClient.Verify(c => c.WriteVariableAsync(
-            It.Is<IS7Variable>(v => v.NodeId == nodeId.ToString() && v.DisplayName == "TestVar"), 
-            valueToWrite, 
+            It.Is<IS7Variable>(v => v.NodeId == nodeId.ToString() && v.DisplayName == "TestVar"),
+            valueToWrite,
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

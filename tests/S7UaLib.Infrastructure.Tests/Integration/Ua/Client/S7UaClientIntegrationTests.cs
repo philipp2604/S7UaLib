@@ -692,7 +692,7 @@ public class S7UaClientIntegrationTests : IDisposable
             testVar = dbWithOriginalValues.Variables.First(v => v.NodeId == testVar.NodeId) as S7Variable;
             Assert.NotNull(testVar);
 
-            Assert.IsAssignableFrom<System.Collections.IList>(testVar.Value);
+            Assert.IsType<System.Collections.IList>(testVar.Value, exactMatch: false);
             originalValue = testVar.Value;
             Assert.NotNull(originalValue);
 
@@ -736,9 +736,9 @@ public class S7UaClientIntegrationTests : IDisposable
             // Act 2: Write new UDT array values
             var newUdtArray = new List<MyCustomUdt>
             {
-                new MyCustomUdt(OneBool: false, OneInt: 100, OneString: "First"),
-                new MyCustomUdt(OneBool: true, OneInt: 200, OneString: "Second"),
-                new MyCustomUdt(OneBool: false, OneInt: 300, OneString: "Third")
+                new(OneBool: false, OneInt: 100, OneString: "First"),
+                new(OneBool: true, OneInt: 200, OneString: "Second"),
+                new(OneBool: false, OneInt: 300, OneString: "Third")
             };
 
             //bool writeSuccess = await client.WriteVariableAsync(originalArrayVar, newUdtArray);
@@ -751,7 +751,7 @@ public class S7UaClientIntegrationTests : IDisposable
             Assert.NotNull(modifiedArrayVar);
 
             // Verify the read value is the expected modified UDT array
-            Assert.IsAssignableFrom<System.Collections.IList>(modifiedArrayVar.Value);
+            Assert.IsType<System.Collections.IList>(modifiedArrayVar.Value, exactMatch: false);
             var modifiedList = modifiedArrayVar.Value as System.Collections.IList;
             Assert.NotNull(modifiedList);
             Assert.Equal(newUdtArray.Count, modifiedList.Count);
@@ -793,11 +793,11 @@ public class S7UaClientIntegrationTests : IDisposable
 
             // Check that array members have proper array indices
             var membersWithIndex0 = modifiedArrayVar.StructMembers.Where(m =>
-                m.FullPath != null && m.FullPath.Contains("[0]")).ToList();
+                m.FullPath?.Contains("[0]") == true).ToList();
             var membersWithIndex1 = modifiedArrayVar.StructMembers.Where(m =>
-                m.FullPath != null && m.FullPath.Contains("[1]")).ToList();
+                m.FullPath?.Contains("[1]") == true).ToList();
             var membersWithIndex2 = modifiedArrayVar.StructMembers.Where(m =>
-                m.FullPath != null && m.FullPath.Contains("[2]")).ToList();
+                m.FullPath?.Contains("[2]") == true).ToList();
 
             Assert.NotEmpty(membersWithIndex0);
             Assert.NotEmpty(membersWithIndex1);
