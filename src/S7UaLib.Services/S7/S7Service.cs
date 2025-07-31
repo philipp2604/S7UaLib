@@ -735,6 +735,18 @@ public class S7Service : IS7Service
 
     #endregion Persistence Methods
 
+    #region UDT Converter Management
+
+    /// <inheritdoc cref="IS7Service.RegisterUdtConverter{T}(IUdtConverter{T})"/>
+    public void RegisterUdtConverter<T>(IUdtConverter<T> converter) where T : class
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(converter);
+        _client.RegisterUdtConverter(converter);
+    }
+
+    #endregion UDT Converter Management
+
     #endregion Public Methods
 
     #region Private Methods
