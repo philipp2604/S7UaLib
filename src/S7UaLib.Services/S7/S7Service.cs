@@ -493,7 +493,7 @@ public class S7Service : IS7Service
 
         try
         {
-            return await _client.WriteVariableAsync(variable.NodeId, value, variable.S7Type);
+            return await _client.WriteVariableAsync(variable, value);
         }
         catch (Exception ex)
         {

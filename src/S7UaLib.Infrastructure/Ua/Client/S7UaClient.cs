@@ -452,7 +452,30 @@ internal class S7UaClient : IS7UaClient, IDisposable
             return null;
         }
 
-        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverNodeCore(session, nodeShell)), cancellationToken);
+        return await _sessionPool.ExecuteWithSessionAsync(session => Task.FromResult(DiscoverNodeCoreWithPath(session, nodeShell)), cancellationToken);
+    }
+
+    private IUaNode DiscoverNodeCoreWithPath(Opc.Ua.Client.ISession session, IUaNode nodeShell)
+    {
+        if (nodeShell?.NodeId is null)
+        {
+            _logger?.LogWarning("DiscoverNodeCore called with a null node or node with null NodeId.");
+            return nodeShell ?? throw new ArgumentNullException(nameof(nodeShell));
+        }
+
+        return nodeShell switch
+        {
+            S7DataBlockGlobal globalDb => DiscoverGlobalDbCore(session, globalDb),
+            S7DataBlockInstance instanceDb => DiscoverInstanceDbCore(session, instanceDb),
+            S7InstanceDbSection section => DiscoverSectionCore(session, section),
+            S7Inputs inputs => DiscoverSimpleElementCoreWithPath(session, inputs, new PathBuilder("Inputs")),
+            S7Outputs outputs => DiscoverSimpleElementCoreWithPath(session, outputs, new PathBuilder("Outputs")),
+            S7Memory memory => DiscoverSimpleElementCoreWithPath(session, memory, new PathBuilder("Memory")),
+            S7Timers timers => DiscoverSimpleElementCoreWithPath(session, timers, new PathBuilder("Timers")),
+            S7Counters counters => DiscoverSimpleElementCoreWithPath(session, counters, new PathBuilder("Counters")),
+            S7StructureElement element => DiscoverSimpleElementCore(session, element),
+            _ => nodeShell
+        };
     }
 
     #endregion Structure Browsing and Discovery Methods (delegated to session pool)
@@ -792,10 +815,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// </summary>
     private S7DataBlockGlobal DiscoverGlobalDbCore(Opc.Ua.Client.ISession session, S7DataBlockGlobal globalDb)
     {
+        var pathBuilder = new PathBuilder("DataBlocksGlobal").Child(globalDb.DisplayName);
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => CreateS7VariableWithRecursiveDiscovery(session, desc)
+            desc => CreateS7VariableWithRecursiveDiscovery(session, desc, pathBuilder: pathBuilder),
+            pathBuilder
         );
 
         var variables = BrowseAndCreateNodes(session, globalDb.NodeId!, context).Cast<S7Variable>().ToList();
@@ -807,6 +832,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// </summary>
     private S7DataBlockInstance DiscoverInstanceDbCore(Opc.Ua.Client.ISession session, S7DataBlockInstance instanceDb)
     {
+        var pathBuilder = new PathBuilder("DataBlocksInstance").Child(instanceDb.DisplayName);
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Object,
             _ => true,
@@ -814,12 +840,13 @@ internal class S7UaClient : IS7UaClient, IDisposable
             {
                 NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
                 DisplayName = desc.DisplayName.Text
-            }
+            },
+            pathBuilder
         );
 
         var sections = BrowseAndCreateNodes(session, instanceDb.NodeId!, context)
             .Cast<S7InstanceDbSection>()
-            .Select(section => (S7InstanceDbSection)DiscoverNodeCore(session, section))
+            .Select(section => DiscoverSectionCoreWithPath(session, section, pathBuilder.Child(section.DisplayName)))
             .ToArray();
 
         return instanceDb with
@@ -836,17 +863,26 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// </summary>
     private S7InstanceDbSection DiscoverSectionCore(Opc.Ua.Client.ISession session, S7InstanceDbSection section)
     {
+        return DiscoverSectionCoreWithPath(session, section, null);
+    }
+
+    /// <summary>
+    /// Discovers the contents of an instance data block section with path context.
+    /// </summary>
+    private S7InstanceDbSection DiscoverSectionCoreWithPath(Opc.Ua.Client.ISession session, S7InstanceDbSection section, PathBuilder? pathBuilder)
+    {
 #pragma warning disable RCS1130 // Bitwise operation on enum without Flags attribute
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable | Opc.Ua.NodeClass.Object,
             desc => desc.DisplayName.Text != "Icon",
             desc => desc.NodeClass == Opc.Ua.NodeClass.Variable
-                ? CreateS7VariableWithRecursiveDiscovery(session, desc)
+                ? CreateS7VariableWithRecursiveDiscovery(session, desc, pathBuilder: pathBuilder)
                 : new S7DataBlockInstance
                 {
                     NodeId = ((Opc.Ua.NodeId)desc.NodeId).ToString(),
                     DisplayName = desc.DisplayName.Text
-                }
+                },
+            pathBuilder
         );
 #pragma warning restore RCS1130 // Bitwise operation on enum without Flags attribute
 
@@ -865,10 +901,19 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// </summary>
     private S7StructureElement DiscoverSimpleElementCore(Opc.Ua.Client.ISession session, S7StructureElement element)
     {
+        return DiscoverSimpleElementCoreWithPath(session, element, null);
+    }
+
+    /// <summary>
+    /// Discovers variables within a simple structure element with path context.
+    /// </summary>
+    private S7StructureElement DiscoverSimpleElementCoreWithPath(Opc.Ua.Client.ISession session, S7StructureElement element, PathBuilder? pathBuilder)
+    {
         var context = new NodeDiscoveryContext(
             Opc.Ua.NodeClass.Variable,
             desc => desc.DisplayName.Text != "Icon",
-            desc => CreateS7VariableWithRecursiveDiscovery(session, desc)
+            desc => CreateS7VariableWithRecursiveDiscovery(session, desc, pathBuilder: pathBuilder),
+            pathBuilder
         );
 
         var variables = BrowseAndCreateNodes(session, element.NodeId!, context).Cast<S7Variable>().ToList();
@@ -1044,8 +1089,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// </summary>
     /// <param name="session">The OPC UA session.</param>
     /// <param name="referenceDescription">The reference description.</param>
+    /// <param name="pathBuilder">The path builder for constructing full paths.</param>
     /// <returns>An S7Variable with proper S7DataType mapping.</returns>
-    private S7Variable CreateS7VariableWithUdtDetection(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription)
+    private S7Variable CreateS7VariableWithUdtDetection(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription, PathBuilder? pathBuilder = null)
     {
         var nodeId = (Opc.Ua.NodeId)referenceDescription.NodeId;
         string displayName = referenceDescription.DisplayName.Text;
@@ -1066,7 +1112,8 @@ internal class S7UaClient : IS7UaClient, IDisposable
         var variable = new S7Variable
         {
             NodeId = nodeId.ToString(),
-            DisplayName = displayName
+            DisplayName = displayName,
+            FullPath = pathBuilder?.Child(displayName).CurrentPath
         };
 
         try
@@ -1149,8 +1196,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <param name="referenceDescription">The reference description.</param>
     /// <param name="depth">Current recursion depth to prevent infinite loops.</param>
     /// <param name="maxDepth">Maximum recursion depth allowed.</param>
+    /// <param name="pathBuilder">The path builder for constructing full paths.</param>
     /// <returns>An S7Variable with fully discovered structure members.</returns>
-    private S7Variable CreateS7VariableWithRecursiveDiscovery(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription, int depth = 0, int maxDepth = 10)
+    private S7Variable CreateS7VariableWithRecursiveDiscovery(Opc.Ua.Client.ISession session, Opc.Ua.ReferenceDescription referenceDescription, int depth = 0, int maxDepth = 10, PathBuilder? pathBuilder = null)
     {
         // Prevent infinite recursion
         if (depth > maxDepth)
@@ -1160,11 +1208,12 @@ internal class S7UaClient : IS7UaClient, IDisposable
             {
                 NodeId = ((Opc.Ua.NodeId)referenceDescription.NodeId).ToString(),
                 DisplayName = referenceDescription.DisplayName.Text,
-                S7Type = S7DataType.UNKNOWN
+                S7Type = S7DataType.UNKNOWN,
+                FullPath = pathBuilder?.Child(referenceDescription.DisplayName.Text).CurrentPath
             };
         }
 
-        var variable = CreateS7VariableWithUdtDetection(session, referenceDescription);
+        var variable = CreateS7VariableWithUdtDetection(session, referenceDescription, pathBuilder);
 
         // If it's a STRUCT, UDT, or an array of UDTs, discover its members/elements recursively
         if (variable.S7Type is S7DataType.STRUCT or S7DataType.UDT or S7DataType.ARRAY_OF_UDT)
@@ -1172,7 +1221,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
             try
             {
                 _logger?.LogDebug("Discovering members for {Type} variable '{DisplayName}' at depth {Depth}", variable.S7Type, variable.DisplayName, depth);
-                var members = DiscoverStructOrUdtMembers(session, variable.NodeId!, depth + 1, maxDepth);
+                var members = DiscoverStructOrUdtMembers(session, variable.NodeId!, depth + 1, maxDepth, pathBuilder?.Child(variable.DisplayName));
                 _logger?.LogDebug("Discovered {MemberCount} members for variable '{DisplayName}'", members.Count, variable.DisplayName);
 
                 // For STRUCT, UDT, and ARRAY_OF_UDT, populate the StructMembers
@@ -1194,8 +1243,9 @@ internal class S7UaClient : IS7UaClient, IDisposable
     /// <param name="nodeId">The NodeId of the STRUCT/UDT variable.</param>
     /// <param name="depth">Current recursion depth.</param>
     /// <param name="maxDepth">Maximum recursion depth allowed.</param>
+    /// <param name="pathBuilder">The path builder for constructing full paths.</param>
     /// <returns>A list of discovered member variables.</returns>
-    private ReadOnlyCollection<IS7Variable> DiscoverStructOrUdtMembers(Opc.Ua.Client.ISession session, string nodeId, int depth, int maxDepth)
+    private ReadOnlyCollection<IS7Variable> DiscoverStructOrUdtMembers(Opc.Ua.Client.ISession session, string nodeId, int depth, int maxDepth, PathBuilder? pathBuilder = null)
     {
         if (!session.Connected)
         {
@@ -1223,7 +1273,7 @@ internal class S7UaClient : IS7UaClient, IDisposable
                     continue;
 
                 // Recursively discover each member
-                var memberVariable = CreateS7VariableWithRecursiveDiscovery(session, childDesc, depth, maxDepth);
+                var memberVariable = CreateS7VariableWithRecursiveDiscovery(session, childDesc, depth, maxDepth, pathBuilder);
                 members.Add(memberVariable);
             }
 

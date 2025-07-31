@@ -8,5 +8,6 @@ namespace S7UaLib.Infrastructure.Ua.Client;
 internal record NodeDiscoveryContext(
     Opc.Ua.NodeClass NodeClassMask,
     Func<Opc.Ua.ReferenceDescription, bool> Filter,
-    Func<Opc.Ua.ReferenceDescription, IUaNode> NodeFactory
+    Func<Opc.Ua.ReferenceDescription, IUaNode> NodeFactory,
+    PathBuilder? PathBuilder = null
 );

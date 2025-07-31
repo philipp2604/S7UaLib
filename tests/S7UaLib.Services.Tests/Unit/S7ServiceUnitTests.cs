@@ -1022,7 +1022,7 @@ public class S7ServiceUnitTests
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(nodeId.ToString(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<IS7Variable>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true)
             .Verifiable();
 
@@ -1034,7 +1034,10 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.True(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(nodeId.ToString(), valueToWrite, S7DataType.INT, It.IsAny<CancellationToken>()), Times.Once);
+        _mockClient.Verify(c => c.WriteVariableAsync(
+            It.Is<IS7Variable>(v => v.NodeId == nodeId.ToString() && v.DisplayName == "TestVar"), 
+            valueToWrite, 
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1049,7 +1052,7 @@ public class S7ServiceUnitTests
 
         // Assert
         Assert.False(success);
-        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockClient.Verify(c => c.WriteVariableAsync(It.IsAny<IS7Variable>(), It.IsAny<object>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -1062,7 +1065,7 @@ public class S7ServiceUnitTests
         _realDataStore.SetStructure([new S7DataBlockGlobal { DisplayName = "DB1", Variables = [variable] }], [], null, null, null, null, null);
         _realDataStore.BuildCache();
 
-        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<string>(), It.IsAny<object>(), It.IsAny<S7DataType>(), It.IsAny<CancellationToken>()))
+        _mockClient.Setup(c => c.WriteVariableAsync(It.IsAny<IS7Variable>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Write failed"));
 
         // Act
