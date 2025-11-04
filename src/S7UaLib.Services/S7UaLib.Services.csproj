@@ -40,7 +40,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.IO.Abstractions" Version="22.0.15" />
-	<PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-*" PrivateAssets="All" />
+	<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
 	<PackageReference Include="philipp2604.S7UaLib.Core" Version="$(Version)" />
 	<PackageReference Include="philipp2604.S7UaLib.Infrastructure" Version="$(Version)" />
   </ItemGroup>
